@@ -1,0 +1,2 @@
+# SmartPaste
+清华大学软件学院2025年软件工程课程项目：SmartPaste智能剪贴板
