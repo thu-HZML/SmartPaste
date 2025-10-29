@@ -140,7 +140,6 @@
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { invoke } from '@tauri-apps/api/tauri'
 
 export default {
   name: 'App',
