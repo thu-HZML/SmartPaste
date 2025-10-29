@@ -1,5 +1,4 @@
 use tauri::Manager;
-// [关键改动] 引入 ShortcutState 枚举
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 fn main() {
@@ -11,10 +10,8 @@ fn main() {
 
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
-                    // [关键改动] `event` 参数现在被使用了
                     .with_handler(move |_app, shortcut, event| {
                         if shortcut == &shortcut_for_handler {
-                            // [关键改动] 只在按键被按下的那一刻才执行逻辑
                             if event.state() == ShortcutState::Pressed {
                                 println!("✅ 按键被按下，执行窗口切换逻辑");
                                 let window = handle.get_webview_window("main").unwrap();
