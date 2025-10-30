@@ -1,13 +1,13 @@
 <template>
   <div class="app">
     <!-- 顶部搜索栏 -->
-    <div style="padding: 10px; background: #f0f0f0;">
-      调试信息: 共有 {{ history.length }} 条记录
-    </div>
     <header class="app-header">
       <div class="search-container">
         <div class="search-bar">
-          <span class="search-icon">🔍</span>
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 100 100">
+              <circle cx="40" cy="40" r="30" fill="none" stroke="#3498db" stroke-width="6"/>
+                          <line x1="65" y1="65" x2="85" y2="85" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
+          </svg>
           <input 
             type="text" 
             v-model="searchQuery"
@@ -33,8 +33,11 @@
           <button class="icon-btn" @click="togglePinnedView">
             📌
           </button>
-          <button class="icon-btn" @click="openSettings">
-            ⚙️
+          <button class="icon-btn" @click="openSettings">         
+            <img
+              class="settings-icon"
+              src="https://ide.code.fun/api/image?token=69034a079520a30011f4f4f9&name=f8435267bedb1f8da2ed89ce0b7f6027.png"
+            />
           </button>
         </div>
       </div>
@@ -42,7 +45,7 @@
 
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
-      <div v-if="1 === 0" class="empty-state">
+      <div v-if="history.length === 0" class="empty-state">
         <p>暂无剪贴板记录</p>
         <p class="hint">复制的内容将显示在这里</p>
       </div>
@@ -52,20 +55,17 @@
           v-for="(item, index) in history" 
           :key="index" 
           class="history-item"
-          :class="{ pinned: item.pinned }"
+          tabindex="0"
         >
-          <div class="item-content">
-            <div class="item-text" :title="item.text">{{ truncateText(item.text) }}</div>
-            
+          <div class="item-info">
+            <div class="item-meta">
+              <span>{{ item.tag }}</span>
+              <span>{{ item.text.length }}字符</span>
+              <span>{{ formatTime(item.timestamp) }}</span>
+            </div>
+
             <!-- 右上方按钮组 -->
             <div class="item-actions-top">
-              <button 
-                class="icon-btn-small" 
-                @click="togglePin(index)"
-                :title="item.pinned ? '取消固定' : '固定'"
-              >
-                {{ item.pinned ? '📌' : '📍' }}
-              </button>
               <button 
                 class="icon-btn-small" 
                 @click="toggleFavorite(index)"
@@ -80,35 +80,29 @@
               >
                 📋
               </button>
-            </div>
-            
-            <!-- 右下方按钮组 -->
-            <div class="item-actions-bottom">
               <button 
-                class="action-btn" 
+                class="icon-btn-small" 
                 @click="editItem(index)"
                 :disabled="item.text.length > 500"
               >
-                ✏️ 编辑
+                ✏️
               </button>
               <button 
-                class="action-btn" 
+                class="icon-btn-small" 
                 @click="shareItem(item.text)"
               >
-                📤 分享
+                📤
               </button>
               <button 
-                class="action-btn danger" 
+                class="icon-btn-small" 
                 @click="removeItem(index)"
               >
-                🗑️ 删除
+                🗑️
               </button>
             </div>
           </div>
-          
-          <div class="item-meta">
-            <span class="item-time">{{ formatTime(item.timestamp) }}</span>
-            <span class="item-length">{{ item.text.length }} 字符</span>
+          <div class="item-content">
+            <div class="item-text" :title="item.text">{{ truncateText(item.text) }}</div>           
           </div>
         </div>
       </div>
@@ -138,7 +132,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
 
 export default {
@@ -280,13 +274,6 @@ export default {
       }
     }
 
-    // 切换固定状态
-    const togglePin = (index) => {
-      history.value[index].pinned = !history.value[index].pinned
-      saveToStorage()
-      showMessage(history.value[index].pinned ? '已固定' : '已取消固定')
-    }
-
     // 切换收藏状态
     const toggleFavorite = (index) => {
       history.value[index].favorite = !history.value[index].favorite
@@ -341,8 +328,8 @@ export default {
 
     // 截断长文本
     const truncateText = (text) => {
-      return text.length > 150 
-        ? text.substring(0, 150) + '...' 
+      return text.length > 115 
+        ? text.substring(0, 115) + '...' 
         : text
     }
 
@@ -374,17 +361,33 @@ export default {
 
     onMounted(() => {
       console.log('开始初始化...')
-      
+
       // 直接设置数据
       history.value = [
         {
+          tag: '纯文本',
           text: '欢迎使用 SmartPaste 剪贴板管理器！',
           timestamp: Date.now(),
           pinned: true,
           favorite: true
         },
         {
+          tag: '纯文本',
           text: '测试数据1',
+          timestamp: Date.now() - 100000,
+          pinned: false,
+          favorite: false
+        },
+        {
+          tag: '纯文本',
+          text: '测试数据2:长文本测试，这是一条非常长的文本，用于测试文本截断功能。'.repeat(10),
+          timestamp: Date.now() - 100000,
+          pinned: false,
+          favorite: false
+        },
+        {
+          tag: '纯文本',
+          text: '测试数据3:中文本测试，这是一条比较长的文本，用于测试文本截断功能。'.repeat(3),
           timestamp: Date.now() - 100000,
           pinned: false,
           favorite: false
@@ -408,7 +411,6 @@ export default {
       togglePinnedView,
       openSettings,
       copyItem,
-      togglePin,
       toggleFavorite,
       editItem,
       saveEdit,
@@ -434,11 +436,15 @@ body {
   background: #f8f9fa;
   color: #333;
   line-height: 1.6;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 .app {
   min-height: 100vh;
   background: white;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 /* 顶部搜索栏样式 */
@@ -446,16 +452,16 @@ body {
   background: white;
   border-bottom: 1px solid #e1e8ed;
   padding: 0;
+  max-width: 100%
 }
 
 .search-container {
-  padding: 16px 20px;
+  padding: 8px 10px;
   border-bottom: 1px solid #f0f0f0;
 }
 
 .search-bar {
   position: relative;
-  max-width: 600px;
   margin: 0 auto;
 }
 
@@ -464,32 +470,34 @@ body {
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 18px;
-  color: #666;
 }
 
+/* 搜索框样式 */
 .search-input {
   width: 100%;
-  padding: 12px 20px 12px 48px;
-  border: 2px solid #e1e8ed;
-  border-radius: 24px;
+  padding: 6px 10px 6px 40px;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
   font-size: 16px;
   outline: none;
   transition: all 0.2s;
 }
 
+.search-input:hover {
+  border-color: #b7c8fe;
+}
+
 .search-input:focus {
-  border-color: #3498db;
-  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+  border-color: #3282f6;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
 }
 
 /* 工具栏样式 */
 .toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  background: #f8f9fa;
+  padding: 8px 10px;
+  background: #ffffff;
 }
 
 .category-buttons {
@@ -498,9 +506,9 @@ body {
 }
 
 .category-btn {
-  padding: 8px 16px;
-  border: 1px solid #e1e8ed;
-  border-radius: 16px;
+  padding: 4px 8px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
   background: white;
   color: #666;
   font-size: 14px;
@@ -509,13 +517,14 @@ body {
 }
 
 .category-btn:hover {
-  background: #f8f9fa;
+  border-color: #dadbdc;
+  background: #f2f3f4;
 }
 
 .category-btn.active {
-  background: #3498db;
-  color: white;
-  border-color: #3498db;
+  background: #edf3fe;
+  color: #416afe;
+  border-color: #b7c8fe;
 }
 
 .toolbar-actions {
@@ -524,7 +533,7 @@ body {
 }
 
 .icon-btn {
-  padding: 8px;
+  padding: 4px;
   border: none;
   background: none;
   font-size: 18px;
@@ -537,13 +546,20 @@ body {
   background: #e9ecef;
 }
 
+.settings-icon {
+  width: 1.2rem;
+  height: 1.2rem;
+  position: relative;
+  top: 3px;
+}
+
 /* 主内容区样式 */
 .app-main {
-  padding: 20px;
-  max-width: 1000px;
+  padding: 8px 10px;
   margin: 0 auto;
 }
 
+/* 空状态样式 */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -570,21 +586,56 @@ body {
   background: white;
   border: 1px solid #e1e8ed;
   border-radius: 12px;
-  padding: 20px;
+  padding: 2px 5px;
   transition: all 0.2s ease;
   position: relative;
 }
 
 .history-item:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  transform: translateY(-1px);
+  border-color: #b7c8fe;
 }
 
-.history-item.pinned {
-  border-left: 4px solid #f39c12;
-  background: #fff9e6;
+.history-item:focus {
+  border-color: #3282f6;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
 }
 
+/* 信息框架 */
+.item-info {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* 元信息样式 */
+.item-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: #595959;
+  align-items: center;
+}
+
+/* 功能样式 */
+.item-actions-top {
+  display: flex;
+  gap: 4px;
+}
+
+.icon-btn-small {
+  padding: 1px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.icon-btn-small:hover {
+  background: #e9ecef;
+}
+
+/* 剪贴内容样式 */
 .item-content {
   display: flex;
   justify-content: space-between;
@@ -598,77 +649,9 @@ body {
   font-size: 14px;
   line-height: 1.5;
   word-break: break-word;
-  color: #2c3e50;
-}
-
-/* 按钮组样式 */
-.item-actions-top {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-}
-
-.item-actions-bottom {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.icon-btn-small {
-  padding: 6px;
-  border: none;
-  background: none;
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.icon-btn-small:hover {
-  background: #e9ecef;
-}
-
-.action-btn {
-  padding: 6px 12px;
-  border: 1px solid #e1e8ed;
-  border-radius: 6px;
-  background: white;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.action-btn:hover {
-  background: #f8f9fa;
-}
-
-.action-btn.danger {
-  color: #e74c3c;
-  border-color: #e74c3c;
-}
-
-.action-btn.danger:hover {
-  background: #fdf2f2;
-}
-
-.action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* 元信息样式 */
-.item-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #7f8c8d;
-}
-
-.item-time, .item-length {
-  font-size: 11px;
+  color: #1f1f1f;
+  min-height: 80px;
+  max-height: 80px;
 }
 
 /* 提示框样式 */
@@ -684,6 +667,27 @@ body {
   font-size: 14px;
   z-index: 1000;
   animation: slideUp 0.3s ease;
+}
+
+/* 美化纵向滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 @keyframes slideUp {
@@ -777,7 +781,6 @@ body {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .toolbar {
-    flex-direction: column;
     gap: 12px;
     align-items: stretch;
   }
