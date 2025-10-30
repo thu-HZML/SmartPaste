@@ -180,7 +180,7 @@ export default {
 
     // 打开设置
     const openSettings = () => {
-      router.push('/settings')
+      router.push('/preferences')
       showMessage('打开设置')
     }
 

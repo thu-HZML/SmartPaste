@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import ClipboardApp from '../components/ClipboardApp.vue'
 import Settings from '../components/Settings.vue'
+import Preferences from '../components/Preferences.vue'
 
 const routes = [
   {
@@ -12,6 +13,11 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: Settings
+  },
+  {
+    path: '/preferences',
+    name: 'Preferences',
+    component: Preferences
   }
 ]
 
