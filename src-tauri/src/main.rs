@@ -1,10 +1,20 @@
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+mod db;
+
 fn main() {
     let result = tauri::Builder::default()
+        // 注册 Tauri commands - 数据库接口
+        .invoke_handler(tauri::generate_handler![db::insert_received_data])
+        .invoke_handler(tauri::generate_handler![db::get_data_by_id])
+        .invoke_handler(tauri::generate_handler![db::delete_data])
+        .invoke_handler(tauri::generate_handler![db::delete_data_by_id])
+        .invoke_handler(tauri::generate_handler![db::favorite_data_by_id])
+        .invoke_handler(tauri::generate_handler![db::search_text_content])
         .setup(|app| {
-            let show_hide_shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
+            let show_hide_shortcut =
+                Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
             let shortcut_for_handler = show_hide_shortcut.clone();
             let handle = app.handle().clone();
 
@@ -38,7 +48,7 @@ fn main() {
                             }
                         }
                     })
-                    .build()
+                    .build(),
             )?;
 
             app.global_shortcut().register(show_hide_shortcut)?;
