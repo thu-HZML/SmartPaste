@@ -479,11 +479,17 @@ export default {
 </script>
 
 <style scoped>
+* {
+  box-sizing: border-box;
+}
+
 .settings-container {
   min-height: 100vh;
   background: white;
   overflow-x: hidden;
   max-width: 100%;
+  width: 100vw;
+  position: fixed;
 }
 
 /* 设置头部样式 */
@@ -491,19 +497,20 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 6px 8px;
   border-bottom: 1px solid #e1e8ed;
   background: white;
+  max-width: 100%;
 }
 
 .settings-header h1 {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   color: #2c3e50;
 }
 
 .back-btn {
-  padding: 6px 12px;
+  padding: 6px 8px;
   border: 1px solid #e1e8ed;
   border-radius: 6px;
   background: white;
@@ -521,15 +528,17 @@ export default {
 /* 设置内容区域 */
 .settings-content {
   display: flex;
-  height: calc(100vh - 60px);
+  height: calc(100vh - 40px);
+  max-width: 100%;
 }
 
 /* 左侧导航栏 */
 .settings-nav {
-  width: 220px;
+  width: 200px;
   border-right: 1px solid #e1e8ed;
   background: #f8f9fa;
   overflow-y: auto;
+  padding: 6px 8px;
 }
 
 .nav-list {
@@ -543,18 +552,18 @@ export default {
   align-items: center;
   padding: 12px 16px;
   cursor: pointer;
-  transition: all 0.2s;
-  border-left: 3px solid transparent;
+  transition: all 0.1s;
+  border: none;
+  border-radius: 8px;
 }
 
 .nav-item:hover {
-  background: #edf2f7;
+  background: #f1f3f5;
 }
 
 .nav-item.active {
-  background: #edf3fe;
-  border-left-color: #3498db;
-  color: #3498db;
+  background: #e4edfd;
+  color: #416afe;
 }
 
 .nav-icon {

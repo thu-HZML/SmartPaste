@@ -45,64 +45,96 @@
 
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
-      <div v-if="history.length === 0" class="empty-state">
-        <p>暂无剪贴板记录</p>
-        <p class="hint">复制的内容将显示在这里</p>
-      </div>
-      
-      <div v-else class="history-list">
-        <div 
-          v-for="(item, index) in history" 
-          :key="index" 
-          class="history-item"
-          tabindex="0"
-        >
-          <div class="item-info">
-            <div class="item-meta">
-              <span>{{ item.tag }}</span>
-              <span>{{ item.text.length }}字符</span>
-              <span>{{ formatTime(item.timestamp) }}</span>
-            </div>
+      <!-- “全部”界面 -->
+      <div v-if="activeCategory === 'all'">
+        <div v-if="history.length === 0" class="empty-state">
+          <p>暂无剪贴板记录</p>
+          <p class="hint">复制的内容将显示在这里</p>
+        </div>
+        
+        <div v-else class="history-list">
+          <div 
+            v-for="(item, index) in history" 
+            :key="index" 
+            class="history-item"
+            tabindex="0"
+          >
+            <div class="item-info">
+              <div class="item-meta">
+                <span>{{ item.tag }}</span>
+                <span>{{ item.text.length }}字符</span>
+                <span>{{ formatTime(item.timestamp) }}</span>
+              </div>
 
-            <!-- 右上方按钮组 -->
-            <div class="item-actions-top">
-              <button 
-                class="icon-btn-small" 
-                @click="toggleFavorite(index)"
-                :title="item.favorite ? '取消收藏' : '收藏'"
-              >
-                {{ item.favorite ? '★' : '☆' }}
-              </button>
-              <button 
-                class="icon-btn-small" 
-                @click="copyItem(item.text)"
-                title="复制"
-              >
-                📋
-              </button>
-              <button 
-                class="icon-btn-small" 
-                @click="editItem(index)"
-                :disabled="item.text.length > 500"
-              >
-                ✏️
-              </button>
-              <button 
-                class="icon-btn-small" 
-                @click="shareItem(item.text)"
-              >
-                📤
-              </button>
-              <button 
-                class="icon-btn-small" 
-                @click="removeItem(index)"
-              >
-                🗑️
-              </button>
+              <!-- 右上方按钮组 -->
+              <div class="item-actions-top">
+                <button 
+                  class="icon-btn-small" 
+                  @click="toggleFavorite(index)"
+                  :title="item.favorite ? '取消收藏' : '收藏'"
+                >
+                  {{ item.favorite ? '★' : '☆' }}
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="copyItem(item.text)"
+                  title="复制"
+                >
+                  📋
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="editItem(index)"
+                  :disabled="item.text.length > 500"
+                >
+                  ✏️
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="shareItem(item.text)"
+                >
+                  📤
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="removeItem(index)"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+            <div class="item-content">
+              <div class="item-text" :title="item.text">{{ item.text }}</div>           
             </div>
           </div>
-          <div class="item-content">
-            <div class="item-text" :title="item.text">{{ truncateText(item.text) }}</div>           
+        </div>
+      </div>
+
+      <!-- “收藏”界面 -->
+      <div v-if="activeCategory === 'favorite'">
+        <div class="history-list">
+          <div 
+            v-for="(item, index) in favoriteHistory" 
+            :key="index" 
+            class="history-item"
+            tabindex="0"
+          >
+            <div class="item-info">
+              <div class="item-meta">
+                <span>{{ item.name }}</span>
+                <span>{{ item.num }}个内容</span>
+              </div>
+
+              <!-- 右上方按钮组 -->
+              <div class="item-actions-top">
+                <button 
+                  class="icon-btn-small" 
+                  @click="removeItem(index)"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -158,6 +190,7 @@ export default {
     
     // 历史记录数据结构
     const history = ref([])
+    const favoriteHistory = ref([])
 
     // 显示提示信息
     const showMessage = (message) => {
@@ -328,9 +361,7 @@ export default {
 
     // 截断长文本
     const truncateText = (text) => {
-      return text.length > 115 
-        ? text.substring(0, 115) + '...' 
-        : text
+      return text
     }
 
     // 格式化时间
@@ -424,7 +455,7 @@ export default {
 }
 </script>
 
-<style>
+<style scoped>
 * {
   margin: 0;
   padding: 0;
@@ -507,7 +538,7 @@ body {
 
 .category-btn {
   padding: 4px 8px;
-  border: 1px solid #e5e5e5;
+  border: none;
   border-radius: 8px;
   background: white;
   color: #666;
@@ -517,14 +548,12 @@ body {
 }
 
 .category-btn:hover {
-  border-color: #dadbdc;
-  background: #f2f3f4;
+  background: #f1f3f5;
 }
 
 .category-btn.active {
-  background: #edf3fe;
+  background: #e4edfd;
   color: #416afe;
-  border-color: #b7c8fe;
 }
 
 .toolbar-actions {
@@ -645,13 +674,19 @@ body {
 }
 
 .item-text {
+  display: -webkit-box;
+  line-clamp: 4;          /* 限制显示行数 */
+  -webkit-line-clamp: 4;      /* 限制显示行数 */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
   flex: 1;
   font-size: 14px;
   line-height: 1.5;
   word-break: break-word;
   color: #1f1f1f;
-  min-height: 80px;
-  max-height: 80px;
+  min-height: 81px;
+  max-height: 81px;
 }
 
 /* 提示框样式 */
