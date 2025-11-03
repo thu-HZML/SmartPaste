@@ -2,12 +2,13 @@ import { createRouter, createWebHistory } from 'vue-router'
 import ClipboardApp from '../components/ClipboardApp.vue'
 import Settings from '../components/Settings.vue'
 import Preferences from '../components/Preferences.vue'
+import DesktopPet from '../components/DesktopPet.vue'  // 新增桌宠组件
 
 const routes = [
   {
     path: '/',
-    name: 'Home',
-    component: ClipboardApp
+    name: 'DesktopPet',
+    component: DesktopPet
   },
   {
     path: '/settings',
@@ -18,6 +19,11 @@ const routes = [
     path: '/preferences',
     name: 'Preferences',
     component: Preferences
+  },
+  {
+    path: '/clipboardapp',
+    name: 'ClipboardApp',
+    component: ClipboardApp
   }
 ]
 
