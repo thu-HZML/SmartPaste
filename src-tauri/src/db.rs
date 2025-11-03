@@ -1,19 +1,42 @@
 use rusqlite::{params, Connection, Result};
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::{path::Path, sync::OnceLock};
 
-const DB_PATH: &str = "smartpaste.db";
+use crate::ClipboardItem;
+
+// const DB_PATH: &str = "smartpaste.db";
+
+static DB_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
+
+/// 设置数据库路径
+/// # Param
+/// path: PathBuf - 数据库文件路径
+pub fn set_db_path(path: PathBuf) {
+    let _ = DB_PATH_GLOBAL.set(path);
+}
+
+/// 获取数据库路径
+/// # Returns
+/// PathBuf - 数据库文件路径
+fn get_db_path() -> PathBuf {
+    DB_PATH_GLOBAL
+        .get()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("smartpaste.db"))
+}
 
 // 传入的数据结构（根据前端实际字段调整）
 // 派生 Clone 以便在测试中可以 clone 实例；同时派生 Debug 有助于断言失败时打印信息
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ClipboardDBItem {
-    id: String,
-    item_type: String, // 数据类型：text/image/file
-    content: String,   // 对text类型，存储文本内容；对image/file类型，存储文件路径
-    is_favorite: bool, // 是否收藏
-    notes: String,     // 备注
-    timestamp: i64,
-}
+// #[derive(Serialize, Deserialize, Clone, Debug)]
+// pub struct ClipboardDBItem {
+//     id: String,
+//     item_type: String, // 数据类型：text/image/file
+//     content: String,   // 对text类型，存储文本内容；对image/file类型，存储文件路径
+//     is_favorite: bool, // 是否收藏
+//     notes: String,     // 备注
+//     timestamp: i64,
+// }
 
 /// 初始化数据库，在此处设计数据库的表结构
 /// TODO: 根据实际需求调整表结构
@@ -39,12 +62,12 @@ pub struct ClipboardDBItem {
 /// TODO: 根据实际需求调整插入逻辑
 ///
 #[tauri::command]
-pub fn insert_received_data(data: ClipboardDBItem) -> Result<String, String> {
+pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
     // 更稳妥的做法是在运行时从 `tauri::api::path::app_dir` 或 `app.path_resolver()` 获取应用本地数据目录。
-    // let db_path = "smartpaste.db";
+    let db_path = get_db_path();
 
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
     // 确保表存在（幂等）
     conn.execute(
@@ -83,8 +106,9 @@ pub fn insert_received_data(data: ClipboardDBItem) -> Result<String, String> {
 /// # Returns
 /// Option<ClipboardDBItem> - 如果找到对应记录则返回 Some(记录)，否则返回 None
 #[tauri::command]
-pub fn get_data_by_id(id: &str) -> Result<Option<ClipboardDBItem>, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+pub fn get_data_by_id(id: &str) -> Result<Option<ClipboardItem>, String> {
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
         .prepare(
@@ -94,7 +118,7 @@ pub fn get_data_by_id(id: &str) -> Result<Option<ClipboardDBItem>, String> {
 
     let mut rows = stmt
         .query_map(params![id], |row| {
-            Ok(ClipboardDBItem {
+            Ok(ClipboardItem {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
@@ -116,7 +140,7 @@ pub fn get_data_by_id(id: &str) -> Result<Option<ClipboardDBItem>, String> {
 /// # Param
 /// data: ClipboardDBItem - 包含要删除数据的 ID 字段
 #[tauri::command]
-pub fn delete_data(data: ClipboardDBItem) -> Result<usize, String> {
+pub fn delete_data(data: ClipboardItem) -> Result<usize, String> {
     delete_data_by_id(&data.id)
 }
 
@@ -125,8 +149,8 @@ pub fn delete_data(data: ClipboardDBItem) -> Result<usize, String> {
 /// id: &str - 要删除数据的 ID
 #[tauri::command]
 pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
-    // let db_path = "smartpaste.db";
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let rows_affected = conn
         .execute("DELETE FROM data WHERE id = ?1", params![id])
@@ -140,7 +164,8 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
 /// id: &str - 要收藏数据的 ID
 #[tauri::command]
 pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let rows_affected = conn
         .execute("UPDATE data SET is_favorite = 1 WHERE id = ?1", params![id])
@@ -156,8 +181,9 @@ pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
 /// # Returns
 /// Vec<ClipboardDBItem> - 匹配的记录列表
 #[tauri::command]
-pub fn search_text_content(query: &str) -> Result<Vec<ClipboardDBItem>, String> {
-    let conn = Connection::open(DB_PATH).map_err(|e| e.to_string())?;
+pub fn search_text_content(query: &str) -> Result<Vec<ClipboardItem>, String> {
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
         .prepare("SELECT id, item_type, content, is_favorite, notes, timestamp FROM data WHERE item_type = 'text' AND content LIKE ?1")
@@ -166,7 +192,7 @@ pub fn search_text_content(query: &str) -> Result<Vec<ClipboardDBItem>, String> 
     let like_query = format!("%{}%", query);
     let clipboard_iter = stmt
         .query_map(params![like_query], |row| {
-            Ok(ClipboardDBItem {
+            Ok(ClipboardItem {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
@@ -198,7 +224,7 @@ mod tests {
     #[test]
     fn test_insert_and_delete_and_get() {
         clear_db();
-        let item = ClipboardDBItem {
+        let item = ClipboardItem {
             id: "ut-1".to_string(),
             item_type: "text".to_string(),
             content: "ut content".to_string(),
@@ -242,7 +268,7 @@ mod tests {
     #[test]
     fn test_favorite() {
         clear_db();
-        let item1 = ClipboardDBItem {
+        let item1 = ClipboardItem {
             id: "ut-2".to_string(),
             item_type: "text".to_string(),
             content: "some content 2".to_string(),
@@ -250,7 +276,7 @@ mod tests {
             notes: "".to_string(),
             timestamp: 0,
         };
-        let item2 = ClipboardDBItem {
+        let item2 = ClipboardItem {
             id: "ut-3".to_string(),
             item_type: "text".to_string(),
             content: "other content 3".to_string(),
@@ -285,7 +311,7 @@ mod tests {
     #[test]
     fn test_search_text_content() {
         clear_db();
-        let item1 = ClipboardDBItem {
+        let item1 = ClipboardItem {
             id: "ut-4".to_string(),
             item_type: "text".to_string(),
             content: "hello world".to_string(),
@@ -293,7 +319,7 @@ mod tests {
             notes: "".to_string(),
             timestamp: 0,
         };
-        let item2 = ClipboardDBItem {
+        let item2 = ClipboardItem {
             id: "ut-5".to_string(),
             item_type: "text".to_string(),
             content: "goodbye world".to_string(),
@@ -301,7 +327,7 @@ mod tests {
             notes: "".to_string(),
             timestamp: 0,
         };
-        let item3 = ClipboardDBItem {
+        let item3 = ClipboardItem {
             id: "ut-6".to_string(),
             item_type: "image".to_string(),
             content: "/path/to/image.png".to_string(),

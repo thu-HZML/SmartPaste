@@ -12,8 +12,9 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ClipboardItem {
     id: String,
-    txt: Option<String>,
-    file_path: Option<String>,
+
+    item_type: String, // 数据类型：text/image/file
+    content: String, // 对text类型，存储文本内容；对其他类型，存储文件路径  txt:// txt: Option<String>,  file// _path: Option<String>,
     is_favorite: bool,
     notes: String,
     timestamp: i64,
@@ -23,15 +24,28 @@ mod db;
 
 fn main() {
     let result = tauri::Builder::default()
-        // 注册 Tauri commands - 数据库接口
-        .invoke_handler(tauri::generate_handler![db::insert_received_data])
-        .invoke_handler(tauri::generate_handler![db::get_data_by_id])
-        .invoke_handler(tauri::generate_handler![db::delete_data])
-        .invoke_handler(tauri::generate_handler![db::delete_data_by_id])
-        .invoke_handler(tauri::generate_handler![db::favorite_data_by_id])
-        .invoke_handler(tauri::generate_handler![db::search_text_content])
+        // 注册 Tauri commands
+        .invoke_handler(tauri::generate_handler![
+            db::insert_received_data,
+            db::get_data_by_id,
+            db::delete_data,
+            db::delete_data_by_id,
+            db::favorite_data_by_id,
+            db::search_text_content
+        ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
+            // 取得 app_data_dir 并设置到 db 模块
+            let app_dir = app.path().app_data_dir().unwrap();
+            let db_path = app_dir.join("smartpaste.db");
+            // 确保目录存在
+            std::fs::create_dir_all(&app_dir).ok();
+            db::set_db_path(db_path);
+
+            // 现有快捷键 / 线程 / 文件路径逻辑继续使用 app_dir
+            let files_dir = app_dir.join("files");
+            std::fs::create_dir_all(&files_dir).unwrap();
+
             let show_hide_shortcut =
                 Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
             let shortcut_for_handler = show_hide_shortcut.clone();
@@ -77,7 +91,7 @@ fn main() {
 
                 let app_dir = app_handle.path().app_data_dir().unwrap();
                 let files_dir = app_dir.join("files");
-                let json_path = app_dir.join("clipboard_history.json");
+                // let json_path = app_dir.join("clipboard_history.json");
                 fs::create_dir_all(&files_dir).unwrap();
 
                 loop {
@@ -90,13 +104,21 @@ fn main() {
                             last_file_paths.clear();
                             let new_item = ClipboardItem {
                                 id: Utc::now().timestamp_millis().to_string(),
-                                txt: Some(text),
-                                file_path: None,
+
+                                item_type: "text".to_string(),
+                                content: text.clone(),
+                                //   txt://  Some(text),
+                                // file// _path: None,
                                 is_favorite: false,
                                 notes: "".to_string(),
                                 timestamp: Utc::now().timestamp(),
                             };
-                            save_to_json(&json_path, new_item);
+                            db::insert_received_data(new_item.clone()).unwrap();
+                            match db::insert_received_data(new_item.clone()) {
+                                Ok(_) => println!("文本数据已保存到数据库"),
+                                Err(e) => eprintln!("❌ 保存文本数据到数据库失败: {:?}", e),
+                            }
+                            // save_to_json(&json_path, new_item);
                         }
                     }
 
@@ -126,13 +148,20 @@ fn main() {
                                 println!("图片已作为文件保存到: {:?}", destination_path);
                                 let new_item = ClipboardItem {
                                     id: image_id,
-                                    txt: None,
-                                    file_path: Some(destination_path.to_str().unwrap().to_string()),
+                                    item_type: "image".to_string(),
+                                    content: destination_path.to_str().unwrap().to_string(),
                                     is_favorite: false,
                                     notes: "".to_string(),
                                     timestamp: Utc::now().timestamp(),
                                 };
-                                save_to_json(&json_path, new_item);
+                                db::insert_received_data(new_item.clone()).unwrap();
+                                match db::insert_received_data(new_item.clone()) {
+                                    Ok(_) => println!("图片数据已保存到数据库"),
+                                    Err(e) => {
+                                        eprintln!("❌ 保存图片数据到数据库失败: {:?}", e)
+                                    }
+                                }
+                                // save_to_json(&json_path, new_item);
                             }
                         }
                     }
@@ -156,15 +185,20 @@ fn main() {
                                         println!("文件已复制到: {:?}", destination_path);
                                         let new_item = ClipboardItem {
                                             id: timestamp.to_string(),
-                                            txt: None,
-                                            file_path: Some(
-                                                destination_path.to_str().unwrap().to_string(),
-                                            ),
+                                            item_type: "file".to_string(),
+                                            content: destination_path.to_str().unwrap().to_string(),
                                             is_favorite: false,
                                             notes: "".to_string(),
                                             timestamp: Utc::now().timestamp(),
                                         };
-                                        save_to_json(&json_path, new_item);
+                                        db::insert_received_data(new_item.clone()).unwrap();
+                                        match db::insert_received_data(new_item.clone()) {
+                                            Ok(_) => println!("文件数据已保存到数据库"),
+                                            Err(e) => {
+                                                eprintln!("❌ 保存文件数据到数据库失败: {:?}", e)
+                                            }
+                                        }
+                                        // save_to_json(&json_path, new_item);
                                     }
                                 }
                             }
@@ -184,15 +218,15 @@ fn main() {
 }
 
 // save_to_json 函数无需修改，它会自动适应新的结构体
-fn save_to_json(path: &PathBuf, new_item: ClipboardItem) {
-    let mut history: Vec<ClipboardItem> = if path.exists() {
-        let file_content = fs::read_to_string(path).unwrap_or_else(|_| "[]".to_string());
-        serde_json::from_str(&file_content).unwrap_or_else(|_| vec![])
-    } else {
-        vec![]
-    };
-    history.insert(0, new_item);
-    let json_string = serde_json::to_string_pretty(&history).unwrap();
-    fs::write(path, json_string).expect("无法写入 JSON 文件");
-    println!("剪贴板历史已更新");
-}
+// fn save_to_json(path: &PathBuf, new_item: ClipboardItem) {
+//     let mut history: Vec<ClipboardItem> = if path.exists() {
+//         let file_content = fs::read_to_string(path).unwrap_or_else(|_| "[]".to_string());
+//         serde_json::from_str(&file_content).unwrap_or_else(|_| vec![])
+//     } else {
+//         vec![]
+//     };
+//     history.insert(0, new_item);
+//     let json_string = serde_json::to_string_pretty(&history).unwrap();
+//     fs::write(path, json_string).expect("无法写入 JSON 文件");
+//     println!("剪贴板历史已更新");
+// }
