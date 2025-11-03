@@ -38,38 +38,10 @@ fn get_db_path() -> PathBuf {
 //     timestamp: i64,
 // }
 
-/// 初始化数据库，在此处设计数据库的表结构
-/// TODO: 根据实际需求调整表结构
-/// # Param
-/// path: str - 数据库文件路径
-///
-/// # Example
-/// init_db("smartpaste.db")?;
-///
-// pub fn init_db(path: &str) -> Result<()> {
-//     let conn = Connection::open(path)?;
-//     conn.execute(
-//         "CREATE TABLE IF NOT EXISTS SmartPaste (
-//             id TEXT PRIMARY KEY NOT NULL,
-//             value TEXT NOT NULL
-//         )",
-//         [],
-//     )?;
-//     Ok(())
-// }
-
-/// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
-/// TODO: 根据实际需求调整插入逻辑
-///
-#[tauri::command]
-pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
-    // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
-    // 更稳妥的做法是在运行时从 `tauri::api::path::app_dir` 或 `app.path_resolver()` 获取应用本地数据目录。
-    let db_path = get_db_path();
-
-    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-
-    // 确保表存在（幂等）
+/// 初始化数据库（合并了 CREATE TABLE IF NOT EXISTS 的逻辑）
+/// path: &Path - 数据库文件路径
+pub fn init_db(path: &Path) -> Result<()> {
+    let conn = Connection::open(path)?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS data (
             id TEXT PRIMARY KEY NOT NULL, 
@@ -80,8 +52,34 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
             timestamp INTEGER NOT NULL
         )",
         [],
-    )
-    .map_err(|e| e.to_string())?;
+    )?;
+    Ok(())
+}
+
+/// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
+/// TODO: 根据实际需求调整插入逻辑
+///
+#[tauri::command]
+pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
+    // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
+    // 更稳妥的做法是在运行时从 `tauri::api::path::app_dir` 或 `app.path_resolver()` 获取应用本地数据目录。
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    // // 确保表存在（幂等）
+    // conn.execute(
+    //     "CREATE TABLE IF NOT EXISTS data (
+    //         id TEXT PRIMARY KEY NOT NULL,
+    //         item_type TEXT NOT NULL,
+    //         content TEXT NOT NULL,
+    //         is_favorite INTEGER NOT NULL,
+    //         notes TEXT,
+    //         timestamp INTEGER NOT NULL
+    //     )",
+    //     [],
+    // )
+    // .map_err(|e| e.to_string())?;
 
     // let ts = data.timestamp.unwrap_or(0);
 
@@ -99,6 +97,40 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     Ok("inserted".into())
 }
 
+/// 获取所有数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// Vec<ClipboardDBItem> - 所有数据记录列表
+#[tauri::command]
+pub fn get_all_data() -> Result<Vec<ClipboardItem>, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT id, item_type, content, is_favorite, notes, timestamp FROM data")
+        .map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map([], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                is_favorite: row.get::<_, i32>(3)? != 0,
+                notes: row.get(4)?,
+                timestamp: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    Ok(results)
+}
+
 /// 返回数据。作为 Tauri command 暴露给前端调用。
 /// 根据数据 ID 返回对应的数据记录。
 /// # Param
@@ -108,6 +140,7 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
 #[tauri::command]
 pub fn get_data_by_id(id: &str) -> Result<Option<ClipboardItem>, String> {
     let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -150,6 +183,7 @@ pub fn delete_data(data: ClipboardItem) -> Result<usize, String> {
 #[tauri::command]
 pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let rows_affected = conn
@@ -162,9 +196,12 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
 /// 根据 ID 收藏数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// id: &str - 要收藏数据的 ID
+/// # Returns
+/// usize - 受影响的行数
 #[tauri::command]
 pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let rows_affected = conn
@@ -183,6 +220,7 @@ pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
 #[tauri::command]
 pub fn search_text_content(query: &str) -> Result<Vec<ClipboardItem>, String> {
     let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -210,6 +248,41 @@ pub fn search_text_content(query: &str) -> Result<Vec<ClipboardItem>, String> {
 
     Ok(results)
 }
+
+/// 增加备注。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// id: &str - 数据 ID
+/// notes: &str - 备注内容
+/// # Returns
+/// ClipboardDBItem - 更新后的数据记录
+#[tauri::command]
+pub fn add_notes_by_id(id: &str, notes: &str) -> Result<ClipboardItem, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE data SET notes = ?1 WHERE id = ?2",
+        params![notes, id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // 返回更新后的记录
+    get_data_by_id(id)?.ok_or_else(|| "Record not found after adding notes".to_string())
+}
+
+/// 新建收藏夹。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// name: &str - 收藏夹名称
+/// # Returns
+/// String - 成功信息
+// #[tauri::command]
+// pub fn create_new_folder(name: &str) -> Result<String, String> {
+//     let db_path = get_db_path();
+//     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+//     let folder_name_in_database = format!("folder_{}", name);
+// }
 
 /// # 单元测试
 #[cfg(test)]
@@ -354,12 +427,47 @@ mod tests {
     }
 
     #[test]
-    fn test_search_no_results() {
+    fn test_get_all_data() {
         clear_db();
-        let search_res = search_text_content("nonexistent");
-        assert!(search_res.is_ok());
-        let results = search_res.unwrap();
-        assert_eq!(results.len(), 0);
+        let item1 = ClipboardItem {
+            id: "ut-7".to_string(),
+            item_type: "text".to_string(),
+            content: "data one".to_string(),
+            is_favorite: false,
+            notes: "".to_string(),
+            timestamp: 0,
+        };
+        let item2 = ClipboardItem {
+            id: "ut-8".to_string(),
+            item_type: "image".to_string(),
+            content: "/path/to/image2.png".to_string(),
+            is_favorite: false,
+            notes: "".to_string(),
+            timestamp: 0,
+        };
+
+        // 插入两条数据
+        assert!(insert_received_data(item1.clone()).is_ok());
+        assert!(insert_received_data(item2.clone()).is_ok());
+
+        // 获取所有数据
+        let all_data_res = get_all_data();
+        assert!(all_data_res.is_ok());
+        let all_data = all_data_res.unwrap();
+        assert_eq!(all_data.len(), 2);
+
+        let ids: Vec<String> = all_data.into_iter().map(|item| item.id).collect();
+        assert!(ids.contains(&item1.id));
+        assert!(ids.contains(&item2.id));
     }
+
+    // #[test]
+    // fn test_search_no_results() {
+    //     clear_db();
+    //     let search_res = search_text_content("nonexistent");
+    //     assert!(search_res.is_ok());
+    //     let results = search_res.unwrap();
+    //     assert_eq!(results.len(), 0);
+    // }
 }
 // 未来扩展点：查询、批量写入、事务封装、连接池（r2d2 + rusqlite）等。

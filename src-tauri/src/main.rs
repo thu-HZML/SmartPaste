@@ -12,7 +12,6 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ClipboardItem {
     id: String,
-
     item_type: String, // 数据类型：text/image/file
     content: String, // 对text类型，存储文本内容；对其他类型，存储文件路径  txt:// txt: Option<String>,  file// _path: Option<String>,
     is_favorite: bool,
@@ -27,11 +26,13 @@ fn main() {
         // 注册 Tauri commands
         .invoke_handler(tauri::generate_handler![
             db::insert_received_data,
+            db::get_all_data,
             db::get_data_by_id,
             db::delete_data,
             db::delete_data_by_id,
             db::favorite_data_by_id,
-            db::search_text_content
+            db::search_text_content,
+            db::add_notes_by_id
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
