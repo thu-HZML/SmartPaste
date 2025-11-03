@@ -14,6 +14,7 @@ struct ClipboardItem {
     id: String,
     item_type: String, // 数据类型：text/image/file
     content: String, // 对text类型，存储文本内容；对其他类型，存储文件路径  txt:// txt: Option<String>,  file// _path: Option<String>,
+    size: Option<u64>, // 文件大小。对text类型，为文本长度（字符数）；对file/image类型，为文件字节大小
     is_favorite: bool,
     notes: String,
     timestamp: i64,
@@ -44,6 +45,12 @@ fn main() {
             // 确保目录存在
             std::fs::create_dir_all(&app_dir).ok();
             db::set_db_path(db_path);
+
+            // 调试：读取并打印数据库中所有记录
+            match db::get_all_data() {
+                Ok(json) => println!("DEBUG get_all_data: {}", json),
+                Err(e) => eprintln!("DEBUG get_all_data error: {}", e),
+            }
 
             // 现有快捷键 / 线程 / 文件路径逻辑继续使用 app_dir
             let files_dir = app_dir.join("files");
@@ -110,6 +117,7 @@ fn main() {
 
                                 item_type: "text".to_string(),
                                 content: text.clone(),
+                                size: Some(text.len() as u64),
                                 //   txt://  Some(text),
                                 // file// _path: None,
                                 is_favorite: false,
@@ -153,6 +161,7 @@ fn main() {
                                     id: image_id,
                                     item_type: "image".to_string(),
                                     content: destination_path.to_str().unwrap().to_string(),
+                                    size: Some(fs::metadata(&destination_path).unwrap().len()),
                                     is_favorite: false,
                                     notes: "".to_string(),
                                     timestamp: Utc::now().timestamp(),
@@ -190,6 +199,9 @@ fn main() {
                                             id: timestamp.to_string(),
                                             item_type: "file".to_string(),
                                             content: destination_path.to_str().unwrap().to_string(),
+                                            size: Some(
+                                                fs::metadata(&destination_path).unwrap().len(),
+                                            ),
                                             is_favorite: false,
                                             notes: "".to_string(),
                                             timestamp: Utc::now().timestamp(),

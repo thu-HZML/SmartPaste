@@ -49,6 +49,7 @@ pub fn init_db(path: &Path) -> Result<()> {
             id TEXT PRIMARY KEY NOT NULL, 
             item_type TEXT NOT NULL,
             content TEXT NOT NULL,
+            size INTEGER NOT NULL,
             is_favorite INTEGER NOT NULL,
             notes TEXT,
             timestamp INTEGER NOT NULL
@@ -69,11 +70,12 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
-    conn.execute("INSERT OR REPLACE INTO data (id, item_type, content, is_favorite, notes, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    conn.execute("INSERT OR REPLACE INTO data (id, item_type, content, size, is_favorite, notes, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             data.id,
             data.item_type,
             data.content,
+            data.size.unwrap_or(0) as i64,
             data.is_favorite as i32, // SQLite 使用整数表示布尔值
             data.notes,
             data.timestamp,
@@ -93,7 +95,7 @@ pub fn get_all_data() -> Result<String, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, item_type, content, is_favorite, notes, timestamp FROM data")
+        .prepare("SELECT id, item_type, content, size, is_favorite, notes, timestamp FROM data")
         .map_err(|e| e.to_string())?;
 
     let clipboard_iter = stmt
@@ -102,9 +104,10 @@ pub fn get_all_data() -> Result<String, String> {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
-                is_favorite: row.get::<_, i32>(3)? != 0,
-                notes: row.get(4)?,
-                timestamp: row.get(5)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -131,7 +134,7 @@ pub fn get_data_by_id(id: &str) -> Result<String, String> {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, item_type, content, is_favorite, notes, timestamp 
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE id = ?1",
         )
@@ -143,9 +146,10 @@ pub fn get_data_by_id(id: &str) -> Result<String, String> {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
-                is_favorite: row.get::<_, i32>(3)? != 0,
-                notes: row.get(4)?,
-                timestamp: row.get(5)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -215,7 +219,7 @@ pub fn search_text_content(query: &str) -> Result<String, String> {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, item_type, content, is_favorite, notes, timestamp 
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE item_type = 'text' AND content LIKE ?1",
         )
@@ -227,9 +231,10 @@ pub fn search_text_content(query: &str) -> Result<String, String> {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
-                is_favorite: row.get::<_, i32>(3)? != 0,
-                notes: row.get(4)?,
-                timestamp: row.get(5)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -352,6 +357,7 @@ mod tests {
             id: id.to_string(),
             item_type: item_type.to_string(),
             content: content.to_string(),
+            size: Some(content.len() as u64),
             is_favorite: false,
             notes: "".to_string(),
             timestamp: chrono::Utc::now().timestamp(),
