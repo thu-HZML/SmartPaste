@@ -166,7 +166,7 @@
 <script>
 import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
-import { invoke } from '@tauri-apps/api/tauri'
+import { invoke } from '@tauri-apps/api/core'
 
 export default {
   name: 'App',
@@ -431,9 +431,7 @@ export default {
 
       try {
         // 调用 Rust 函数
-        history.value = invoke('get_data_by_id', { 
-          id: 'your-id-here' 
-        })
+        history.value = invoke('get_all_data')
       } catch (err) {
         console.error('调用失败:', err)
       }
