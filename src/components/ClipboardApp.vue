@@ -431,7 +431,10 @@ export default {
 
       try {
         // 调用 Rust 函数
-        history.value = invoke('get_all_data')
+        const dbData = invoke('get_all_data')
+        history.value = invoke('clipboard_items_to_json', { 
+          item: 'dbData' 
+        })
       } catch (err) {
         console.error('调用失败:', err)
       }
