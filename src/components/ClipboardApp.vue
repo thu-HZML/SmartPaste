@@ -166,6 +166,7 @@
 <script>
 import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
+import { invoke } from '@tauri-apps/api/tauri'
 
 export default {
   name: 'App',
@@ -427,6 +428,15 @@ export default {
       
       console.log('数据设置完成:', history.value)
       console.log('数据长度:', history.value.length)
+
+      try {
+        // 调用 Rust 函数
+        history.value = invoke('get_data_by_id', { 
+          id: 'your-id-here' 
+        })
+      } catch (err) {
+        console.error('调用失败:', err)
+      }
     })
 
     return {

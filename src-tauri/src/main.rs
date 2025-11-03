@@ -1,15 +1,6 @@
-use chrono::Utc;
-use image::ColorType;
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
-use std::thread;
-use std::time::Duration;
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, Manager, PhysicalPosition};
-use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ClipboardItem {
@@ -22,9 +13,20 @@ struct ClipboardItem {
     timestamp: i64,
 }
 
-mod db;
+use chrono::Utc;
+use image::ColorType;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
+use std::thread;
+use tauri::{menu::{Menu, MenuItem}, tray::{TrayIconBuilder, TrayIconEvent}, Manager, PhysicalPosition};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, Duration};
+
+mod db;
+
 
 fn main() {
     // 使用共享状态来防止重复点击
