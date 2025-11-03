@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection, Result};
 // use serde::{Deserialize, Serialize};
+use serde_json;
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
@@ -8,6 +9,21 @@ use crate::ClipboardItem;
 // const DB_PATH: &str = "smartpaste.db";
 
 static DB_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
+
+/// 将 ClipboardItem 转换为 JSON 字符串。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// item: ClipboardItem - 要转换的剪贴板项
+#[tauri::command]
+pub fn clipboard_item_to_json(item: ClipboardItem) -> Result<String, String> {
+    serde_json::to_string(&item).map_err(|e| e.to_string())
+}
+/// 将 ClipboardItem 列表转换为 JSON 字符串。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// items: Vec<ClipboardItem> - 要转换的剪贴板项列表
+#[tauri::command]
+pub fn clipboard_items_to_json(items: Vec<ClipboardItem>) -> Result<String, String> {
+    serde_json::to_string(&items).map_err(|e| e.to_string())
+}
 
 /// 设置数据库路径
 /// # Param
@@ -25,18 +41,6 @@ fn get_db_path() -> PathBuf {
         .cloned()
         .unwrap_or_else(|| PathBuf::from("smartpaste.db"))
 }
-
-// 传入的数据结构（根据前端实际字段调整）
-// 派生 Clone 以便在测试中可以 clone 实例；同时派生 Debug 有助于断言失败时打印信息
-// #[derive(Serialize, Deserialize, Clone, Debug)]
-// pub struct ClipboardDBItem {
-//     id: String,
-//     item_type: String, // 数据类型：text/image/file
-//     content: String,   // 对text类型，存储文本内容；对image/file类型，存储文件路径
-//     is_favorite: bool, // 是否收藏
-//     notes: String,     // 备注
-//     timestamp: i64,
-// }
 
 /// 初始化数据库（合并了 CREATE TABLE IF NOT EXISTS 的逻辑）
 /// path: &Path - 数据库文件路径
@@ -66,22 +70,6 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-
-    // // 确保表存在（幂等）
-    // conn.execute(
-    //     "CREATE TABLE IF NOT EXISTS data (
-    //         id TEXT PRIMARY KEY NOT NULL,
-    //         item_type TEXT NOT NULL,
-    //         content TEXT NOT NULL,
-    //         is_favorite INTEGER NOT NULL,
-    //         notes TEXT,
-    //         timestamp INTEGER NOT NULL
-    //     )",
-    //     [],
-    // )
-    // .map_err(|e| e.to_string())?;
-
-    // let ts = data.timestamp.unwrap_or(0);
 
     conn.execute("INSERT OR REPLACE INTO data (id, item_type, content, is_favorite, notes, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
@@ -276,13 +264,50 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<ClipboardItem, String> {
 /// name: &str - 收藏夹名称
 /// # Returns
 /// String - 成功信息
-// #[tauri::command]
-// pub fn create_new_folder(name: &str) -> Result<String, String> {
-//     let db_path = get_db_path();
-//     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+/// TODO: 尚未完成
+#[tauri::command]
+pub fn create_new_folder(name: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-//     let folder_name_in_database = format!("folder_{}", name);
-// }
+    if name.is_empty() {
+        return Err("folder name is empty".to_string());
+    }
+    // 仅允许字母、数字和下划线，避免 SQL 注入或非法列名
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(
+            "folder name contains invalid characters; only letters, digits and underscore allowed"
+                .to_string(),
+        );
+    }
+
+    let folder_name_in_database = format!("folder_{}", name);
+
+    // 检查列是否已存在：使用 PRAGMA table_info(data) 获取列名
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(data)")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+
+    while let Some(col_res) = rows.next() {
+        let col = col_res.map_err(|e| e.to_string())?;
+        if col == folder_name_in_database {
+            return Ok(format!("收藏夹 '{}' 已存在", name));
+        }
+    }
+
+    // 添加新列，类型为 INTEGER，NOT NULL，默认 0（代表 false）
+    let alter_sql = format!(
+        "ALTER TABLE data ADD COLUMN \"{}\" INTEGER NOT NULL DEFAULT 0",
+        folder_name_in_database
+    );
+    conn.execute(&alter_sql, []).map_err(|e| e.to_string())?;
+
+    Ok(format!("收藏夹 '{}' 已创建", name))
+}
 
 /// # 单元测试
 #[cfg(test)]
@@ -461,6 +486,53 @@ mod tests {
         assert!(ids.contains(&item2.id));
     }
 
+    #[test]
+    fn test_add_notes() {
+        clear_db();
+        let item = ClipboardItem {
+            id: "ut-9".to_string(),
+            item_type: "text".to_string(),
+            content: "note test".to_string(),
+            is_favorite: false,
+            notes: "".to_string(),
+            timestamp: 0,
+        };
+
+        // 插入数据
+        assert!(insert_received_data(item.clone()).is_ok());
+
+        // 添加备注
+        let notes_content = "This is a test note.";
+        let add_notes_res = add_notes_by_id(&item.id, notes_content);
+        assert!(add_notes_res.is_ok());
+        let updated_item = add_notes_res.unwrap();
+        assert_eq!(updated_item.notes, notes_content);
+
+        // 验证通过 get_data_by_id 获取的记录也包含备注
+        let get_res = get_data_by_id(&item.id);
+        assert!(get_res.is_ok());
+        let fetched_item = get_res.unwrap().unwrap();
+        assert_eq!(fetched_item.notes, notes_content);
+    }
+
+    #[test]
+    fn test_create_new_folder() {
+        clear_db();
+        let folder_name = "testfolder";
+
+        // 创建新收藏夹
+        let create_res = create_new_folder(folder_name);
+        assert!(create_res.is_ok());
+        let msg = create_res.unwrap();
+        assert_eq!(msg, format!("收藏夹 '{}' 已创建", folder_name));
+
+        // 尝试创建同名收藏夹，应该提示已存在
+        let create_res2 = create_new_folder(folder_name);
+        assert!(create_res2.is_ok());
+        let msg2 = create_res2.unwrap();
+        assert_eq!(msg2, format!("收藏夹 '{}' 已存在", folder_name));
+    }
+
     // #[test]
     // fn test_search_no_results() {
     //     clear_db();
@@ -469,5 +541,56 @@ mod tests {
     //     let results = search_res.unwrap();
     //     assert_eq!(results.len(), 0);
     // }
+}
+
+mod test_to_json {
+    use super::*;
+    #[test]
+    fn test_clipboard_item_to_json() {
+        let item = ClipboardItem {
+            id: "ut-10".to_string(),
+            item_type: "text".to_string(),
+            content: "json test".to_string(),
+            is_favorite: true,
+            notes: "some notes".to_string(),
+            timestamp: 1234567890,
+        };
+
+        let json_res = clipboard_item_to_json(item.clone());
+        assert!(json_res.is_ok());
+        let json_str = json_res.unwrap();
+
+        let expected_json = r#"{"id":"ut-10","item_type":"text","content":"json test","is_favorite":true,"notes":"some notes","timestamp":1234567890}"#;
+        assert_eq!(json_str, expected_json);
+    }
+
+    #[test]
+    fn test_clipboard_items_to_json() {
+        let items = vec![
+            ClipboardItem {
+                id: "ut-11".to_string(),
+                item_type: "text".to_string(),
+                content: "first item".to_string(),
+                is_favorite: false,
+                notes: "".to_string(),
+                timestamp: 1111111111,
+            },
+            ClipboardItem {
+                id: "ut-12".to_string(),
+                item_type: "image".to_string(),
+                content: "/path/to/image.png".to_string(),
+                is_favorite: true,
+                notes: "image note".to_string(),
+                timestamp: 2222222222,
+            },
+        ];
+
+        let json_res = clipboard_items_to_json(items.clone());
+        assert!(json_res.is_ok());
+        let json_str = json_res.unwrap();
+
+        let expected_json = r#"[{"id":"ut-11","item_type":"text","content":"first item","is_favorite":false,"notes":"","timestamp":1111111111},{"id":"ut-12","item_type":"image","content":"/path/to/image.png","is_favorite":true,"notes":"image note","timestamp":2222222222}]"#;
+        assert_eq!(json_str, expected_json);
+    }
 }
 // 未来扩展点：查询、批量写入、事务封装、连接池（r2d2 + rusqlite）等。
