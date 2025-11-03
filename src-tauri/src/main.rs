@@ -34,8 +34,8 @@ fn main() {
     let result = tauri::Builder::default()
         // 注册 Tauri commands
         .invoke_handler(tauri::generate_handler![
-            db::clipboard_item_to_json,
-            db::clipboard_items_to_json,
+            // db::clipboard_item_to_json,
+            // db::clipboard_items_to_json,
             db::insert_received_data,
             db::get_all_data,
             db::get_data_by_id,

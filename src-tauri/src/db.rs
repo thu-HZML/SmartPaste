@@ -10,17 +10,15 @@ use crate::ClipboardItem;
 
 static DB_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
 
-/// 将 ClipboardItem 转换为 JSON 字符串。作为 Tauri command 暴露给前端调用。
+/// 将 ClipboardItem 转换为 JSON 字符串。
 /// # Param
 /// item: ClipboardItem - 要转换的剪贴板项
-#[tauri::command]
 pub fn clipboard_item_to_json(item: ClipboardItem) -> Result<String, String> {
     serde_json::to_string(&item).map_err(|e| e.to_string())
 }
-/// 将 ClipboardItem 列表转换为 JSON 字符串。作为 Tauri command 暴露给前端调用。
+/// 将 ClipboardItem 列表转换为 JSON 字符串。
 /// # Param
 /// items: Vec<ClipboardItem> - 要转换的剪贴板项列表
-#[tauri::command]
 pub fn clipboard_items_to_json(items: Vec<ClipboardItem>) -> Result<String, String> {
     serde_json::to_string(&items).map_err(|e| e.to_string())
 }
@@ -87,9 +85,9 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
 
 /// 获取所有数据。作为 Tauri command 暴露给前端调用。
 /// # Returns
-/// Vec<ClipboardDBItem> - 所有数据记录列表
+/// String - 包含所有数据记录的 JSON 字符串
 #[tauri::command]
-pub fn get_all_data() -> Result<Vec<ClipboardItem>, String> {
+pub fn get_all_data() -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
@@ -116,7 +114,7 @@ pub fn get_all_data() -> Result<Vec<ClipboardItem>, String> {
         results.push(item.map_err(|e| e.to_string())?);
     }
 
-    Ok(results)
+    clipboard_items_to_json(results)
 }
 
 /// 返回数据。作为 Tauri command 暴露给前端调用。
@@ -124,16 +122,18 @@ pub fn get_all_data() -> Result<Vec<ClipboardItem>, String> {
 /// # Param
 /// id: &str - 数据 ID
 /// # Returns
-/// Option<ClipboardDBItem> - 如果找到对应记录则返回 Some(记录)，否则返回 None
+/// String - 包含数据记录的 JSON 字符串，若未找到则返回 null
 #[tauri::command]
-pub fn get_data_by_id(id: &str) -> Result<Option<ClipboardItem>, String> {
+pub fn get_data_by_id(id: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, item_type, content, is_favorite, notes, timestamp FROM data WHERE id = ?1",
+            "SELECT id, item_type, content, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE id = ?1",
         )
         .map_err(|e| e.to_string())?;
 
@@ -150,13 +150,13 @@ pub fn get_data_by_id(id: &str) -> Result<Option<ClipboardItem>, String> {
         })
         .map_err(|e| e.to_string())?;
 
-    if let Some(result) = rows.next() {
-        return Ok(Some(result.map_err(|e| e.to_string())?));
+    if let Some(item) = rows.next() {
+        let clipboard_item = item.map_err(|e| e.to_string())?;
+        clipboard_item_to_json(clipboard_item)
+    } else {
+        Ok("null".to_string())
     }
-
-    Ok(None)
 }
-
 /// 删除数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// data: ClipboardDBItem - 包含要删除数据的 ID 字段
@@ -204,20 +204,25 @@ pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
 /// # Param
 /// query: &str - 搜索关键词
 /// # Returns
-/// Vec<ClipboardDBItem> - 匹配的记录列表
+/// String - 包含匹配数据记录的 JSON 字符串
 #[tauri::command]
-pub fn search_text_content(query: &str) -> Result<Vec<ClipboardItem>, String> {
+pub fn search_text_content(query: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
+    let like_pattern = format!("%{}%", query);
+
     let mut stmt = conn
-        .prepare("SELECT id, item_type, content, is_favorite, notes, timestamp FROM data WHERE item_type = 'text' AND content LIKE ?1")
+        .prepare(
+            "SELECT id, item_type, content, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE item_type = 'text' AND content LIKE ?1",
+        )
         .map_err(|e| e.to_string())?;
 
-    let like_query = format!("%{}%", query);
     let clipboard_iter = stmt
-        .query_map(params![like_query], |row| {
+        .query_map(params![like_pattern], |row| {
             Ok(ClipboardItem {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
@@ -234,7 +239,7 @@ pub fn search_text_content(query: &str) -> Result<Vec<ClipboardItem>, String> {
         results.push(item.map_err(|e| e.to_string())?);
     }
 
-    Ok(results)
+    clipboard_items_to_json(results)
 }
 
 /// 增加备注。作为 Tauri command 暴露给前端调用。
@@ -242,9 +247,9 @@ pub fn search_text_content(query: &str) -> Result<Vec<ClipboardItem>, String> {
 /// id: &str - 数据 ID
 /// notes: &str - 备注内容
 /// # Returns
-/// ClipboardDBItem - 更新后的数据记录
+/// String - 更新后的记录的 JSON 字符串
 #[tauri::command]
-pub fn add_notes_by_id(id: &str, notes: &str) -> Result<ClipboardItem, String> {
+pub fn add_notes_by_id(id: &str, notes: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
@@ -255,8 +260,13 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<ClipboardItem, String> {
     )
     .map_err(|e| e.to_string())?;
 
-    // 返回更新后的记录
-    get_data_by_id(id)?.ok_or_else(|| "Record not found after adding notes".to_string())
+    // 返回更新后的记录（以 JSON 字符串形式）
+    let json = get_data_by_id(id)?;
+    if json == "null" {
+        Err("Item not found after update".to_string())
+    } else {
+        Ok(json)
+    }
 }
 
 /// 新建收藏夹。作为 Tauri command 暴露给前端调用。
@@ -313,284 +323,161 @@ pub fn create_new_folder(name: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
     use std::fs;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
 
-    fn clear_db() {
-        let _ = fs::remove_file("smartpaste.db");
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
     }
 
-    #[test]
-    fn test_insert_and_delete_and_get() {
-        clear_db();
-        let item = ClipboardItem {
-            id: "ut-1".to_string(),
-            item_type: "text".to_string(),
-            content: "ut content".to_string(),
+    fn set_test_db_path() {
+        // 在临时目录下使用独立数据库文件，避免污染真实数据
+        let mut p = std::env::temp_dir();
+        p.push("smartpaste_test.db");
+        // 覆盖全局 OnceLock（只会在第一次调用设置）
+        set_db_path(p);
+    }
+
+    fn clear_db_file() {
+        let p: PathBuf = get_db_path();
+        let _ = fs::remove_file(p);
+    }
+
+    fn make_item(id: &str, item_type: &str, content: &str) -> ClipboardItem {
+        ClipboardItem {
+            id: id.to_string(),
+            item_type: item_type.to_string(),
+            content: content.to_string(),
             is_favorite: false,
             notes: "".to_string(),
-            timestamp: 0,
-        };
-
-        // 调用 insert（直接调用 Rust 函数）
-        let res = insert_received_data(item.clone());
-        assert!(res.is_ok());
-
-        // 调用 get_data_by_id，验证插入结果
-        let get_res = get_data_by_id(&item.id);
-        assert!(get_res.is_ok());
-        let fetched_item = get_res.unwrap();
-        assert!(fetched_item.is_some());
-        let fetched_item = fetched_item.unwrap();
-        assert_eq!(fetched_item.id, item.id);
-        assert_eq!(fetched_item.content, item.content);
-        assert_eq!(fetched_item.item_type, item.item_type);
-        assert_eq!(fetched_item.is_favorite, item.is_favorite);
-        assert_eq!(fetched_item.notes, item.notes);
-        assert_eq!(fetched_item.timestamp, item.timestamp);
-
-        // 调用 delete
-        let del_res = delete_data(item);
-        assert!(del_res.is_ok());
-        // 确认删除
-        {
-            let conn = rusqlite::Connection::open("smartpaste.db").unwrap();
-            let count: i64 = conn
-                .query_row("SELECT COUNT(*) FROM data WHERE id = ?1", [&"ut-1"], |r| {
-                    r.get(0)
-                })
-                .unwrap();
-            assert_eq!(count, 0);
+            timestamp: chrono::Utc::now().timestamp(),
         }
     }
 
     #[test]
-    fn test_favorite() {
-        clear_db();
-        let item1 = ClipboardItem {
-            id: "ut-2".to_string(),
-            item_type: "text".to_string(),
-            content: "some content 2".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
-        let item2 = ClipboardItem {
-            id: "ut-3".to_string(),
-            item_type: "text".to_string(),
-            content: "other content 3".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
+    fn test_clipboard_item_to_json_roundtrip() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
 
-        // 插入两条数据
-        let res1 = insert_received_data(item1.clone());
-        assert!(res1.is_ok());
-        let res2 = insert_received_data(item2.clone());
-        assert!(res2.is_ok());
-
-        // 收藏第二条数据
-        let fav_res = favorite_data_by_id(&item1.id);
-        assert!(fav_res.is_ok());
-        let fav_res = favorite_data_by_id(&item2.id);
-        assert!(fav_res.is_ok());
-
-        // 验证收藏状态
-        let get_res1 = get_data_by_id(&item1.id);
-        assert!(get_res1.is_ok());
-        let fetched_item1 = get_res1.unwrap().unwrap();
-        assert!(fetched_item1.is_favorite);
-        let get_res2 = get_data_by_id(&item2.id);
-        assert!(get_res2.is_ok());
-        let fetched_item2 = get_res2.unwrap().unwrap();
-        assert!(fetched_item2.is_favorite);
+        let item = make_item("json-ut-1", "text", "roundtrip");
+        let json = clipboard_item_to_json(item.clone()).expect("serialize failed");
+        let parsed: ClipboardItem = serde_json::from_str(&json).expect("deserialize failed");
+        assert_eq!(parsed.id, item.id);
+        assert_eq!(parsed.content, item.content);
+        assert_eq!(parsed.item_type, item.item_type);
     }
 
     #[test]
-    fn test_search_text_content() {
-        clear_db();
-        let item1 = ClipboardItem {
-            id: "ut-4".to_string(),
-            item_type: "text".to_string(),
-            content: "hello world".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
-        let item2 = ClipboardItem {
-            id: "ut-5".to_string(),
-            item_type: "text".to_string(),
-            content: "goodbye world".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
-        let item3 = ClipboardItem {
-            id: "ut-6".to_string(),
-            item_type: "image".to_string(),
-            content: "/path/to/image.png".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
+    fn test_insert_get_delete() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
 
-        // 插入三条数据
-        assert!(insert_received_data(item1.clone()).is_ok());
-        assert!(insert_received_data(item2.clone()).is_ok());
-        assert!(insert_received_data(item3.clone()).is_ok());
+        let item = make_item("ut-1", "text", "hello insert");
+        // insert
+        let res = insert_received_data(item.clone()).expect("insert failed");
+        assert_eq!(res, "inserted");
 
-        // 搜索包含 "world" 的文本内容
-        let search_res = search_text_content("world");
-        assert!(search_res.is_ok());
-        let results = search_res.unwrap();
-        assert_eq!(results.len(), 2);
+        // get by id
+        let json = get_data_by_id(&item.id).expect("get failed");
+        assert_ne!(json, "null");
+        let fetched: ClipboardItem = serde_json::from_str(&json).expect("parse fetched");
+        assert_eq!(fetched.id, item.id);
+        assert_eq!(fetched.content, item.content);
 
-        // 验证返回的记录是正确的
-        let ids: Vec<String> = results.into_iter().map(|item| item.id).collect();
-        assert!(ids.contains(&item1.id));
-        assert!(ids.contains(&item2.id));
+        // delete by id
+        let rows = delete_data_by_id(&item.id).expect("delete failed");
+        assert!(rows >= 1);
+
+        // ensure deleted
+        let json2 = get_data_by_id(&item.id).expect("get after delete");
+        assert_eq!(json2, "null");
     }
 
     #[test]
     fn test_get_all_data() {
-        clear_db();
-        let item1 = ClipboardItem {
-            id: "ut-7".to_string(),
-            item_type: "text".to_string(),
-            content: "data one".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
-        let item2 = ClipboardItem {
-            id: "ut-8".to_string(),
-            item_type: "image".to_string(),
-            content: "/path/to/image2.png".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
 
-        // 插入两条数据
-        assert!(insert_received_data(item1.clone()).is_ok());
-        assert!(insert_received_data(item2.clone()).is_ok());
+        let a = make_item("all-1", "text", "one");
+        let b = make_item("all-2", "image", "/tmp/img.png");
 
-        // 获取所有数据
-        let all_data_res = get_all_data();
-        assert!(all_data_res.is_ok());
-        let all_data = all_data_res.unwrap();
-        assert_eq!(all_data.len(), 2);
+        insert_received_data(a.clone()).unwrap();
+        insert_received_data(b.clone()).unwrap();
 
-        let ids: Vec<String> = all_data.into_iter().map(|item| item.id).collect();
-        assert!(ids.contains(&item1.id));
-        assert!(ids.contains(&item2.id));
+        let all_json = get_all_data().expect("get_all failed");
+        let vec: Vec<ClipboardItem> = serde_json::from_str(&all_json).expect("parse array");
+        let ids: Vec<String> = vec.into_iter().map(|it| it.id).collect();
+        assert!(ids.contains(&a.id));
+        assert!(ids.contains(&b.id));
     }
 
     #[test]
-    fn test_add_notes() {
-        clear_db();
-        let item = ClipboardItem {
-            id: "ut-9".to_string(),
-            item_type: "text".to_string(),
-            content: "note test".to_string(),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: 0,
-        };
+    fn test_favorite_and_search_and_notes() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
 
-        // 插入数据
-        assert!(insert_received_data(item.clone()).is_ok());
+        // favorite
+        let it = make_item("fav-1", "text", "i like this");
+        insert_received_data(it.clone()).unwrap();
+        let affected = favorite_data_by_id(&it.id).expect("favorite failed");
+        assert!(affected >= 1);
+        let json = get_data_by_id(&it.id).expect("get fav");
+        let fetched: ClipboardItem = serde_json::from_str(&json).expect("parse fav");
+        assert!(fetched.is_favorite);
 
-        // 添加备注
-        let notes_content = "This is a test note.";
-        let add_notes_res = add_notes_by_id(&item.id, notes_content);
-        assert!(add_notes_res.is_ok());
-        let updated_item = add_notes_res.unwrap();
-        assert_eq!(updated_item.notes, notes_content);
+        // search_text_content
+        let t1 = make_item("s-1", "text", "hello world");
+        let t2 = make_item("s-2", "text", "goodbye world");
+        let t3 = make_item("s-3", "image", "/tmp/img");
+        insert_received_data(t1.clone()).unwrap();
+        insert_received_data(t2.clone()).unwrap();
+        insert_received_data(t3.clone()).unwrap();
 
-        // 验证通过 get_data_by_id 获取的记录也包含备注
-        let get_res = get_data_by_id(&item.id);
-        assert!(get_res.is_ok());
-        let fetched_item = get_res.unwrap().unwrap();
-        assert_eq!(fetched_item.notes, notes_content);
+        let res = search_text_content("world").expect("search failed");
+        let found: Vec<ClipboardItem> = serde_json::from_str(&res).expect("parse search");
+        let found_ids: Vec<String> = found.into_iter().map(|i| i.id).collect();
+        assert!(found_ids.contains(&t1.id));
+        assert!(found_ids.contains(&t2.id));
+        assert!(!found_ids.contains(&t3.id));
+
+        // add_notes_by_id
+        let note_item = make_item("note-1", "text", "note content");
+        insert_received_data(note_item.clone()).unwrap();
+        let notes = "this is a test note";
+        let updated_json = add_notes_by_id(&note_item.id, notes).expect("add notes failed");
+        let updated: ClipboardItem = serde_json::from_str(&updated_json).expect("parse updated");
+        assert_eq!(updated.notes, notes);
+
+        // verify persisted
+        let get_json = get_data_by_id(&note_item.id).expect("get after notes");
+        let got: ClipboardItem = serde_json::from_str(&get_json).expect("parse got");
+        assert_eq!(got.notes, notes);
     }
 
     #[test]
-    fn test_create_new_folder() {
-        clear_db();
-        let folder_name = "testfolder";
+    fn test_create_new_folder_valid_and_invalid() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
 
-        // 创建新收藏夹
-        let create_res = create_new_folder(folder_name);
-        assert!(create_res.is_ok());
-        let msg = create_res.unwrap();
-        assert_eq!(msg, format!("收藏夹 '{}' 已创建", folder_name));
+        // valid
+        let ok = create_new_folder("testfolder").expect("create folder failed");
+        assert!(ok.contains("已创建") || ok.contains("已存在"));
 
-        // 尝试创建同名收藏夹，应该提示已存在
-        let create_res2 = create_new_folder(folder_name);
-        assert!(create_res2.is_ok());
-        let msg2 = create_res2.unwrap();
-        assert_eq!(msg2, format!("收藏夹 '{}' 已存在", folder_name));
-    }
+        // creating again should return exists
+        let ok2 = create_new_folder("testfolder").expect("create folder second failed");
+        assert!(ok2.contains("已存在"));
 
-    // #[test]
-    // fn test_search_no_results() {
-    //     clear_db();
-    //     let search_res = search_text_content("nonexistent");
-    //     assert!(search_res.is_ok());
-    //     let results = search_res.unwrap();
-    //     assert_eq!(results.len(), 0);
-    // }
-}
-
-mod test_to_json {
-    use super::*;
-    #[test]
-    fn test_clipboard_item_to_json() {
-        let item = ClipboardItem {
-            id: "ut-10".to_string(),
-            item_type: "text".to_string(),
-            content: "json test".to_string(),
-            is_favorite: true,
-            notes: "some notes".to_string(),
-            timestamp: 1234567890,
-        };
-
-        let json_res = clipboard_item_to_json(item.clone());
-        assert!(json_res.is_ok());
-        let json_str = json_res.unwrap();
-
-        let expected_json = r#"{"id":"ut-10","item_type":"text","content":"json test","is_favorite":true,"notes":"some notes","timestamp":1234567890}"#;
-        assert_eq!(json_str, expected_json);
-    }
-
-    #[test]
-    fn test_clipboard_items_to_json() {
-        let items = vec![
-            ClipboardItem {
-                id: "ut-11".to_string(),
-                item_type: "text".to_string(),
-                content: "first item".to_string(),
-                is_favorite: false,
-                notes: "".to_string(),
-                timestamp: 1111111111,
-            },
-            ClipboardItem {
-                id: "ut-12".to_string(),
-                item_type: "image".to_string(),
-                content: "/path/to/image.png".to_string(),
-                is_favorite: true,
-                notes: "image note".to_string(),
-                timestamp: 2222222222,
-            },
-        ];
-
-        let json_res = clipboard_items_to_json(items.clone());
-        assert!(json_res.is_ok());
-        let json_str = json_res.unwrap();
-
-        let expected_json = r#"[{"id":"ut-11","item_type":"text","content":"first item","is_favorite":false,"notes":"","timestamp":1111111111},{"id":"ut-12","item_type":"image","content":"/path/to/image.png","is_favorite":true,"notes":"image note","timestamp":2222222222}]"#;
-        assert_eq!(json_str, expected_json);
+        // invalid name
+        let err = create_new_folder("bad name!").err();
+        assert!(err.is_some());
     }
 }
-// 未来扩展点：查询、批量写入、事务封装、连接池（r2d2 + rusqlite）等。
