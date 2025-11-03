@@ -92,7 +92,7 @@ fn main() {
                 .build(app)?;
 
             println!("✅ 托盘图标创建成功");
-
+            /*
             // 设置窗口初始位置到右下角
             if let Some(window) = app.get_webview_window("main") {
                 window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: 150, height: 150 }))?;
@@ -115,7 +115,7 @@ fn main() {
                 window.show()?;
                 println!("🪟 窗口初始显示状态设置完成");
             }
-
+            */
             // 全局快捷键设置
             let show_hide_shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
             let shortcut_for_handler = show_hide_shortcut.clone();

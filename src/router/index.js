@@ -7,8 +7,8 @@ import DesktopPet from '../components/DesktopPet.vue'  // 新增桌宠组件
 const routes = [
   {
     path: '/',
-    name: 'DesktopPet',
-    component: DesktopPet
+    name: 'ClipboardApp',
+    component: ClipboardApp
   },
   {
     path: '/settings',
@@ -19,11 +19,6 @@ const routes = [
     path: '/preferences',
     name: 'Preferences',
     component: Preferences
-  },
-  {
-    path: '/clipboardapp',
-    name: 'ClipboardApp',
-    component: ClipboardApp
   }
 ]
 

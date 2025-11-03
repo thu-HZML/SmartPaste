@@ -14,8 +14,6 @@
       {
         "label": "main",
         "title": "Desktop Pet",
-        "width": 150,
-        "height": 150,
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,
