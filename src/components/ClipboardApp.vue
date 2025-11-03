@@ -61,9 +61,9 @@
           >
             <div class="item-info">
               <div class="item-meta">
-                <span>{{ item.tag }}</span>
-                <span>{{ item.text.length }}字符</span>
-                <span>{{ formatTime(item.timestamp) }}</span>
+                <span>{{ item.item_type }}</span>
+                <span>{{ test }}字符</span>
+                <span>{{  }}</span>
               </div>
 
               <!-- 右上方按钮组 -->
@@ -71,13 +71,13 @@
                 <button 
                   class="icon-btn-small" 
                   @click="toggleFavorite(index)"
-                  :title="item.favorite ? '取消收藏' : '收藏'"
+                  :title="item.is_favorite ? '取消收藏' : '收藏'"
                 >
-                  {{ item.favorite ? '★' : '☆' }}
+                  {{ item.is_favorite ? '★' : '☆' }}
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="copyItem(item.text)"
+                  @click="copyItem(item.content)"
                   title="复制"
                 >
                   📋
@@ -85,13 +85,13 @@
                 <button 
                   class="icon-btn-small" 
                   @click="editItem(index)"
-                  :disabled="item.text.length > 500"
+                  :disabled="item.content.length > 500"
                 >
                   ✏️
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="shareItem(item.text)"
+                  @click="shareItem(item.content)"
                 >
                   📤
                 </button>
@@ -104,7 +104,7 @@
               </div>
             </div>
             <div class="item-content">
-              <div class="item-text" :title="item.text">{{ item.text }}</div>           
+              <div class="item-text" :title="item.content">{{ item.content }}</div>           
             </div>
           </div>
         </div>
@@ -167,6 +167,8 @@
 import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+let test = ref('调用失败')
+let test_rust = ref()
 
 export default {
   name: 'App',
@@ -180,6 +182,7 @@ export default {
     const showEditModal = ref(false)
     const editingIndex = ref(-1)
     const editingText = ref('')
+    
     
     // 分类选项
     const categories = ref([
@@ -391,10 +394,36 @@ export default {
       }
     }
 
+    const testBackendConnection = async () => {
+      try {
+        // 使用新的 invoke
+        const jsonString = await invoke('get_all_data')
+        history.value = JSON.parse(jsonString)
+        console.log('调用成功:', result)
+        showMessage('后端连接测试成功: ' + result)
+      } catch (error) {
+        console.error('调用失败:', error)
+        showMessage('后端连接失败: ' + error.toString())
+      }
+    }
+
+    const testBackendConnection2 = async () => {
+      try {
+        // 使用新的 invoke
+        test.value = await invoke('test_function')
+        console.log('调用成功:', result)
+        showMessage('后端连接测试成功: ' + result)
+      } catch (error) {
+        console.error('调用失败:', error)
+        showMessage('后端连接失败: ' + error.toString())
+      }
+    }
+
     onMounted(() => {
       console.log('开始初始化...')
 
       // 直接设置数据
+      /*
       history.value = [
         {
           tag: '纯文本',
@@ -425,19 +454,25 @@ export default {
           favorite: false
         }
       ]
+      */
       
+      history.value = [
+        {
+          id: '0123456',
+          item_type: 'text',        
+          content: '这是一个测试样例',
+          is_favorite: true,
+          notes: '样例备注',
+          timestamp: '1696118400000'
+        }
+      ]
+
+      testBackendConnection2()
+      testBackendConnection() 
+      
+      // history.value = invoke('get_all_data')
       console.log('数据设置完成:', history.value)
       console.log('数据长度:', history.value.length)
-
-      try {
-        // 调用 Rust 函数
-        const dbData = invoke('get_all_data')
-        history.value = invoke('clipboard_items_to_json', { 
-          item: 'dbData' 
-        })
-      } catch (err) {
-        console.error('调用失败:', err)
-      }
     })
 
     return {
@@ -449,6 +484,8 @@ export default {
       toastMessage,
       showEditModal,
       editingText,
+      test,
+      test_rust,
       setActiveCategory,
       togglePinnedView,
       openSettings,

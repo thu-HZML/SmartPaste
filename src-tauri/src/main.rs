@@ -26,6 +26,10 @@ use std::time::{Instant, Duration};
 
 mod db;
 
+#[tauri::command]
+fn test_function() -> String {
+    "这是来自 Rust 的测试信息".to_string()
+}
 
 fn main() {
     // 使用共享状态来防止重复点击
@@ -34,6 +38,7 @@ fn main() {
     let result = tauri::Builder::default()
         // 注册 Tauri commands
         .invoke_handler(tauri::generate_handler![
+            test_function,
             // db::clipboard_item_to_json,
             // db::clipboard_items_to_json,
             db::insert_received_data,
