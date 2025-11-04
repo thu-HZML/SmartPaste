@@ -4,7 +4,7 @@ use serde_json;
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
-use crate::ClipboardItem;
+use crate::clipboard::ClipboardItem;
 
 // const DB_PATH: &str = "smartpaste.db";
 

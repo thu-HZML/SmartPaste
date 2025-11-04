@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "test1",
+  "productName": "Desktop Pet",
   "version": "0.1.0",
-  "identifier": "com.tauri-app.test1",
+  "identifier": "com.tauri-app.desktop-pet",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,9 +13,16 @@
     "windows": [
       {
         "label": "main",
-        "title": "test1",
-        "width": 800,
-        "height": 600
+        "title": "Desktop Pet",
+        "alwaysOnTop": true,
+        "transparent": true,
+        "decorations": false,
+        "skipTaskbar": true,
+        "acceptFirstMouse": true,
+        "shadow": false,
+        "resizable": false,
+        "x": null,
+        "y": null
       }
     ],
     "security": {
@@ -25,12 +32,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Utility",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/logo.png",
+      "icons/tray.png"
+
+
     ]
   }
 }
