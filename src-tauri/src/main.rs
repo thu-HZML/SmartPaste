@@ -49,16 +49,25 @@ fn main() {
             let files_dir = app_dir.join("files");
             std::fs::create_dir_all(&files_dir).unwrap();
 
-            let show_hide_shortcut =
-                Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
-            let shortcut_for_handler = show_hide_shortcut.clone();
+            // let show_hide_shortcut =
+            //     Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
+            // let shortcut_for_handler = show_hide_shortcut.clone();
             let handle = app.handle().clone();
 
-            // 快捷键处理
+            
+            // 1. 定义主要快捷键和备用快捷键
+            let primary_shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
+            let alternative_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
+
+            // 2. 更新快捷键处理逻辑，使其能同时响应两个快捷键
+            let primary_for_handler = primary_shortcut.clone();
+            let alternative_for_handler = alternative_shortcut.clone();
+
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
                     .with_handler(move |_app, shortcut, event| {
-                        if shortcut == &shortcut_for_handler
+                        // 判断按下的快捷键是否是定义的两个之一
+                        if (shortcut == &primary_for_handler || shortcut == &alternative_for_handler)
                             && event.state() == ShortcutState::Pressed
                         {
                             println!("✅ 按键被按下，执行窗口切换逻辑");
@@ -82,8 +91,26 @@ fn main() {
                     })
                     .build(),
             )?;
-            app.global_shortcut().register(show_hide_shortcut)?;
-            println!("✅ 已注册全局快捷键 Alt-Shift-V");
+
+            // 3. 尝试注册快捷键，并在失败时提供备用方案
+            let global_shortcut_manager = app.global_shortcut();
+            match global_shortcut_manager.register(primary_shortcut) {
+                Ok(_) => {
+                    println!("✅ 已注册全局快捷键: Alt-Shift-V");
+                }
+                Err(e) => {
+                    eprintln!("⚠️ 注册 Alt-Shift-V 失败: {:?}. 正在尝试备用快捷键...", e);
+                    // 尝试注册备用快捷键
+                    match global_shortcut_manager.register(alternative_shortcut) {
+                        Ok(_) => {
+                            println!("✅ 已成功注册备用全局快捷键: Ctrl-Alt-Shift-V");
+                        }
+                        Err(e2) => {
+                            eprintln!("❌ 注册备用快捷键也失败了: {:?}", e2);
+                        }
+                    }
+                }
+            };
 
             // 剪贴板监听线程
             let app_handle = app.handle().clone();
