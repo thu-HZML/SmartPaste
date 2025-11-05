@@ -60,20 +60,29 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// 注册全局快捷键
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
+    // 1. 定义主要快捷键和备用快捷键
+    let primary_shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
+    let alternative_shortcut = Shortcut::new(
+        Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT),
+        Code::KeyV,
+    );
 
+    // 2. 为闭包提前克隆变量
     let handle_for_closure = handle.clone();
+    let primary_for_handler = primary_shortcut.clone();
+    let alternative_for_handler = alternative_shortcut.clone();
 
-    let shortcut_for_handler = shortcut.clone();
-
-    // 原始的 `handle` 用于构建插件
+    // 3. 设置能够响应任一快捷键的处理器
     handle.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |_app, shortcut, event| {
-                if shortcut == &shortcut_for_handler && event.state() == ShortcutState::Pressed {
+                // 判断按下的快捷键是否是我们定义的两个之一
+                if (shortcut == &primary_for_handler || shortcut == &alternative_for_handler)
+                    && event.state() == ShortcutState::Pressed
+                {
                     if let Some(window) = handle_for_closure.get_webview_window("main") {
+                        println!("✅ 快捷键触发，执行窗口切换逻辑");
                         toggle_window_visibility(&window);
                     }
                 }
@@ -81,12 +90,27 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
             .build(),
     )?;
 
-    handle.global_shortcut().register(shortcut)?;
-
-    println!("✅ 已注册全局快捷键 Alt-Shift-V");
+    // 4. 尝试注册快捷键，并在失败时提供备用方案
+    let manager = handle.global_shortcut();
+    match manager.register(primary_shortcut) {
+        Ok(_) => {
+            println!("✅ 已注册全局快捷键: Alt-Shift-V");
+        }
+        Err(e) => {
+            eprintln!("⚠️ 注册 Alt-Shift-V 失败: {:?}. 正在尝试备用快捷键...", e);
+            // 尝试注册备用快捷键
+            match manager.register(alternative_shortcut) {
+                Ok(_) => {
+                    println!("✅ 已成功注册备用全局快捷键: Ctrl-Alt-Shift-V");
+                }
+                Err(e2) => {
+                    eprintln!("❌ 注册备用快捷键也失败了: {:?}", e2);
+                }
+            }
+        }
+    };
     Ok(())
 }
-
 /// 启动后台线程以监控剪贴板
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
