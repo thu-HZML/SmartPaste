@@ -29,7 +29,8 @@ fn main() {
             db::set_favorite_status_by_id,
             db::search_text_content,
             db::add_notes_by_id,
-            db::create_new_folder,
+            db::filter_data_by_type,
+            // db::create_new_folder,
         ])
         .setup(|app| {
             // 初始化数据库路径

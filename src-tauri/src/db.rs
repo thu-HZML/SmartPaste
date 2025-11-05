@@ -345,6 +345,47 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<String, String> {
     }
 }
 
+/// 按类型筛选数据。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// item_type: &str - 数据类型（如 "text", "image" 等）
+/// # Returns
+/// String - 包含筛选后数据记录的 JSON 字符串
+#[tauri::command]
+pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE item_type = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map(params![item_type], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    clipboard_items_to_json(results)
+}
+
 /// 新建收藏夹。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// name: &str - 收藏夹名称
@@ -407,7 +448,11 @@ mod tests {
     static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+        // 如果 mutex 被 poison，恢复并返回被污染时的 guard（避免测试间直接失败）
+        TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn set_test_db_path() {
@@ -416,6 +461,8 @@ mod tests {
         p.push("smartpaste_test.db");
         // 覆盖全局 OnceLock（只会在第一次调用设置）
         set_db_path(p);
+        // 确保清理全局 last_inserted，避免跨测试遗留状态导致断言失败
+        let _ = crate::clipboard::take_last_inserted();
     }
 
     fn clear_db_file() {
@@ -570,6 +617,30 @@ mod tests {
         assert!(ids.contains(&item1.id));
         assert!(ids.contains(&item2.id));
         assert!(!ids.contains(&item3.id)); // image type should not be included
+    }
+
+    #[test]
+    fn test_filter_data_by_type() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
+
+        let item1 = make_item("filter-1", "text", "some text");
+        let item2 = make_item("filter-2", "image", "/tmp/img.png");
+        let item3 = make_item("filter-3", "text", "more text");
+
+        insert_received_data(item1.clone()).unwrap();
+        insert_received_data(item2.clone()).unwrap();
+        insert_received_data(item3.clone()).unwrap();
+
+        let results_json = filter_data_by_type("text").expect("filter failed");
+        let results: Vec<ClipboardItem> =
+            serde_json::from_str(&results_json).expect("parse filter results");
+
+        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
+        assert!(ids.contains(&item1.id));
+        assert!(ids.contains(&item3.id));
+        assert!(!ids.contains(&item2.id)); // image type should not be included
     }
 
     #[test]
