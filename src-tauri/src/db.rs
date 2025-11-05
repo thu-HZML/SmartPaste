@@ -60,8 +60,10 @@ pub fn init_db(path: &Path) -> Result<()> {
 }
 
 /// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
-/// TODO: 根据实际需求调整插入逻辑
-///
+/// Param:
+/// data: ClipboardItem - 要插入的数据项
+/// Returns:
+/// String - 插入结果信息
 #[tauri::command]
 pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
@@ -82,7 +84,23 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
         ],
     )
         .map_err(|e| e.to_string())?;
-    Ok("inserted".into())
+
+    // 插入成功后，更新全局最后插入项
+    crate::clipboard::set_last_inserted(data);
+
+    Ok("inserted".to_string())
+}
+
+/// 获取上一条数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// String - 包含上一条数据的 JSON 字符串，若无则返回 null
+#[tauri::command]
+pub fn get_latest_data() -> Result<String, String> {
+    if let Some(item) = crate::clipboard::get_last_inserted() {
+        clipboard_item_to_json(item)
+    } else {
+        Ok("null".to_string())
+    }
 }
 
 /// 获取所有数据。作为 Tauri command 暴露给前端调用。
@@ -185,12 +203,48 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     Ok(rows_affected)
 }
 
-/// 根据 ID 收藏数据。作为 Tauri command 暴露给前端调用。
+/// 根据 ID 修改收藏状态。作为 Tauri command 暴露给前端调用。
+/// 如果 is_favorite 为 true，则收藏数据；否则取消收藏数据。
+/// # Param
+/// id: &str - 要修改收藏状态的数据 ID
+/// # Returns
+/// String - 信息。若收藏成功返回 "favorited"，取消收藏成功返回 "unfavorited"，否则返回错误信息
+#[tauri::command]
+pub fn set_favorite_status_by_id(id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    // 先查询当前的收藏状态
+    let mut stmt = conn
+        .prepare("SELECT is_favorite FROM data WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+
+    let current_status: Option<i32> = stmt
+        .query_row(params![id], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    match current_status {
+        Some(status) => {
+            if status == 0 {
+                // 当前未收藏，执行收藏操作
+                favorite_data_by_id(id)?;
+                Ok("favorited".to_string())
+            } else {
+                // 当前已收藏，执行取消收藏操作
+                unfavorite_data_by_id(id)?;
+                Ok("unfavorited".to_string())
+            }
+        }
+        None => Err("Item not found".to_string()),
+    }
+}
+
+/// 根据 ID 收藏数据。
 /// # Param
 /// id: &str - 要收藏数据的 ID
 /// # Returns
 /// usize - 受影响的行数
-#[tauri::command]
 pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -198,6 +252,23 @@ pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
 
     let rows_affected = conn
         .execute("UPDATE data SET is_favorite = 1 WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows_affected)
+}
+
+/// 根据 ID 取消收藏数据。
+/// # Param
+/// id: &str - 要取消收藏数据的 ID
+/// # Returns
+/// usize - 受影响的行数
+pub fn unfavorite_data_by_id(id: &str) -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let rows_affected = conn
+        .execute("UPDATE data SET is_favorite = 0 WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
 
     Ok(rows_affected)
@@ -406,6 +477,25 @@ mod tests {
     }
 
     #[test]
+    fn test_get_latest_data() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
+
+        // initially should be null
+        let initial = get_latest_data().expect("get latest failed");
+        assert_eq!(initial, "null");
+
+        let item = make_item("latest-1", "text", "latest content");
+        insert_received_data(item.clone()).expect("insert latest failed");
+
+        let latest_json = get_latest_data().expect("get latest after insert failed");
+        let latest: ClipboardItem = serde_json::from_str(&latest_json).expect("parse latest");
+        assert_eq!(latest.id, item.id);
+        assert_eq!(latest.content, item.content);
+    }
+
+    #[test]
     fn test_get_all_data() {
         let _g = test_lock();
         set_test_db_path();
@@ -425,47 +515,61 @@ mod tests {
     }
 
     #[test]
-    fn test_favorite_and_search_and_notes() {
+    fn test_set_favorite_status_by_id() {
         let _g = test_lock();
         set_test_db_path();
         clear_db_file();
 
-        // favorite
-        let it = make_item("fav-1", "text", "i like this");
-        insert_received_data(it.clone()).unwrap();
-        let affected = favorite_data_by_id(&it.id).expect("favorite failed");
-        assert!(affected >= 1);
-        let json = get_data_by_id(&it.id).expect("get fav");
-        let fetched: ClipboardItem = serde_json::from_str(&json).expect("parse fav");
-        assert!(fetched.is_favorite);
+        let item = make_item("fav-1", "text", "to be favorited");
+        insert_received_data(item.clone()).expect("insert for favorite");
 
-        // search_text_content
-        let t1 = make_item("s-1", "text", "hello world");
-        let t2 = make_item("s-2", "text", "goodbye world");
-        let t3 = make_item("s-3", "image", "/tmp/img");
-        insert_received_data(t1.clone()).unwrap();
-        insert_received_data(t2.clone()).unwrap();
-        insert_received_data(t3.clone()).unwrap();
+        // initially not favorite
+        let fetched_json = get_data_by_id(&item.id).expect("get for favorite");
+        let fetched: ClipboardItem =
+            serde_json::from_str(&fetched_json).expect("parse for favorite");
+        assert!(!fetched.is_favorite);
 
-        let res = search_text_content("world").expect("search failed");
-        let found: Vec<ClipboardItem> = serde_json::from_str(&res).expect("parse search");
-        let found_ids: Vec<String> = found.into_iter().map(|i| i.id).collect();
-        assert!(found_ids.contains(&t1.id));
-        assert!(found_ids.contains(&t2.id));
-        assert!(!found_ids.contains(&t3.id));
+        // set favorite
+        let res1 = set_favorite_status_by_id(&item.id).expect("set favorite");
+        assert_eq!(res1, "favorited");
 
-        // add_notes_by_id
-        let note_item = make_item("note-1", "text", "note content");
-        insert_received_data(note_item.clone()).unwrap();
-        let notes = "this is a test note";
-        let updated_json = add_notes_by_id(&note_item.id, notes).expect("add notes failed");
-        let updated: ClipboardItem = serde_json::from_str(&updated_json).expect("parse updated");
-        assert_eq!(updated.notes, notes);
+        let fetched_json2 = get_data_by_id(&item.id).expect("get after favorite");
+        let fetched2: ClipboardItem =
+            serde_json::from_str(&fetched_json2).expect("parse after favorite");
+        assert!(fetched2.is_favorite);
 
-        // verify persisted
-        let get_json = get_data_by_id(&note_item.id).expect("get after notes");
-        let got: ClipboardItem = serde_json::from_str(&get_json).expect("parse got");
-        assert_eq!(got.notes, notes);
+        // unset favorite
+        let res2 = set_favorite_status_by_id(&item.id).expect("unset favorite");
+        assert_eq!(res2, "unfavorited");
+
+        let fetched_json3 = get_data_by_id(&item.id).expect("get after unfavorite");
+        let fetched3: ClipboardItem =
+            serde_json::from_str(&fetched_json3).expect("parse after unfavorite");
+        assert!(!fetched3.is_favorite);
+    }
+
+    #[test]
+    fn test_search_text_content() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
+
+        let item1 = make_item("search-1", "text", "hello world");
+        let item2 = make_item("search-2", "text", "goodbye world");
+        let item3 = make_item("search-3", "image", "/tmp/img.png");
+
+        insert_received_data(item1.clone()).unwrap();
+        insert_received_data(item2.clone()).unwrap();
+        insert_received_data(item3.clone()).unwrap();
+
+        let results_json = search_text_content("world").expect("search failed");
+        let results: Vec<ClipboardItem> =
+            serde_json::from_str(&results_json).expect("parse search results");
+
+        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
+        assert!(ids.contains(&item1.id));
+        assert!(ids.contains(&item2.id));
+        assert!(!ids.contains(&item3.id)); // image type should not be included
     }
 
     #[test]

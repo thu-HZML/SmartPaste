@@ -22,13 +22,14 @@ fn main() {
             test_function,
             db::insert_received_data,
             db::get_all_data,
+            db::get_latest_data,
             db::get_data_by_id,
             db::delete_data,
             db::delete_data_by_id,
-            db::favorite_data_by_id,
+            db::set_favorite_status_by_id,
             db::search_text_content,
             db::add_notes_by_id,
-            db::create_new_folder
+            db::create_new_folder,
         ])
         .setup(|app| {
             // 初始化数据库路径

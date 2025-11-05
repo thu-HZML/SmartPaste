@@ -65,9 +65,9 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     let shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
 
     let handle_for_closure = handle.clone();
-    
+
     let shortcut_for_handler = shortcut.clone();
-    
+
     // 原始的 `handle` 用于构建插件
     handle.plugin(
         tauri_plugin_global_shortcut::Builder::new()
@@ -78,7 +78,7 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                     }
                 }
             })
-            .build()
+            .build(),
     )?;
 
     handle.global_shortcut().register(shortcut)?;
@@ -107,10 +107,12 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     last_image_bytes.clear();
                     last_file_paths.clear();
 
+                    let size = Some(text.chars().count() as u64);
                     let new_item = ClipboardItem {
                         id: Utc::now().timestamp_millis().to_string(),
                         item_type: "text".to_string(),
                         content: text,
+                        size,
                         is_favorite: false,
                         notes: "".to_string(),
                         timestamp: Utc::now().timestamp(),
@@ -133,17 +135,26 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     let image_id = Utc::now().timestamp_millis().to_string();
                     let dest_path = files_dir.join(format!("{}.png", image_id));
 
-                    if image::save_buffer(&dest_path, &image.rgba(), image.width(), image.height(), ColorType::Rgba8).is_ok() {
+                    if image::save_buffer(
+                        &dest_path,
+                        &image.rgba(),
+                        image.width(),
+                        image.height(),
+                        ColorType::Rgba8,
+                    )
+                    .is_ok()
+                    {
                         let new_item = ClipboardItem {
                             id: image_id,
                             item_type: "image".to_string(),
                             content: dest_path.to_str().unwrap().to_string(),
+                            size: fs::metadata(&dest_path).ok().map(|m| m.len()),
                             is_favorite: false,
                             notes: "".to_string(),
                             timestamp: Utc::now().timestamp(),
                         };
                         if let Err(e) = db::insert_received_data(new_item) {
-                             eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
+                            eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                         }
                     }
                 }
@@ -168,6 +179,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                     id: timestamp.to_string(),
                                     item_type: "file".to_string(),
                                     content: dest_path.to_str().unwrap().to_string(),
+                                    size: fs::metadata(&dest_path).ok().map(|m| m.len()),
                                     is_favorite: false,
                                     notes: "".to_string(),
                                     timestamp: Utc::now().timestamp(),
