@@ -64,7 +64,7 @@
             <div class="item-info">
               <div class="item-meta">
                 <span>{{ item.item_type }}</span>
-                <span>{{  }}字符</span>
+                <span>{{ test }}字符</span>
                 <span>{{ item.notes }}</span>
               </div>
 
@@ -196,6 +196,7 @@ import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 
+const test = ref('')
 export default {
   name: 'App',
   setup() {
@@ -247,8 +248,9 @@ export default {
     }
 
     // 打开设置
-    const openSettings = () => {
-      router.push('/preferences')
+    const openSettings = async () => {
+      // router.push('/preferences')
+      getAllHistory()
       showMessage('打开设置')
     }
 
@@ -327,7 +329,7 @@ export default {
     // 切换收藏状态
     const toggleFavorite = async (index) => {
       history.value[index].is_favorite = !history.value[index].is_favorite
-      await invoke('favorite_data_by_id', { id: history.value[index].id })
+      await invoke('set_favorite_status_by_id', { id: history.value[index].id })
       showMessage(history.value[index].is_favorite ? '已收藏' : '已取消收藏')
     }
 
@@ -403,7 +405,6 @@ export default {
       try {
         const jsonString = await invoke('get_all_data')
         history.value = JSON.parse(jsonString)
-        console.log('调用成功:', result)
       } catch (error) {
         console.error('调用失败:', error)
       }
@@ -412,7 +413,7 @@ export default {
     onMounted(async () => {
       console.log('开始初始化...')
 
-      /*
+      
       history.value = [
         {
           id: '0123456',
@@ -423,8 +424,8 @@ export default {
           timestamp: '1696118400000'
         }
       ]
-      */
 
+      //test.value = await invoke('test_function')
       // 从本地存储加载历史记录
       getAllHistory() 
 
@@ -447,6 +448,7 @@ export default {
       editingText,
       notingText,
       isFocused,
+      test,
       setActiveCategory,
       togglePinnedView,
       openSettings,
