@@ -4,7 +4,7 @@ use serde_json;
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
-use crate::ClipboardItem;
+use crate::clipboard::ClipboardItem;
 
 // const DB_PATH: &str = "smartpaste.db";
 
@@ -49,6 +49,7 @@ pub fn init_db(path: &Path) -> Result<()> {
             id TEXT PRIMARY KEY NOT NULL, 
             item_type TEXT NOT NULL,
             content TEXT NOT NULL,
+            size INTEGER NOT NULL,
             is_favorite INTEGER NOT NULL,
             notes TEXT,
             timestamp INTEGER NOT NULL
@@ -59,8 +60,10 @@ pub fn init_db(path: &Path) -> Result<()> {
 }
 
 /// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
-/// TODO: 根据实际需求调整插入逻辑
-///
+/// Param:
+/// data: ClipboardItem - 要插入的数据项
+/// Returns:
+/// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
 #[tauri::command]
 pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
@@ -69,18 +72,35 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
-    conn.execute("INSERT OR REPLACE INTO data (id, item_type, content, is_favorite, notes, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    conn.execute("INSERT OR REPLACE INTO data (id, item_type, content, size, is_favorite, notes, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             data.id,
             data.item_type,
             data.content,
+            data.size.unwrap_or(0) as i64,
             data.is_favorite as i32, // SQLite 使用整数表示布尔值
             data.notes,
             data.timestamp,
         ],
     )
         .map_err(|e| e.to_string())?;
-    Ok("inserted".into())
+
+    // 插入成功后，更新全局最后插入项
+    crate::clipboard::set_last_inserted(data.clone());
+
+    clipboard_item_to_json(data)
+}
+
+/// 获取上一条数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// String - 包含上一条数据的 JSON 字符串，若无则返回 null
+#[tauri::command]
+pub fn get_latest_data() -> Result<String, String> {
+    if let Some(item) = crate::clipboard::get_last_inserted() {
+        clipboard_item_to_json(item)
+    } else {
+        Ok("null".to_string())
+    }
 }
 
 /// 获取所有数据。作为 Tauri command 暴露给前端调用。
@@ -93,7 +113,7 @@ pub fn get_all_data() -> Result<String, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, item_type, content, is_favorite, notes, timestamp FROM data")
+        .prepare("SELECT id, item_type, content, size, is_favorite, notes, timestamp FROM data")
         .map_err(|e| e.to_string())?;
 
     let clipboard_iter = stmt
@@ -102,9 +122,10 @@ pub fn get_all_data() -> Result<String, String> {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
-                is_favorite: row.get::<_, i32>(3)? != 0,
-                notes: row.get(4)?,
-                timestamp: row.get(5)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -131,7 +152,7 @@ pub fn get_data_by_id(id: &str) -> Result<String, String> {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, item_type, content, is_favorite, notes, timestamp 
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE id = ?1",
         )
@@ -143,9 +164,10 @@ pub fn get_data_by_id(id: &str) -> Result<String, String> {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
-                is_favorite: row.get::<_, i32>(3)? != 0,
-                notes: row.get(4)?,
-                timestamp: row.get(5)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -181,12 +203,48 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     Ok(rows_affected)
 }
 
-/// 根据 ID 收藏数据。作为 Tauri command 暴露给前端调用。
+/// 根据 ID 修改收藏状态。作为 Tauri command 暴露给前端调用。
+/// 如果 is_favorite 为 true，则收藏数据；否则取消收藏数据。
+/// # Param
+/// id: &str - 要修改收藏状态的数据 ID
+/// # Returns
+/// String - 信息。若收藏成功返回 "favorited"，取消收藏成功返回 "unfavorited"，否则返回错误信息
+#[tauri::command]
+pub fn set_favorite_status_by_id(id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    // 先查询当前的收藏状态
+    let mut stmt = conn
+        .prepare("SELECT is_favorite FROM data WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+
+    let current_status: Option<i32> = stmt
+        .query_row(params![id], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    match current_status {
+        Some(status) => {
+            if status == 0 {
+                // 当前未收藏，执行收藏操作
+                favorite_data_by_id(id)?;
+                Ok("favorited".to_string())
+            } else {
+                // 当前已收藏，执行取消收藏操作
+                unfavorite_data_by_id(id)?;
+                Ok("unfavorited".to_string())
+            }
+        }
+        None => Err("Item not found".to_string()),
+    }
+}
+
+/// 根据 ID 收藏数据。
 /// # Param
 /// id: &str - 要收藏数据的 ID
 /// # Returns
 /// usize - 受影响的行数
-#[tauri::command]
 pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -194,6 +252,23 @@ pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
 
     let rows_affected = conn
         .execute("UPDATE data SET is_favorite = 1 WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows_affected)
+}
+
+/// 根据 ID 取消收藏数据。
+/// # Param
+/// id: &str - 要取消收藏数据的 ID
+/// # Returns
+/// usize - 受影响的行数
+pub fn unfavorite_data_by_id(id: &str) -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let rows_affected = conn
+        .execute("UPDATE data SET is_favorite = 0 WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
 
     Ok(rows_affected)
@@ -215,7 +290,7 @@ pub fn search_text_content(query: &str) -> Result<String, String> {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, item_type, content, is_favorite, notes, timestamp 
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE item_type = 'text' AND content LIKE ?1",
         )
@@ -227,9 +302,10 @@ pub fn search_text_content(query: &str) -> Result<String, String> {
                 id: row.get(0)?,
                 item_type: row.get(1)?,
                 content: row.get(2)?,
-                is_favorite: row.get::<_, i32>(3)? != 0,
-                notes: row.get(4)?,
-                timestamp: row.get(5)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -267,6 +343,47 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<String, String> {
     } else {
         Ok(json)
     }
+}
+
+/// 按类型筛选数据。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// item_type: &str - 数据类型（如 "text", "image" 等）
+/// # Returns
+/// String - 包含筛选后数据记录的 JSON 字符串
+#[tauri::command]
+pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE item_type = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map(params![item_type], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    clipboard_items_to_json(results)
 }
 
 /// 新建收藏夹。作为 Tauri command 暴露给前端调用。
@@ -331,7 +448,11 @@ mod tests {
     static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+        // 如果 mutex 被 poison，恢复并返回被污染时的 guard（避免测试间直接失败）
+        TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn set_test_db_path() {
@@ -340,6 +461,8 @@ mod tests {
         p.push("smartpaste_test.db");
         // 覆盖全局 OnceLock（只会在第一次调用设置）
         set_db_path(p);
+        // 确保清理全局 last_inserted，避免跨测试遗留状态导致断言失败
+        let _ = crate::clipboard::take_last_inserted();
     }
 
     fn clear_db_file() {
@@ -352,6 +475,7 @@ mod tests {
             id: id.to_string(),
             item_type: item_type.to_string(),
             content: content.to_string(),
+            size: Some(content.len() as u64),
             is_favorite: false,
             notes: "".to_string(),
             timestamp: chrono::Utc::now().timestamp(),
@@ -380,8 +504,10 @@ mod tests {
 
         let item = make_item("ut-1", "text", "hello insert");
         // insert
-        let res = insert_received_data(item.clone()).expect("insert failed");
-        assert_eq!(res, "inserted");
+        let insert_json = insert_received_data(item.clone()).expect("insert failed");
+        let inserted: ClipboardItem = serde_json::from_str(&insert_json).expect("parse inserted");
+        assert_eq!(inserted.id, item.id);
+        assert_eq!(inserted.content, item.content);
 
         // get by id
         let json = get_data_by_id(&item.id).expect("get failed");
@@ -397,6 +523,25 @@ mod tests {
         // ensure deleted
         let json2 = get_data_by_id(&item.id).expect("get after delete");
         assert_eq!(json2, "null");
+    }
+
+    #[test]
+    fn test_get_latest_data() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
+
+        // initially should be null
+        let initial = get_latest_data().expect("get latest failed");
+        assert_eq!(initial, "null");
+
+        let item = make_item("latest-1", "text", "latest content");
+        insert_received_data(item.clone()).expect("insert latest failed");
+
+        let latest_json = get_latest_data().expect("get latest after insert failed");
+        let latest: ClipboardItem = serde_json::from_str(&latest_json).expect("parse latest");
+        assert_eq!(latest.id, item.id);
+        assert_eq!(latest.content, item.content);
     }
 
     #[test]
@@ -419,47 +564,85 @@ mod tests {
     }
 
     #[test]
-    fn test_favorite_and_search_and_notes() {
+    fn test_set_favorite_status_by_id() {
         let _g = test_lock();
         set_test_db_path();
         clear_db_file();
 
-        // favorite
-        let it = make_item("fav-1", "text", "i like this");
-        insert_received_data(it.clone()).unwrap();
-        let affected = favorite_data_by_id(&it.id).expect("favorite failed");
-        assert!(affected >= 1);
-        let json = get_data_by_id(&it.id).expect("get fav");
-        let fetched: ClipboardItem = serde_json::from_str(&json).expect("parse fav");
-        assert!(fetched.is_favorite);
+        let item = make_item("fav-1", "text", "to be favorited");
+        insert_received_data(item.clone()).expect("insert for favorite");
 
-        // search_text_content
-        let t1 = make_item("s-1", "text", "hello world");
-        let t2 = make_item("s-2", "text", "goodbye world");
-        let t3 = make_item("s-3", "image", "/tmp/img");
-        insert_received_data(t1.clone()).unwrap();
-        insert_received_data(t2.clone()).unwrap();
-        insert_received_data(t3.clone()).unwrap();
+        // initially not favorite
+        let fetched_json = get_data_by_id(&item.id).expect("get for favorite");
+        let fetched: ClipboardItem =
+            serde_json::from_str(&fetched_json).expect("parse for favorite");
+        assert!(!fetched.is_favorite);
 
-        let res = search_text_content("world").expect("search failed");
-        let found: Vec<ClipboardItem> = serde_json::from_str(&res).expect("parse search");
-        let found_ids: Vec<String> = found.into_iter().map(|i| i.id).collect();
-        assert!(found_ids.contains(&t1.id));
-        assert!(found_ids.contains(&t2.id));
-        assert!(!found_ids.contains(&t3.id));
+        // set favorite
+        let res1 = set_favorite_status_by_id(&item.id).expect("set favorite");
+        assert_eq!(res1, "favorited");
 
-        // add_notes_by_id
-        let note_item = make_item("note-1", "text", "note content");
-        insert_received_data(note_item.clone()).unwrap();
-        let notes = "this is a test note";
-        let updated_json = add_notes_by_id(&note_item.id, notes).expect("add notes failed");
-        let updated: ClipboardItem = serde_json::from_str(&updated_json).expect("parse updated");
-        assert_eq!(updated.notes, notes);
+        let fetched_json2 = get_data_by_id(&item.id).expect("get after favorite");
+        let fetched2: ClipboardItem =
+            serde_json::from_str(&fetched_json2).expect("parse after favorite");
+        assert!(fetched2.is_favorite);
 
-        // verify persisted
-        let get_json = get_data_by_id(&note_item.id).expect("get after notes");
-        let got: ClipboardItem = serde_json::from_str(&get_json).expect("parse got");
-        assert_eq!(got.notes, notes);
+        // unset favorite
+        let res2 = set_favorite_status_by_id(&item.id).expect("unset favorite");
+        assert_eq!(res2, "unfavorited");
+
+        let fetched_json3 = get_data_by_id(&item.id).expect("get after unfavorite");
+        let fetched3: ClipboardItem =
+            serde_json::from_str(&fetched_json3).expect("parse after unfavorite");
+        assert!(!fetched3.is_favorite);
+    }
+
+    #[test]
+    fn test_search_text_content() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
+
+        let item1 = make_item("search-1", "text", "hello world");
+        let item2 = make_item("search-2", "text", "goodbye world");
+        let item3 = make_item("search-3", "image", "/tmp/img.png");
+
+        insert_received_data(item1.clone()).unwrap();
+        insert_received_data(item2.clone()).unwrap();
+        insert_received_data(item3.clone()).unwrap();
+
+        let results_json = search_text_content("world").expect("search failed");
+        let results: Vec<ClipboardItem> =
+            serde_json::from_str(&results_json).expect("parse search results");
+
+        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
+        assert!(ids.contains(&item1.id));
+        assert!(ids.contains(&item2.id));
+        assert!(!ids.contains(&item3.id)); // image type should not be included
+    }
+
+    #[test]
+    fn test_filter_data_by_type() {
+        let _g = test_lock();
+        set_test_db_path();
+        clear_db_file();
+
+        let item1 = make_item("filter-1", "text", "some text");
+        let item2 = make_item("filter-2", "image", "/tmp/img.png");
+        let item3 = make_item("filter-3", "text", "more text");
+
+        insert_received_data(item1.clone()).unwrap();
+        insert_received_data(item2.clone()).unwrap();
+        insert_received_data(item3.clone()).unwrap();
+
+        let results_json = filter_data_by_type("text").expect("filter failed");
+        let results: Vec<ClipboardItem> =
+            serde_json::from_str(&results_json).expect("parse filter results");
+
+        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
+        assert!(ids.contains(&item1.id));
+        assert!(ids.contains(&item3.id));
+        assert!(!ids.contains(&item2.id)); // image type should not be included
     }
 
     #[test]
