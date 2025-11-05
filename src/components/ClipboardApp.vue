@@ -58,12 +58,14 @@
             :key="index" 
             class="history-item"
             tabindex="0"
+            @mouseenter="isFocused = true"
+            @mouseleave="isFocused = false"
           >
             <div class="item-info">
               <div class="item-meta">
                 <span>{{ item.item_type }}</span>
-                <span>{{ test }}字符</span>
-                <span>{{  }}</span>
+                <span>{{  }}字符</span>
+                <span>{{ item.notes }}</span>
               </div>
 
               <!-- 右上方按钮组 -->
@@ -85,27 +87,37 @@
                 <button 
                   class="icon-btn-small" 
                   @click="editItem(index)"
+                  title="编辑"
                   :disabled="item.content.length > 500"
                 >
                   ✏️
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="shareItem(item.content)"
+                  @click="noteItem(index)"
+                  title="备注"
                 >
                   📤
                 </button>
                 <button 
                   class="icon-btn-small" 
                   @click="removeItem(index)"
+                  title="删除"
                 >
                   🗑️
                 </button>
               </div>
             </div>
-            <div class="item-content">
-              <div class="item-text" :title="item.content">{{ item.content }}</div>           
-            </div>
+            <div class="item-content"> 
+              <transition name="fade" mode="out-in">               
+                  <div v-if="isFocused" class="item-text" :title="item.content">
+                    {{ item.content }}
+                  </div>
+                  <div v-else class="item-text">
+                    {{ item.notes }}
+                  </div>
+              </transition> 
+            </div>    
           </div>
         </div>
       </div>
@@ -160,6 +172,22 @@
         </div>
       </div>
     </div>
+
+    <!-- 备注模态框 -->
+    <div v-if="showNoteModal" class="modal">
+      <div class="modal-content">
+        <h3>备注内容</h3>
+        <textarea 
+          v-model="notingText" 
+          class="edit-textarea"
+          placeholder="请输入内容..."
+        ></textarea>
+        <div class="modal-actions">
+          <button @click="cancelNote" class="btn btn-secondary">取消</button>
+          <button @click="saveNote" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -167,8 +195,6 @@
 import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
-let test = ref('调用失败')
-let test_rust = ref()
 
 export default {
   name: 'App',
@@ -180,8 +206,13 @@ export default {
     const showToast = ref(false)
     const toastMessage = ref('')
     const showEditModal = ref(false)
+    const showNoteModal = ref(false)
     const editingIndex = ref(-1)
     const editingText = ref('')
+    const notingIndex = ref(-1)
+    const notingText = ref('')
+
+    const isFocused = ref(false)
     
     
     // 分类选项
@@ -251,28 +282,11 @@ export default {
       return filtered
     })
 
-    // 从剪贴板读取
-    const readFromClipboard = async () => {
-      try {
-        let text = ''
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          text = await navigator.clipboard.readText()
-        } else {
-          // 模拟读取
-          text = '模拟剪贴板内容 - ' + new Date().toLocaleTimeString()
-        }
-        
-        // 添加到历史记录
-        addToHistory(text)
-        showMessage('已从剪贴板读取并保存')
-      } catch (error) {
-        console.error('读取剪贴板失败:', error)
-        showMessage('读取剪贴板失败')
-      }
-    }
-
     // 添加到历史记录
     const addToHistory = (text) => {
+
+      // text = '模拟剪贴板内容 - ' + new Date().toLocaleTimeString()
+
       if (!text.trim()) return
       
       const newItem = {
@@ -287,7 +301,6 @@ export default {
       if (history.value.length > 100) {
         history.value.pop()
       }
-      saveToStorage()
     }
 
     // 复制项目
@@ -312,16 +325,16 @@ export default {
     }
 
     // 切换收藏状态
-    const toggleFavorite = (index) => {
-      history.value[index].favorite = !history.value[index].favorite
-      saveToStorage()
-      showMessage(history.value[index].favorite ? '已收藏' : '已取消收藏')
+    const toggleFavorite = async (index) => {
+      history.value[index].is_favorite = !history.value[index].is_favorite
+      await invoke('favorite_data_by_id', { id: history.value[index].id })
+      showMessage(history.value[index].is_favorite ? '已收藏' : '已取消收藏')
     }
 
     // 编辑项目
     const editItem = (index) => {
       editingIndex.value = index
-      editingText.value = history.value[index].text
+      editingText.value = history.value[index].content
       showEditModal.value = true
     }
 
@@ -330,7 +343,6 @@ export default {
       if (editingIndex.value >= 0 && editingText.value.trim()) {
         history.value[editingIndex.value].text = editingText.value.trim()
         history.value[editingIndex.value].timestamp = new Date().getTime()
-        saveToStorage()
         showMessage('内容已更新')
       }
       cancelEdit()
@@ -343,29 +355,35 @@ export default {
       editingText.value = ''
     }
 
-    // 分享项目
-    const shareItem = (text) => {
-      // 模拟分享功能
-      if (navigator.share) {
-        navigator.share({
-          title: '剪贴板内容',
-          text: text
-        })
-      } else {
-        showMessage('分享功能不可用')
+    // 备注项目
+    const noteItem = (index) => {
+      notingIndex.value = index
+      notingText.value = history.value[index].notes
+      showNoteModal.value = true
+    }
+
+    // 保存备注
+    const saveNote = async () => {
+      if (notingIndex.value >= 0 && notingText.value.trim()) {
+        history.value[notingIndex.value].notes = notingText.value.trim()
+        await invoke('add_notes_by_id', { id: history.value[notingIndex.value].id, notes: notingText.value.trim() })
+        showMessage('备注已更新')
       }
+      cancelNote()
+    }
+
+    // 取消备注
+    const cancelNote = () => {
+      showNoteModal.value = false
+      notingIndex.value = -1
+      notingText.value = ''
     }
 
     // 删除项目
-    const removeItem = (index) => {
+    const removeItem = async (index) => {
       history.value.splice(index, 1)
-      saveToStorage()
+      await invoke('delete_data_by_id', { id: history.value[index].id })
       showMessage('已删除记录')
-    }
-
-    // 截断长文本
-    const truncateText = (text) => {
-      return text
     }
 
     // 格式化时间
@@ -381,81 +399,20 @@ export default {
       return date.toLocaleDateString()
     }
 
-    // 保存到本地存储
-    const saveToStorage = () => {
-      localStorage.setItem('clipboardHistory', JSON.stringify(history.value))
-    }
-
-    // 从本地存储加载
-    const loadFromStorage = () => {
-      const saved = localStorage.getItem('clipboardHistory')
-      if (saved) {
-        history.value = JSON.parse(saved)
-      }
-    }
-
-    const testBackendConnection = async () => {
+    const getAllHistory = async () => {
       try {
-        // 使用新的 invoke
         const jsonString = await invoke('get_all_data')
         history.value = JSON.parse(jsonString)
         console.log('调用成功:', result)
-        showMessage('后端连接测试成功: ' + result)
       } catch (error) {
         console.error('调用失败:', error)
-        showMessage('后端连接失败: ' + error.toString())
       }
     }
 
-    const testBackendConnection2 = async () => {
-      try {
-        // 使用新的 invoke
-        test.value = await invoke('test_function')
-        console.log('调用成功:', result)
-        showMessage('后端连接测试成功: ' + result)
-      } catch (error) {
-        console.error('调用失败:', error)
-        showMessage('后端连接失败: ' + error.toString())
-      }
-    }
-
-    onMounted(() => {
+    onMounted(async () => {
       console.log('开始初始化...')
 
-      // 直接设置数据
       /*
-      history.value = [
-        {
-          tag: '纯文本',
-          text: '欢迎使用 SmartPaste 剪贴板管理器！',
-          timestamp: Date.now(),
-          pinned: true,
-          favorite: true
-        },
-        {
-          tag: '纯文本',
-          text: '测试数据1',
-          timestamp: Date.now() - 100000,
-          pinned: false,
-          favorite: false
-        },
-        {
-          tag: '纯文本',
-          text: '测试数据2:长文本测试，这是一条非常长的文本，用于测试文本截断功能。'.repeat(10),
-          timestamp: Date.now() - 100000,
-          pinned: false,
-          favorite: false
-        },
-        {
-          tag: '纯文本',
-          text: '测试数据3:中文本测试，这是一条比较长的文本，用于测试文本截断功能。'.repeat(3),
-          timestamp: Date.now() - 100000,
-          pinned: false,
-          favorite: false
-        }
-      ]
-      */
-      
       history.value = [
         {
           id: '0123456',
@@ -466,11 +423,14 @@ export default {
           timestamp: '1696118400000'
         }
       ]
+      */
 
-      testBackendConnection2()
-      testBackendConnection() 
-      
-      // history.value = invoke('get_all_data')
+      // 从本地存储加载历史记录
+      getAllHistory() 
+
+      // 设置初始窗口大小
+      // await invoke('set_window_size', { width: 400, height: 600 })
+
       console.log('数据设置完成:', history.value)
       console.log('数据长度:', history.value.length)
     })
@@ -483,9 +443,10 @@ export default {
       showToast,
       toastMessage,
       showEditModal,
+      showNoteModal,
       editingText,
-      test,
-      test_rust,
+      notingText,
+      isFocused,
       setActiveCategory,
       togglePinnedView,
       openSettings,
@@ -494,10 +455,12 @@ export default {
       editItem,
       saveEdit,
       cancelEdit,
-      shareItem,
+      noteItem,
+      saveNote,
+      cancelNote,
       removeItem,
-      truncateText,
-      formatTime
+      formatTime,
+      getAllHistory
     }
   }
 }
@@ -859,6 +822,22 @@ body {
 .btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* 淡入淡出动画效果 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
 /* 响应式设计 */

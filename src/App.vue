@@ -10,6 +10,7 @@
 <style>
 /* 全局样式可以放在这里 */
 /* 全局样式 - 确保桌宠应用透明无边框 */
+/*
 html, body {
   margin: 0;
   padding: 0;
@@ -24,4 +25,5 @@ html, body {
   height: 100%;
   background: transparent;
 }
+  */
 </style>
