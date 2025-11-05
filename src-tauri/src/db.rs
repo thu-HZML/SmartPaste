@@ -63,7 +63,7 @@ pub fn init_db(path: &Path) -> Result<()> {
 /// Param:
 /// data: ClipboardItem - 要插入的数据项
 /// Returns:
-/// String - 插入结果信息
+/// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
 #[tauri::command]
 pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
@@ -86,9 +86,9 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     // 插入成功后，更新全局最后插入项
-    crate::clipboard::set_last_inserted(data);
+    crate::clipboard::set_last_inserted(data.clone());
 
-    Ok("inserted".to_string())
+    clipboard_item_to_json(data)
 }
 
 /// 获取上一条数据。作为 Tauri command 暴露给前端调用。
@@ -504,8 +504,10 @@ mod tests {
 
         let item = make_item("ut-1", "text", "hello insert");
         // insert
-        let res = insert_received_data(item.clone()).expect("insert failed");
-        assert_eq!(res, "inserted");
+        let insert_json = insert_received_data(item.clone()).expect("insert failed");
+        let inserted: ClipboardItem = serde_json::from_str(&insert_json).expect("parse inserted");
+        assert_eq!(inserted.id, item.id);
+        assert_eq!(inserted.content, item.content);
 
         // get by id
         let json = get_data_by_id(&item.id).expect("get failed");
