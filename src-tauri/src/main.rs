@@ -154,6 +154,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             test_function,
+            write_to_clipboard,
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
