@@ -1,4 +1,5 @@
 use rusqlite::{params, Connection, Result};
+use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
 use serde_json;
 use std::path::PathBuf;
@@ -44,6 +45,8 @@ fn get_db_path() -> PathBuf {
 /// path: &Path - 数据库文件路径
 pub fn init_db(path: &Path) -> Result<()> {
     let conn = Connection::open(path)?;
+
+    // 元数据表
     conn.execute(
         "CREATE TABLE IF NOT EXISTS data (
             id TEXT PRIMARY KEY NOT NULL, 
@@ -56,6 +59,28 @@ pub fn init_db(path: &Path) -> Result<()> {
         )",
         [],
     )?;
+
+    // 收藏夹表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS folders (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL
+            )",
+        [],
+    )?;
+
+    // 收藏夹与数据关联表，用于多对多关系
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS folder_items (
+            folder_id TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            PRIMARY KEY (folder_id, item_id),
+            FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES data(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
     Ok(())
 }
 
@@ -390,50 +415,85 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
 /// # Param
 /// name: &str - 收藏夹名称
 /// # Returns
-/// String - 成功信息
-/// TODO: 尚未完成
+/// String - 新建收藏夹的 ID，若失败则返回错误信息
 #[tauri::command]
 pub fn create_new_folder(name: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    if name.is_empty() {
-        return Err("folder name is empty".to_string());
-    }
-    // 仅允许字母、数字和下划线，避免 SQL 注入或非法列名
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(
-            "folder name contains invalid characters; only letters, digits and underscore allowed"
-                .to_string(),
-        );
-    }
+    let id = Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO folders (id, name) VALUES (?1, ?2)",
+        params![id, name],
+    )
+    .map_err(|e| e.to_string())?;
 
-    let folder_name_in_database = format!("folder_{}", name);
+    Ok(id)
+}
 
-    // 检查列是否已存在：使用 PRAGMA table_info(data) 获取列名
+/// 向收藏夹添加数据项。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// item_id: &str - 数据项 ID
+/// # Returns
+/// String - 信息。若添加成功返回 "added to folder"，否则返回错误信息
+#[tauri::command]
+pub fn add_item_to_folder(folder_id: &str, item_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO folder_items (folder_id, item_id) VALUES (?1, ?2)",
+        params![folder_id, item_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("added to folder".to_string())
+}
+
+/// 筛选收藏夹内的数据项。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_name: &str - 收藏夹名称
+/// # Returns
+/// String - 包含筛选后数据记录的 JSON 字符串，若失败则返回错误信息
+#[tauri::command]
+pub fn filter_data_by_folder(folder_name: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
     let mut stmt = conn
-        .prepare("PRAGMA table_info(data)")
-        .map_err(|e| e.to_string())?;
-    let mut rows = stmt
-        .query_map([], |row| row.get::<_, String>(1))
+        .prepare(
+            "SELECT d.id, d.item_type, d.content, d.size, d.is_favorite, d.notes, d.timestamp
+             FROM data d
+             JOIN folder_items fi ON d.id = fi.item_id
+             JOIN folders f ON fi.folder_id = f.id
+             WHERE f.name = ?1",
+        )
         .map_err(|e| e.to_string())?;
 
-    while let Some(col_res) = rows.next() {
-        let col = col_res.map_err(|e| e.to_string())?;
-        if col == folder_name_in_database {
-            return Ok(format!("收藏夹 '{}' 已存在", name));
-        }
+    let clipboard_iter = stmt
+        .query_map(params![folder_name], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
     }
 
-    // 添加新列，类型为 INTEGER，NOT NULL，默认 0（代表 false）
-    let alter_sql = format!(
-        "ALTER TABLE data ADD COLUMN \"{}\" INTEGER NOT NULL DEFAULT 0",
-        folder_name_in_database
-    );
-    conn.execute(&alter_sql, []).map_err(|e| e.to_string())?;
-
-    Ok(format!("收藏夹 '{}' 已创建", name))
+    clipboard_items_to_json(results)
 }
 
 /// # 单元测试
@@ -646,21 +706,29 @@ mod tests {
     }
 
     #[test]
-    fn test_create_new_folder_valid_and_invalid() {
+    fn test_folder_functions() {
         let _g = test_lock();
         set_test_db_path();
         clear_db_file();
 
-        // valid
-        let ok = create_new_folder("testfolder").expect("create folder failed");
-        assert!(ok.contains("已创建") || ok.contains("已存在"));
+        let folder_name = "MyFolder";
+        let folder_id = create_new_folder(folder_name).expect("create folder failed");
 
-        // creating again should return exists
-        let ok2 = create_new_folder("testfolder").expect("create folder second failed");
-        assert!(ok2.contains("已存在"));
+        let item1 = make_item("folder-1", "text", "item one");
+        let item2 = make_item("folder-2", "text", "item two");
 
-        // invalid name
-        let err = create_new_folder("bad name!").err();
-        assert!(err.is_some());
+        insert_received_data(item1.clone()).unwrap();
+        insert_received_data(item2.clone()).unwrap();
+
+        add_item_to_folder(&folder_id, &item1.id).expect("add item1 to folder failed");
+        add_item_to_folder(&folder_id, &item2.id).expect("add item2 to folder failed");
+
+        let results_json = filter_data_by_folder(folder_name).expect("filter by folder failed");
+        let results: Vec<ClipboardItem> =
+            serde_json::from_str(&results_json).expect("parse folder results");
+
+        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
+        assert!(ids.contains(&item1.id));
+        assert!(ids.contains(&item2.id));
     }
 }
