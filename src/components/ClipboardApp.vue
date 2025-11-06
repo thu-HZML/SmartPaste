@@ -548,6 +548,11 @@ body {
 
 /* 顶部搜索栏样式 */
 .app-header {
+  position: fixed; /* 新增：固定定位 */
+  top: 0; /* 新增：固定在顶部 */
+  left: 0; /* 新增：左侧对齐 */
+  right: 0; /* 新增：右侧对齐 */
+  z-index: 1000; /* 新增：确保在其他内容之上 */
   background: white;
   border-bottom: 1px solid #e1e8ed;
   padding: 0;
@@ -654,6 +659,7 @@ body {
 .app-main {
   padding: 8px 10px;
   margin: 0 auto;
+  margin-top: 96px; /* 顶部搜索栏高度 + 工具栏高度 */
 }
 
 /* 空状态样式 */
@@ -984,6 +990,7 @@ body {
   
   .app-main {
     padding: 16px;
+    margin-top: 90px;
   }
   
   .search-container {
