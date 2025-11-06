@@ -45,16 +45,17 @@
 
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
-      <!-- “全部”界面 -->
-      <div v-if="activeCategory === 'all'">
-        <div v-if="history.length === 0" class="empty-state">
-          <p>暂无剪贴板记录</p>
+      <!-- "全部"、"图片"、"视频"、"文件"界面 -->
+      <div v-if="['all', 'image', 'video', 'file'].includes(activeCategory)">
+        <div v-if="filteredHistory.length === 0" class="empty-state">
+          <p v-if="searchQuery">未找到匹配的记录</p>
+          <p v-else>暂无剪贴板记录</p>
           <p class="hint">复制的内容将显示在这里</p>
         </div>
         
         <div v-else class="history-list">
           <div 
-            v-for="(item, index) in history" 
+            v-for="(item, index) in filteredHistory" 
             :key="index" 
             class="history-item"
             tabindex="0"
@@ -64,8 +65,8 @@
             <div class="item-info">
               <div class="item-meta">
                 <span>{{ item.item_type }}</span>
-                <span>{{  }}字符</span>
-                <span>{{  }}</span>
+                <span>{{ item.content.length }}字符</span>
+                <span>{{ formatTime(item.timestamp) }}</span>
               </div>
 
               <!-- 右上方按钮组 -->
@@ -156,9 +157,12 @@
         </div>
       </div>
 
-      <!-- “收藏”界面 -->
+      <!-- "收藏"界面 -->
       <div v-if="activeCategory === 'favorite'">
-        <div class="history-list">
+        <div v-if="favoriteHistory.length === 0" class="empty-state">
+          <p>暂无收藏记录</p>
+        </div>
+        <div v-else class="history-list">
           <div 
             v-for="(item, index) in favoriteHistory" 
             :key="index" 
@@ -174,13 +178,14 @@
               <!-- 右上方按钮组 -->
               <div class="item-actions-top">
                 <button 
-                  class="icon-btn-small" 
+                  class="icon-btn-small"                  
                   @click="removeItem(index)"
+                  title="删除"
                 >
                   🗑️
                 </button>
               </div>
-            </div>
+            </div>              
           </div>
         </div>
       </div>
@@ -230,7 +235,6 @@ import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 
-
 const test = ref('')
 export default {
   name: 'App',
@@ -253,6 +257,7 @@ export default {
       { id: 'all', name: '全部' },
       { id: 'image', name: '图片' },
       { id: 'video', name: '视频' },
+      { id: 'file', name: '文件' },
       { id: 'favorite', name: '收藏' }
     ])
     
@@ -290,52 +295,35 @@ export default {
     const filteredHistory = computed(() => {
       let filtered = history.value
       
-      // 搜索过滤
+      // 搜索过滤 - 搜索内容和备注
       if (searchQuery.value) {
-        filtered = filtered.filter(item => 
-          item.text.toLowerCase().includes(searchQuery.value.toLowerCase())
-        )
+        const query = searchQuery.value.toLowerCase()
+        filtered = filtered.filter(item => {
+          const content = item.content ? item.content.toLowerCase() : ''
+          const notes = item.notes ? item.notes.toLowerCase() : ''
+          return content.includes(query) || notes.includes(query)
+        })
       }
       
       // 分类过滤
       switch (activeCategory.value) {
-        case 'favorite':
-          filtered = filtered.filter(item => item.favorite)
-          break
         case 'image':
-          // 模拟图片类型过滤
-          filtered = filtered.filter(item => item.text.includes('image') || item.text.includes('图片'))
+          filtered = filtered.filter(item => item.item_type === 'image')
           break
         case 'video':
-          // 模拟视频类型过滤
-          filtered = filtered.filter(item => item.text.includes('video') || item.text.includes('视频'))
+          filtered = filtered.filter(item => item.item_type === 'video')
+          break
+        case 'file':
+          filtered = filtered.filter(item => item.item_type === 'file')
+          break
+        case 'favorite':
+          filtered = filtered.filter(item => item.is_favorite)
           break
         // 'all' 不进行过滤
       }
       
       return filtered
     })
-
-    // 添加到历史记录
-    const addToHistory = (text) => {
-
-      // text = '模拟剪贴板内容 - ' + new Date().toLocaleTimeString()
-
-      if (!text.trim()) return
-      
-      const newItem = {
-        text: text.trim(),
-        timestamp: new Date().getTime(),
-        pinned: false,
-        favorite: false
-      }
-      
-      history.value.unshift(newItem)
-      // 限制历史记录数量
-      if (history.value.length > 100) {
-        history.value.pop()
-      }
-    }
 
     // 复制项目
     const copyItem = async (text) => {
@@ -375,7 +363,7 @@ export default {
     // 保存编辑
     const saveEdit = () => {
       if (editingIndex.value >= 0 && editingText.value.trim()) {
-        history.value[editingIndex.value].text = editingText.value.trim()
+        history.value[editingIndex.value].content = editingText.value.trim()
         history.value[editingIndex.value].timestamp = new Date().getTime()
         showMessage('内容已更新')
       }
@@ -422,7 +410,8 @@ export default {
 
     // 格式化时间
     const formatTime = (timestamp) => {
-      const date = new Date(timestamp)
+      if (!timestamp) return '未知时间'
+      const date = new Date(parseInt(timestamp))
       const now = new Date()
       const diff = now - date
       
@@ -449,6 +438,7 @@ export default {
 
     // 从路径中提取文件名
     const getFileName = (path) => {
+      if (!path) return '未知文件'
       return path.split(/[\\/]/).pop() || '未知文件'
     }
 
@@ -459,6 +449,7 @@ export default {
 
     // 检查是否是文档文件
     const isDocumentFile = (path) => {
+      if (!path) return false
       const docExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md']
       return docExtensions.some(ext => path.toLowerCase().endsWith(ext))
     }
@@ -493,6 +484,8 @@ export default {
       activeCategory,
       categories,
       history,
+      favoriteHistory,
+      filteredHistory,
       showToast,
       toastMessage,
       showEditModal,
