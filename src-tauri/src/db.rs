@@ -1,27 +1,16 @@
 use rusqlite::{params, Connection, Result};
+use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
-use serde_json;
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
+use crate::clipboard::clipboard_item_to_json;
+use crate::clipboard::clipboard_items_to_json;
 use crate::clipboard::ClipboardItem;
 
 // const DB_PATH: &str = "smartpaste.db";
 
 static DB_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
-
-/// 将 ClipboardItem 转换为 JSON 字符串。
-/// # Param
-/// item: ClipboardItem - 要转换的剪贴板项
-pub fn clipboard_item_to_json(item: ClipboardItem) -> Result<String, String> {
-    serde_json::to_string(&item).map_err(|e| e.to_string())
-}
-/// 将 ClipboardItem 列表转换为 JSON 字符串。
-/// # Param
-/// items: Vec<ClipboardItem> - 要转换的剪贴板项列表
-pub fn clipboard_items_to_json(items: Vec<ClipboardItem>) -> Result<String, String> {
-    serde_json::to_string(&items).map_err(|e| e.to_string())
-}
 
 /// 设置数据库路径
 /// # Param
@@ -44,6 +33,8 @@ fn get_db_path() -> PathBuf {
 /// path: &Path - 数据库文件路径
 pub fn init_db(path: &Path) -> Result<()> {
     let conn = Connection::open(path)?;
+
+    // 元数据表
     conn.execute(
         "CREATE TABLE IF NOT EXISTS data (
             id TEXT PRIMARY KEY NOT NULL, 
@@ -56,6 +47,28 @@ pub fn init_db(path: &Path) -> Result<()> {
         )",
         [],
     )?;
+
+    // 收藏夹表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS folders (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL
+            )",
+        [],
+    )?;
+
+    // 收藏夹与数据关联表，用于多对多关系
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS folder_items (
+            folder_id TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            PRIMARY KEY (folder_id, item_id),
+            FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE,
+            FOREIGN KEY (item_id) REFERENCES data(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
     Ok(())
 }
 
@@ -82,7 +95,7 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
             data.notes,
             data.timestamp,
         ],
-    )
+    ) 
         .map_err(|e| e.to_string())?;
 
     // 插入成功后，更新全局最后插入项
@@ -390,277 +403,150 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
 /// # Param
 /// name: &str - 收藏夹名称
 /// # Returns
-/// String - 成功信息
-/// TODO: 尚未完成
+/// String - 新建收藏夹的 ID，若失败则返回错误信息
 #[tauri::command]
 pub fn create_new_folder(name: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    if name.is_empty() {
-        return Err("folder name is empty".to_string());
-    }
-    // 仅允许字母、数字和下划线，避免 SQL 注入或非法列名
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(
-            "folder name contains invalid characters; only letters, digits and underscore allowed"
-                .to_string(),
-        );
-    }
+    let id = Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO folders (id, name) VALUES (?1, ?2)",
+        params![id, name],
+    )
+    .map_err(|e| e.to_string())?;
 
-    let folder_name_in_database = format!("folder_{}", name);
+    Ok(id)
+}
 
-    // 检查列是否已存在：使用 PRAGMA table_info(data) 获取列名
+/// 重命名收藏夹。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// new_name: &str - 新名称
+/// # Returns
+/// String - 信息。若重命名成功返回 "renamed"，否则返回错误信息
+#[tauri::command]
+pub fn rename_folder(folder_id: &str, new_name: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE folders SET name = ?1 WHERE id = ?2",
+        params![new_name, folder_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("renamed".to_string())
+}
+
+/// 删除收藏夹。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// # Returns
+/// String - 信息。若删除成功返回 "deleted"，否则返回错误信息
+#[tauri::command]
+pub fn delete_folder(folder_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM folders WHERE id = ?1",
+        params![folder_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("deleted".to_string())
+}
+
+/// 向收藏夹添加数据项。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// item_id: &str - 数据项 ID
+/// # Returns
+/// String - 信息。若添加成功返回 "added to folder"，否则返回错误信息
+#[tauri::command]
+pub fn add_item_to_folder(folder_id: &str, item_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO folder_items (folder_id, item_id) VALUES (?1, ?2)",
+        params![folder_id, item_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("added to folder".to_string())
+}
+
+/// 从收藏夹移除数据项。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// item_id: &str - 数据项 ID
+/// # Returns
+/// String - 信息。若移除成功返回 "removed from folder"，否则返回错误信息
+#[tauri::command]
+pub fn remove_item_from_folder(folder_id: &str, item_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM folder_items WHERE folder_id = ?1 AND item_id = ?2",
+        params![folder_id, item_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("removed from folder".to_string())
+}
+
+/// 筛选收藏夹内的数据项。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_name: &str - 收藏夹名称
+/// # Returns
+/// String - 包含筛选后数据记录的 JSON 字符串，若失败则返回错误信息
+#[tauri::command]
+pub fn filter_data_by_folder(folder_name: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
     let mut stmt = conn
-        .prepare("PRAGMA table_info(data)")
-        .map_err(|e| e.to_string())?;
-    let mut rows = stmt
-        .query_map([], |row| row.get::<_, String>(1))
+        .prepare(
+            "SELECT d.id, d.item_type, d.content, d.size, d.is_favorite, d.notes, d.timestamp
+             FROM data d
+             JOIN folder_items fi ON d.id = fi.item_id
+             JOIN folders f ON fi.folder_id = f.id
+             WHERE f.name = ?1",
+        )
         .map_err(|e| e.to_string())?;
 
-    while let Some(col_res) = rows.next() {
-        let col = col_res.map_err(|e| e.to_string())?;
-        if col == folder_name_in_database {
-            return Ok(format!("收藏夹 '{}' 已存在", name));
-        }
+    let clipboard_iter = stmt
+        .query_map(params![folder_name], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
     }
 
-    // 添加新列，类型为 INTEGER，NOT NULL，默认 0（代表 false）
-    let alter_sql = format!(
-        "ALTER TABLE data ADD COLUMN \"{}\" INTEGER NOT NULL DEFAULT 0",
-        folder_name_in_database
-    );
-    conn.execute(&alter_sql, []).map_err(|e| e.to_string())?;
-
-    Ok(format!("收藏夹 '{}' 已创建", name))
+    clipboard_items_to_json(results)
 }
 
 /// # 单元测试
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
-
-    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-    fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-        // 如果 mutex 被 poison，恢复并返回被污染时的 guard（避免测试间直接失败）
-        TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    fn set_test_db_path() {
-        // 在临时目录下使用独立数据库文件，避免污染真实数据
-        let mut p = std::env::temp_dir();
-        p.push("smartpaste_test.db");
-        // 覆盖全局 OnceLock（只会在第一次调用设置）
-        set_db_path(p);
-        // 确保清理全局 last_inserted，避免跨测试遗留状态导致断言失败
-        let _ = crate::clipboard::take_last_inserted();
-    }
-
-    fn clear_db_file() {
-        let p: PathBuf = get_db_path();
-        let _ = fs::remove_file(p);
-    }
-
-    fn make_item(id: &str, item_type: &str, content: &str) -> ClipboardItem {
-        ClipboardItem {
-            id: id.to_string(),
-            item_type: item_type.to_string(),
-            content: content.to_string(),
-            size: Some(content.len() as u64),
-            is_favorite: false,
-            notes: "".to_string(),
-            timestamp: chrono::Utc::now().timestamp(),
-        }
-    }
-
-    #[test]
-    fn test_clipboard_item_to_json_roundtrip() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        let item = make_item("json-ut-1", "text", "roundtrip");
-        let json = clipboard_item_to_json(item.clone()).expect("serialize failed");
-        let parsed: ClipboardItem = serde_json::from_str(&json).expect("deserialize failed");
-        assert_eq!(parsed.id, item.id);
-        assert_eq!(parsed.content, item.content);
-        assert_eq!(parsed.item_type, item.item_type);
-    }
-
-    #[test]
-    fn test_insert_get_delete() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        let item = make_item("ut-1", "text", "hello insert");
-        // insert
-        let insert_json = insert_received_data(item.clone()).expect("insert failed");
-        let inserted: ClipboardItem = serde_json::from_str(&insert_json).expect("parse inserted");
-        assert_eq!(inserted.id, item.id);
-        assert_eq!(inserted.content, item.content);
-
-        // get by id
-        let json = get_data_by_id(&item.id).expect("get failed");
-        assert_ne!(json, "null");
-        let fetched: ClipboardItem = serde_json::from_str(&json).expect("parse fetched");
-        assert_eq!(fetched.id, item.id);
-        assert_eq!(fetched.content, item.content);
-
-        // delete by id
-        let rows = delete_data_by_id(&item.id).expect("delete failed");
-        assert!(rows >= 1);
-
-        // ensure deleted
-        let json2 = get_data_by_id(&item.id).expect("get after delete");
-        assert_eq!(json2, "null");
-    }
-
-    #[test]
-    fn test_get_latest_data() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        // initially should be null
-        let initial = get_latest_data().expect("get latest failed");
-        assert_eq!(initial, "null");
-
-        let item = make_item("latest-1", "text", "latest content");
-        insert_received_data(item.clone()).expect("insert latest failed");
-
-        let latest_json = get_latest_data().expect("get latest after insert failed");
-        let latest: ClipboardItem = serde_json::from_str(&latest_json).expect("parse latest");
-        assert_eq!(latest.id, item.id);
-        assert_eq!(latest.content, item.content);
-    }
-
-    #[test]
-    fn test_get_all_data() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        let a = make_item("all-1", "text", "one");
-        let b = make_item("all-2", "image", "/tmp/img.png");
-
-        insert_received_data(a.clone()).unwrap();
-        insert_received_data(b.clone()).unwrap();
-
-        let all_json = get_all_data().expect("get_all failed");
-        let vec: Vec<ClipboardItem> = serde_json::from_str(&all_json).expect("parse array");
-        let ids: Vec<String> = vec.into_iter().map(|it| it.id).collect();
-        assert!(ids.contains(&a.id));
-        assert!(ids.contains(&b.id));
-    }
-
-    #[test]
-    fn test_set_favorite_status_by_id() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        let item = make_item("fav-1", "text", "to be favorited");
-        insert_received_data(item.clone()).expect("insert for favorite");
-
-        // initially not favorite
-        let fetched_json = get_data_by_id(&item.id).expect("get for favorite");
-        let fetched: ClipboardItem =
-            serde_json::from_str(&fetched_json).expect("parse for favorite");
-        assert!(!fetched.is_favorite);
-
-        // set favorite
-        let res1 = set_favorite_status_by_id(&item.id).expect("set favorite");
-        assert_eq!(res1, "favorited");
-
-        let fetched_json2 = get_data_by_id(&item.id).expect("get after favorite");
-        let fetched2: ClipboardItem =
-            serde_json::from_str(&fetched_json2).expect("parse after favorite");
-        assert!(fetched2.is_favorite);
-
-        // unset favorite
-        let res2 = set_favorite_status_by_id(&item.id).expect("unset favorite");
-        assert_eq!(res2, "unfavorited");
-
-        let fetched_json3 = get_data_by_id(&item.id).expect("get after unfavorite");
-        let fetched3: ClipboardItem =
-            serde_json::from_str(&fetched_json3).expect("parse after unfavorite");
-        assert!(!fetched3.is_favorite);
-    }
-
-    #[test]
-    fn test_search_text_content() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        let item1 = make_item("search-1", "text", "hello world");
-        let item2 = make_item("search-2", "text", "goodbye world");
-        let item3 = make_item("search-3", "image", "/tmp/img.png");
-
-        insert_received_data(item1.clone()).unwrap();
-        insert_received_data(item2.clone()).unwrap();
-        insert_received_data(item3.clone()).unwrap();
-
-        let results_json = search_text_content("world").expect("search failed");
-        let results: Vec<ClipboardItem> =
-            serde_json::from_str(&results_json).expect("parse search results");
-
-        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
-        assert!(ids.contains(&item1.id));
-        assert!(ids.contains(&item2.id));
-        assert!(!ids.contains(&item3.id)); // image type should not be included
-    }
-
-    #[test]
-    fn test_filter_data_by_type() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        let item1 = make_item("filter-1", "text", "some text");
-        let item2 = make_item("filter-2", "image", "/tmp/img.png");
-        let item3 = make_item("filter-3", "text", "more text");
-
-        insert_received_data(item1.clone()).unwrap();
-        insert_received_data(item2.clone()).unwrap();
-        insert_received_data(item3.clone()).unwrap();
-
-        let results_json = filter_data_by_type("text").expect("filter failed");
-        let results: Vec<ClipboardItem> =
-            serde_json::from_str(&results_json).expect("parse filter results");
-
-        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
-        assert!(ids.contains(&item1.id));
-        assert!(ids.contains(&item3.id));
-        assert!(!ids.contains(&item2.id)); // image type should not be included
-    }
-
-    #[test]
-    fn test_create_new_folder_valid_and_invalid() {
-        let _g = test_lock();
-        set_test_db_path();
-        clear_db_file();
-
-        // valid
-        let ok = create_new_folder("testfolder").expect("create folder failed");
-        assert!(ok.contains("已创建") || ok.contains("已存在"));
-
-        // creating again should return exists
-        let ok2 = create_new_folder("testfolder").expect("create folder second failed");
-        assert!(ok2.contains("已存在"));
-
-        // invalid name
-        let err = create_new_folder("bad name!").err();
-        assert!(err.is_some());
-    }
-}
+#[path ="test_db.rs"]
+mod tests;

@@ -30,7 +30,12 @@ fn main() {
             db::search_text_content,
             db::add_notes_by_id,
             db::filter_data_by_type,
-            // db::create_new_folder,
+            db::create_new_folder,
+            db::rename_folder,
+            db::delete_folder,
+            db::add_item_to_folder,
+            db::remove_item_from_folder,
+            db::filter_data_by_folder,
         ])
         .setup(|app| {
             // 初始化数据库路径

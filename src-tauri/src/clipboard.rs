@@ -1,6 +1,7 @@
 // src/clipboard.rs
 
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::sync::{OnceLock, RwLock};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -12,6 +13,19 @@ pub struct ClipboardItem {
     pub is_favorite: bool,
     pub notes: String,
     pub timestamp: i64,
+}
+
+/// 将 ClipboardItem 转换为 JSON 字符串。
+/// # Param
+/// item: ClipboardItem - 要转换的剪贴板项
+pub fn clipboard_item_to_json(item: ClipboardItem) -> Result<String, String> {
+    serde_json::to_string(&item).map_err(|e| e.to_string())
+}
+/// 将 ClipboardItem 列表转换为 JSON 字符串。
+/// # Param
+/// items: Vec<ClipboardItem> - 要转换的剪贴板项列表
+pub fn clipboard_items_to_json(items: Vec<ClipboardItem>) -> Result<String, String> {
+    serde_json::to_string(&items).map_err(|e| e.to_string())
 }
 
 // 全局保存最后一次插入的数据（线程安全，可克隆取出）
