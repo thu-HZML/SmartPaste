@@ -866,6 +866,7 @@ dependencies = [
 name = "desktop-pet"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "chrono",
  "clipboard-files",
  "image",
@@ -877,6 +878,7 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
+ "tempfile",
  "uuid",
 ]
 
