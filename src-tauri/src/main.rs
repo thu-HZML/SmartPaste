@@ -46,10 +46,11 @@ async fn write_file_to_clipboard(
         .map_err(|e| format!("无法获取文件绝对路径: {}", e))?;
     
     // 根据不同平台调用相应的文件复制方法
-    copy_file_to_clipboard(&absolute_path)
+    copy_file_to_clipboard(absolute_path)
 }
 // 跨平台文件复制到剪贴板
-fn copy_file_to_clipboard(file_path: &PathBuf) -> Result<(), String> {
+#[tauri::command]
+fn copy_file_to_clipboard(file_path: PathBuf) -> Result<(), String> {
     let file_path_str = file_path.to_str()
         .ok_or("文件路径包含非法字符")?;
 
@@ -75,7 +76,6 @@ fn copy_file_to_clipboard_windows(file_path: &str) -> Result<(), String> {
     use std::io::Write;
     use tempfile::NamedTempFile;
     
-    // 方法1: 使用PowerShell (推荐)
     let ps_script = format!(
         "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetFileDropList(@('{}'))",
         file_path.replace("'", "''")
@@ -155,6 +155,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             test_function,
             write_to_clipboard,
+            write_file_to_clipboard,
+            copy_file_to_clipboard,
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
