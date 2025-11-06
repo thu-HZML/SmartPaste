@@ -110,8 +110,42 @@
             </div>
             <div class="item-content"> 
               <transition name="fade" mode="out-in">               
-                  <div v-if="item.is_focus || !item.notes" class="item-text" :title="item.content">
-                    {{ item.content }}
+                  <div v-if="item.is_focus || !item.notes" class="item-text">
+
+                    <!-- 显示文本 -->
+                    <div v-if="item.item_type === 'text'" :title="item.content">
+                      {{ item.content }}
+                    </div>
+                    
+                    <!-- 显示图片 -->
+                    <div v-else-if="item.item_type === 'image'" class="image-container">
+                      <img 
+                        v-if="item.content"
+                        :src="convertFileSrc(item.content)" 
+                        :alt="'图片: ' + getFileName(item.content)"
+                        class="preview-image"
+                        @error="handleImageError"
+                      />
+                      <div v-else class="loading">加载中...</div>
+                      <div class="image-filename">{{ getFileName(item.content) }}</div>
+                    </div>
+
+                    <!-- 显示文件 -->
+                    <div v-else-if="item.item_type === 'file'" class="file-container">
+                      <div class="file-icon">
+                        <!-- 可以根据文件类型显示不同的图标 -->
+                        <span v-if="isDocumentFile(item.content)" class="icon">📄</span>
+                        <span v-else class="icon">📎</span>
+                      </div>
+                      <div class="file-info">
+                        <div class="file-name">{{ getFileName(item.content) }}</div>
+                      </div>
+                    </div>
+
+                    <!-- 未知类型 -->
+                    <div v-else :title="item.content">
+                      {{ item.content }}
+                    </div>
                   </div>
                   <div v-else class="item-text">
                     {{ item.notes }}
@@ -194,7 +228,8 @@
 <script>
 import { ref, computed, onMounted} from 'vue'
 import { useRouter } from 'vue-router'
-import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+
 
 const test = ref('')
 export default {
@@ -211,7 +246,7 @@ export default {
     const editingIndex = ref(-1)
     const editingText = ref('')
     const notingIndex = ref(-1)
-    const notingText = ref('')   
+    const notingText = ref('') 
     
     // 分类选项
     const categories = ref([
@@ -412,6 +447,22 @@ export default {
       }
     }
 
+    // 从路径中提取文件名
+    const getFileName = (path) => {
+      return path.split(/[\\/]/).pop() || '未知文件'
+    }
+
+    // 图片加载错误处理
+    const handleImageError = (event) => {
+      console.error('图片加载失败:', event.target.src)
+    }
+
+    // 检查是否是文档文件
+    const isDocumentFile = (path) => {
+      const docExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md']
+      return docExtensions.some(ext => path.toLowerCase().endsWith(ext))
+    }
+
     onMounted(async () => {
       console.log('开始初始化...')
 
@@ -462,7 +513,11 @@ export default {
       cancelNote,
       removeItem,
       formatTime,
-      getAllHistory
+      getAllHistory,
+      getFileName,
+      handleImageError,
+      convertFileSrc,
+      isDocumentFile
     }
   }
 }
@@ -677,7 +732,7 @@ body {
   background: #e9ecef;
 }
 
-/* 剪贴内容样式 */
+/* 剪贴文本样式 */
 .item-content {
   display: flex;
   justify-content: space-between;
@@ -700,6 +755,62 @@ body {
   color: #1f1f1f;
   min-height: 81px;
   max-height: 81px;
+}
+
+/* 剪贴图片预览样式 */
+.image-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.image-filename {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+}
+
+/* 剪贴文件预览样式 */
+.file-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background-color: #f9f9f9;
+}
+
+.file-icon {
+  font-size: 24px;
+}
+
+.file-info {
+  flex: 1;
+  min-width: 0; /* 允许文本截断 */
+}
+
+.file-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-path {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 提示框样式 */
