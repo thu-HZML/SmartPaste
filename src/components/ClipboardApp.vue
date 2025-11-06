@@ -58,14 +58,14 @@
             :key="index" 
             class="history-item"
             tabindex="0"
-            @mouseenter="isFocused = true"
-            @mouseleave="isFocused = false"
+            @mouseenter="item.is_focus = true"
+            @mouseleave="item.is_focus = false"
           >
             <div class="item-info">
               <div class="item-meta">
                 <span>{{ item.item_type }}</span>
-                <span>{{ test }}字符</span>
-                <span>{{ item.notes }}</span>
+                <span>{{  }}字符</span>
+                <span>{{  }}</span>
               </div>
 
               <!-- 右上方按钮组 -->
@@ -110,7 +110,7 @@
             </div>
             <div class="item-content"> 
               <transition name="fade" mode="out-in">               
-                  <div v-if="isFocused" class="item-text" :title="item.content">
+                  <div v-if="item.is_focus || !item.notes" class="item-text" :title="item.content">
                     {{ item.content }}
                   </div>
                   <div v-else class="item-text">
@@ -211,10 +211,7 @@ export default {
     const editingIndex = ref(-1)
     const editingText = ref('')
     const notingIndex = ref(-1)
-    const notingText = ref('')
-
-    const isFocused = ref(false)
-    
+    const notingText = ref('')   
     
     // 分类选项
     const categories = ref([
@@ -405,6 +402,11 @@ export default {
       try {
         const jsonString = await invoke('get_all_data')
         history.value = JSON.parse(jsonString)
+        // 为现有数组中的每个对象添加 is_focus 字段
+        history.value = history.value.map(item => ({
+          ...item,
+          is_focus: false
+        }))
       } catch (error) {
         console.error('调用失败:', error)
       }
@@ -421,16 +423,15 @@ export default {
           content: '这是一个测试样例',
           is_favorite: true,
           notes: '样例备注',
-          timestamp: '1696118400000'
+          timestamp: '1696118400000',
+          is_focus: false
         }
       ]
 
       //test.value = await invoke('test_function')
+
       // 从本地存储加载历史记录
       getAllHistory() 
-
-      // 设置初始窗口大小
-      // await invoke('set_window_size', { width: 400, height: 600 })
 
       console.log('数据设置完成:', history.value)
       console.log('数据长度:', history.value.length)
@@ -447,7 +448,6 @@ export default {
       showNoteModal,
       editingText,
       notingText,
-      isFocused,
       test,
       setActiveCategory,
       togglePinnedView,
