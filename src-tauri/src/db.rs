@@ -95,7 +95,7 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
             data.notes,
             data.timestamp,
         ],
-    )
+    ) 
         .map_err(|e| e.to_string())?;
 
     // 插入成功后，更新全局最后插入项
@@ -420,6 +420,47 @@ pub fn create_new_folder(name: &str) -> Result<String, String> {
     Ok(id)
 }
 
+/// 重命名收藏夹。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// new_name: &str - 新名称
+/// # Returns
+/// String - 信息。若重命名成功返回 "renamed"，否则返回错误信息
+#[tauri::command]
+pub fn rename_folder(folder_id: &str, new_name: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE folders SET name = ?1 WHERE id = ?2",
+        params![new_name, folder_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("renamed".to_string())
+}
+
+/// 删除收藏夹。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// # Returns
+/// String - 信息。若删除成功返回 "deleted"，否则返回错误信息
+#[tauri::command]
+pub fn delete_folder(folder_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM folders WHERE id = ?1",
+        params![folder_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("deleted".to_string())
+}
+
 /// 向收藏夹添加数据项。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// folder_id: &str - 收藏夹 ID
@@ -439,6 +480,27 @@ pub fn add_item_to_folder(folder_id: &str, item_id: &str) -> Result<String, Stri
     .map_err(|e| e.to_string())?;
 
     Ok("added to folder".to_string())
+}
+
+/// 从收藏夹移除数据项。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// folder_id: &str - 收藏夹 ID
+/// item_id: &str - 数据项 ID
+/// # Returns
+/// String - 信息。若移除成功返回 "removed from folder"，否则返回错误信息
+#[tauri::command]
+pub fn remove_item_from_folder(folder_id: &str, item_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM folder_items WHERE folder_id = ?1 AND item_id = ?2",
+        params![folder_id, item_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("removed from folder".to_string())
 }
 
 /// 筛选收藏夹内的数据项。作为 Tauri command 暴露给前端调用。
@@ -699,24 +761,55 @@ mod tests {
         set_test_db_path();
         clear_db_file();
 
-        let folder_name = "MyFolder";
-        let folder_id = create_new_folder(folder_name).expect("create folder failed");
+        // 创建并插入 5 个 item
+        let items = vec![
+            make_item("f-1", "text", "one"),
+            make_item("f-2", "text", "two"),
+            make_item("f-3", "image", "/tmp/img1"),
+            make_item("f-4", "text", "four"),
+            make_item("f-5", "image", "/tmp/img2"),
+        ];
+        for it in &items {
+            insert_received_data(it.clone()).expect("insert failed");
+        }
 
-        let item1 = make_item("folder-1", "text", "item one");
-        let item2 = make_item("folder-2", "text", "item two");
+        // 新建两个收藏夹
+        let folder_id = create_new_folder("TestFolder").expect("create folder");
+        let other_folder_id = create_new_folder("OtherFolder").expect("create other");
 
-        insert_received_data(item1.clone()).unwrap();
-        insert_received_data(item2.clone()).unwrap();
+        // 向 TestFolder 添加 4 个 item，向 OtherFolder 添加 1 个
+        for id in &["f-1", "f-2", "f-3", "f-4"] {
+            add_item_to_folder(&folder_id, id).expect("add to folder failed");
+        }
+        add_item_to_folder(&other_folder_id, "f-5").expect("add other failed");
 
-        add_item_to_folder(&folder_id, &item1.id).expect("add item1 to folder failed");
-        add_item_to_folder(&folder_id, &item2.id).expect("add item2 to folder failed");
+        // 重复添加同一项（应被忽略，不会重复出现在查询结果中）
+        add_item_to_folder(&folder_id, "f-1").expect("duplicate add failed");
 
-        let results_json = filter_data_by_folder(folder_name).expect("filter by folder failed");
-        let results: Vec<ClipboardItem> =
-            serde_json::from_str(&results_json).expect("parse folder results");
+        // 通过收藏夹名称筛选 TestFolder 的内容，应该包含 f-1..f-4，不包含 f-5
+        let res = filter_data_by_folder("TestFolder").expect("filter failed");
+        let vec: Vec<ClipboardItem> = serde_json::from_str(&res).expect("parse");
+        let ids: Vec<String> = vec.iter().map(|it| it.id.clone()).collect();
+        assert_eq!(ids.len(), 4);
+        for id in &["f-1", "f-2", "f-3", "f-4"] {
+            assert!(ids.contains(&id.to_string()));
+        }
+        assert!(!ids.contains(&"f-5".to_string()));
 
-        let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
-        assert!(ids.contains(&item1.id));
-        assert!(ids.contains(&item2.id));
+        // 重命名收藏夹并验证通过新名称仍能查询到原有项，旧名称不再返回结果
+        let ren = rename_folder(&folder_id, "RenamedFolder").expect("rename failed");
+        assert_eq!(ren, "renamed");
+
+        let res2 = filter_data_by_folder("RenamedFolder").expect("filter after rename failed");
+        let vec2: Vec<ClipboardItem> = serde_json::from_str(&res2).expect("parse2");
+        let ids2: Vec<String> = vec2.iter().map(|it| it.id.clone()).collect();
+        assert_eq!(ids2.len(), 4);
+        for id in &["f-1", "f-2", "f-3", "f-4"] {
+            assert!(ids2.contains(&id.to_string()));
+        }
+
+        let res_old = filter_data_by_folder("TestFolder").expect("filter old name failed");
+        let vec_old: Vec<ClipboardItem> = serde_json::from_str(&res_old).expect("parse old");
+        assert!(vec_old.is_empty());
     }
 }
