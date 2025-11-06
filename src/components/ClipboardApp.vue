@@ -80,7 +80,7 @@
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="copyItem(item.content)"
+                  @click="copyItem(item)"
                   title="复制"
                 >
                   📋
@@ -305,6 +305,7 @@ export default {
         })
       }
       
+      
       // 分类过滤
       switch (activeCategory.value) {
         case 'image':
@@ -325,24 +326,22 @@ export default {
       return filtered
     })
 
+
     // 复制项目
-    const copyItem = async (text) => {
+    const copyItem = async (item) => {
       try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text)
+        if (item.item_type === 'text') {
+          // 对于文本类型，使用原来的文本复制方法
+          await invoke('write_to_clipboard', { text: item.content });
+          showToast('已复制文本');
         } else {
-          // 备用方案
-          const textArea = document.createElement('textarea')
-          textArea.value = text
-          document.body.appendChild(textArea)
-          textArea.select()
-          document.execCommand('copy')
-          document.body.removeChild(textArea)
+          // 对于文件和图片类型，使用新的文件复制方法
+          await invoke('write_file_to_clipboard', { filePath: item.content });
+          showToast(`已复制文件: ${getFileName(item.content)}`);
         }
-        showMessage('已复制到剪贴板')
       } catch (error) {
-        console.error('复制失败:', error)
-        showMessage('复制失败')
+        console.error('复制失败:', error);
+        showToast(`复制失败: ${error}`);
       }
     }
 
