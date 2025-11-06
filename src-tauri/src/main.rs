@@ -7,12 +7,146 @@ mod app_setup;
 mod clipboard;
 mod db;
 
+
 use tauri::Manager;
+use arboard::Clipboard;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
 }
+#[tauri::command]
+fn write_to_clipboard(text: String) -> Result<(), String> {
+    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(text).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn write_file_to_clipboard(
+    app_handle: tauri::AppHandle,
+    file_path: String,
+) -> Result<(), String> {
+    let path = Path::new(&file_path);
+    
+    // 检查文件是否存在
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", file_path));
+    }
+    
+    // 检查是否是文件（不是目录）
+    if !path.is_file() {
+        return Err("路径指向的不是文件".to_string());
+    }
+    
+    // 获取文件的绝对路径
+    let absolute_path = fs::canonicalize(path)
+        .map_err(|e| format!("无法获取文件绝对路径: {}", e))?;
+    
+    // 根据不同平台调用相应的文件复制方法
+    copy_file_to_clipboard(&absolute_path)
+}
+// 跨平台文件复制到剪贴板
+fn copy_file_to_clipboard(file_path: &PathBuf) -> Result<(), String> {
+    let file_path_str = file_path.to_str()
+        .ok_or("文件路径包含非法字符")?;
+
+    #[cfg(target_os = "windows")]
+    {
+        copy_file_to_clipboard_windows(file_path_str)
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        copy_file_to_clipboard_macos(file_path_str)
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        copy_file_to_clipboard_linux(file_path_str)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn copy_file_to_clipboard_windows(file_path: &str) -> Result<(), String> {
+    use std::process::Command;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+    
+    // 方法1: 使用PowerShell (推荐)
+    let ps_script = format!(
+        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetFileDropList(@('{}'))",
+        file_path.replace("'", "''")
+    );
+    
+    let output = Command::new("powershell")
+        .args(&["-Command", &ps_script])
+        .output()
+        .map_err(|e| e.to_string())?;
+    
+    if output.status.success() {
+        return Ok(());
+    }
+    
+    Err("复制文件到剪贴板失败".to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn copy_file_to_clipboard_macos(file_path: &str) -> Result<(), String> {
+    use std::process::Command;
+    
+    // 使用AppleScript复制文件
+    let apple_script = format!(
+        "set the clipboard to POSIX file \"{}\"",
+        file_path.replace("\"", "\\\"")
+    );
+    
+    let output = Command::new("osascript")
+        .args(&["-e", &apple_script])
+        .output()
+        .map_err(|e| e.to_string())?;
+    
+    if output.status.success() {
+        return Ok(());
+    }
+    
+    Err("复制文件到剪贴板失败".to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn copy_file_to_clipboard_linux(file_path: &str) -> Result<(), String> {
+    use std::process::Command;
+    
+    // Linux上的文件复制比较复杂，尝试多种方法
+    
+    // 方法1: 使用xclip复制文件URI
+    let file_uri = format!("file://{}", file_path);
+    let output = Command::new("xclip")
+        .args(&["-selection", "clipboard", "-t", "text/uri-list"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?
+        .stdin
+        .unwrap()
+        .write_all(file_uri.as_bytes())
+        .map_err(|e| e.to_string())?;
+    
+    // 检查xclip是否成功
+    if Command::new("xclip")
+        .args(&["-selection", "clipboard", "-o"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    
+    Err("Linux系统文件复制功能受限，请确保已安装xclip".to_string())
+}
+
 
 fn main() {
     let result = tauri::Builder::default()
