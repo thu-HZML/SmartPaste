@@ -1,28 +1,16 @@
 use rusqlite::{params, Connection, Result};
 use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
-use serde_json;
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
+use crate::clipboard::clipboard_item_to_json;
+use crate::clipboard::clipboard_items_to_json;
 use crate::clipboard::ClipboardItem;
 
 // const DB_PATH: &str = "smartpaste.db";
 
 static DB_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
-
-/// 将 ClipboardItem 转换为 JSON 字符串。
-/// # Param
-/// item: ClipboardItem - 要转换的剪贴板项
-pub fn clipboard_item_to_json(item: ClipboardItem) -> Result<String, String> {
-    serde_json::to_string(&item).map_err(|e| e.to_string())
-}
-/// 将 ClipboardItem 列表转换为 JSON 字符串。
-/// # Param
-/// items: Vec<ClipboardItem> - 要转换的剪贴板项列表
-pub fn clipboard_items_to_json(items: Vec<ClipboardItem>) -> Result<String, String> {
-    serde_json::to_string(&items).map_err(|e| e.to_string())
-}
 
 /// 设置数据库路径
 /// # Param
