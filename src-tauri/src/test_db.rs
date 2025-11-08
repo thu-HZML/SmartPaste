@@ -123,6 +123,30 @@ fn test_get_all_data() {
 }
 
 #[test]
+fn update_data() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    let item = make_item("update-1", "text", "original content");
+    insert_received_data(item.clone()).expect("insert for update");
+
+    // update content: 函数返回更新后的记录 JSON，解析后断言 content 字段
+    let new_content = "updated content";
+    let updated_json =
+        update_data_content_by_id(&item.id, new_content).expect("update content failed");
+    let updated_item: ClipboardItem = serde_json::from_str(&updated_json).expect("parse updated");
+    assert_eq!(updated_item.content, new_content);
+
+    // update notes: 同理解析并断言 notes 字段
+    let new_notes = "these are notes";
+    let updated_notes_json = add_notes_by_id(&item.id, new_notes).expect("update notes failed");
+    let updated_item2: ClipboardItem =
+        serde_json::from_str(&updated_notes_json).expect("parse notes updated");
+    assert_eq!(updated_item2.notes, new_notes);
+}
+
+#[test]
 fn test_set_favorite_status_by_id() {
     let _g = test_lock();
     set_test_db_path();
@@ -226,6 +250,14 @@ fn test_folder_functions() {
     // 新建两个收藏夹
     let folder_a = create_new_folder("FolderA").expect("create folder A");
     let folder_b = create_new_folder("FolderB").expect("create folder B");
+
+    // 测试获取所有收藏夹
+    let all_folders_json = get_all_folders().expect("get all folders failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders");
+    let folder_names: Vec<String> = all_folders.iter().map(|f| f.name.clone()).collect();
+    assert!(folder_names.contains(&"FolderA".to_string()));
+    assert!(folder_names.contains(&"FolderB".to_string()));
 
     // 向 FolderA 添加 5 个 item，向 FolderB 添加 2 个
     for id in &["f-1", "f-2", "f-3", "f-4", "f-5"] {
