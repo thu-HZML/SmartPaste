@@ -157,6 +157,7 @@ fn main() {
             db::get_all_data,
             db::get_latest_data,
             db::get_data_by_id,
+            db::delete_all_data,
             db::delete_data,
             db::delete_data_by_id,
             db::update_data_content_by_id,

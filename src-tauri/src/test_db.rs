@@ -127,7 +127,6 @@ fn update_data() {
     let _g = test_lock();
     set_test_db_path();
     clear_db_file();
-
     let item = make_item("update-1", "text", "original content");
     insert_received_data(item.clone()).expect("insert for update");
 
@@ -144,6 +143,61 @@ fn update_data() {
     let updated_item2: ClipboardItem =
         serde_json::from_str(&updated_notes_json).expect("parse notes updated");
     assert_eq!(updated_item2.notes, new_notes);
+}
+
+#[test]
+fn test_delete_data() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+    // 插入 4 个 item
+    let a = make_item("del-1", "text", "one");
+    let b = make_item("del-2", "text", "two");
+    let c = make_item("del-3", "text", "three");
+    let d = make_item("del-4", "text", "four");
+
+    insert_received_data(a.clone()).expect("insert a");
+    insert_received_data(b.clone()).expect("insert b");
+    insert_received_data(c.clone()).expect("insert c");
+    insert_received_data(d.clone()).expect("insert d");
+
+    // 按 id 删除 del-1
+    let rows = delete_data_by_id(&a.id).expect("delete by id failed");
+    assert!(rows >= 1, "expected >=1 row deleted for delete_data_by_id");
+
+    let got = get_data_by_id(&a.id).expect("get after delete");
+    assert_eq!(got, "null", "deleted item should return null");
+
+    // 使用 delete_data（传入 ClipboardItem）删除 del-2
+    let rows2 = delete_data(b.clone()).expect("delete_data failed");
+    assert!(rows2 >= 1, "expected >=1 row deleted for delete_data");
+
+    let got2 = get_data_by_id(&b.id).expect("get after delete b");
+    assert_eq!(got2, "null", "deleted item b should return null");
+
+    // 收藏 c（使其不会被删除）
+    let _ = set_favorite_status_by_id(&c.id).expect("set favorite for c");
+
+    // 删除所有非收藏 item
+    let rows3 = delete_unfavorited_data().expect("delete_non_favorite_data failed");
+    assert!(
+        rows3 >= 1,
+        "expected >=1 row deleted for delete_non_favorite_data"
+    );
+    let got3 = get_data_by_id(&d.id).expect("get after delete d");
+    assert_eq!(got3, "null", "deleted item d should return null");
+    let got4 = get_data_by_id(&c.id).expect("get favorite c after delete non-fav");
+    assert_ne!(got4, "null", "favorite item c should not be deleted");
+
+    // 最后删除所有数据，确保数据库为空
+    let rows4 = delete_all_data().expect("delete_all_data failed");
+    assert!(rows4 >= 1, "expected >=1 row deleted for delete_all_data");
+    let all_after = get_all_data().expect("get_all after delete_all");
+    let vec_after: Vec<ClipboardItem> = serde_json::from_str(&all_after).expect("parse all after");
+    assert!(
+        vec_after.is_empty(),
+        "database should be empty after delete_all"
+    );
 }
 
 #[test]

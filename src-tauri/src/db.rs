@@ -195,6 +195,39 @@ pub fn get_data_by_id(id: &str) -> Result<String, String> {
         Ok("null".to_string())
     }
 }
+
+/// 删除所有数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// usize - 受影响的行数
+#[tauri::command]
+pub fn delete_all_data() -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let rows_affected = conn
+        .execute("DELETE FROM data", [])
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows_affected)
+}
+
+/// 删除所有未收藏的数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// usize - 受影响的行数
+#[tauri::command]
+pub fn delete_unfavorited_data() -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let rows_affected = conn
+        .execute("DELETE FROM data WHERE is_favorite = 0", [])
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows_affected)
+}
+
 /// 删除数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// data: ClipboardDBItem - 包含要删除数据的 ID 字段
