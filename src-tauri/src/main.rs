@@ -11,10 +11,13 @@ use std::time::{Instant, Duration};
 
 // ✅ 新增命令：动态设置窗口鼠标穿透
 #[tauri::command]
-fn set_mouse_passthrough(window: tauri::Window, passthrough: bool) {
+fn set_mouse_passthrough(passthrough: bool, window: tauri::Window, state: tauri::State<'_, AppState>) {
+    let mut is_passthrough = state.is_passthrough.lock().unwrap();
+    
     if let Err(e) = window.set_ignore_cursor_events(passthrough) {
         eprintln!("⚠️ 设置鼠标穿透失败: {:?}", e);
     } else {
+        *is_passthrough = passthrough;
         println!(
             "🎯 已设置窗口鼠标穿透状态为: {}",
             if passthrough { "开启" } else { "关闭" }
@@ -22,11 +25,38 @@ fn set_mouse_passthrough(window: tauri::Window, passthrough: bool) {
     }
 }
 
+#[derive(Default)]
+struct AppState {
+    pet_position: Mutex<PhysicalPosition<f64>>,
+    pet_size: Mutex<(f64, f64)>,
+    is_passthrough: Mutex<bool>, // 跟踪当前穿透状态
+}
+
+#[tauri::command]
+fn update_pet_position(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+) {
+    let mut pet_pos = state.pet_position.lock().unwrap();
+    let mut pet_size = state.pet_size.lock().unwrap();
+    
+    *pet_pos = PhysicalPosition::new(x, y);
+    *pet_size = (width, height);
+    
+    println!("📌 更新桌宠位置: ({}, {}), 大小: {}x{}", x, y, width, height);
+}
+
 fn main() {
     // 防抖控制点击频率
     let last_click_time = Arc::new(Mutex::new(Instant::now()));
+    let app_state = Arc::new(AppState::default());
 
     let result = tauri::Builder::default()
+        .manage(app_state.clone())
         .setup(move |app| {
             let click_time_clone = Arc::clone(&last_click_time);
 
@@ -41,7 +71,7 @@ fn main() {
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .tooltip("桌面宠物")
+                .tooltip("SmartPaste")
                 .on_menu_event(move |app, event| {
                     println!("🖱️ 菜单项点击: {}", event.id().as_ref());
                     if let Some(window) = app.get_webview_window("main") {
@@ -124,11 +154,12 @@ fn main() {
 
             app.global_shortcut().register(show_hide_shortcut)?;
             println!("✅ 已注册全局快捷键 Alt+Shift+V");
+            //start_mouse_detection(app.handle().clone(), app_state.clone());
 
             Ok(())
         })
         // ✅ 注册前端命令
-        .invoke_handler(tauri::generate_handler![set_mouse_passthrough])
+        .invoke_handler(tauri::generate_handler![set_mouse_passthrough, update_pet_position])
         .plugin(tauri_plugin_opener::init())
         .run(tauri::generate_context!());
 
@@ -136,6 +167,7 @@ fn main() {
         eprintln!("❌ 启动 Tauri 应用失败: {:?}", e);
     }
 }
+
 
 // 辅助函数：切换窗口显示/隐藏
 fn toggle_window_visibility(window: &tauri::WebviewWindow) {

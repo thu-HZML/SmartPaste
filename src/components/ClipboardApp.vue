@@ -36,7 +36,7 @@
           <button class="icon-btn" @click="openSettings">         
             <img
               class="settings-icon"
-              src="https://ide.code.fun/api/image?token=69034a079520a30011f4f4f9&name=f8435267bedb1f8da2ed89ce0b7f6027.png"
+              src="https://ide.code.fun/api/image?token=690b64f19520a30011f56213&name=85e6c4051832477789a9c724127ba087.png"
             />
           </button>
         </div>

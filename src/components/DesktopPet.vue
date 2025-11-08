@@ -1,3 +1,4 @@
+// DesktopPet.vue - 简化版本
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -18,7 +19,7 @@ onMounted(async () => {
   console.log('[DesktopPet] mounted')
   setupEventListeners()
 
-  // 🎯 永远不要开启全局穿透，只在需要时关闭
+  // 初始化：关闭穿透，桌宠可点击
   try {
     await invoke('set_mouse_passthrough', { passthrough: false })
     console.log('[DesktopPet] 初始化：关闭穿透，桌宠可点击')
@@ -50,36 +51,38 @@ const disablePassthrough = async () => {
   if (!isHovering.value) {
     isHovering.value = true
     try {
-      console.log('[DesktopPet] 请求：关闭穿透')
-      await invoke('set_mouse_passthrough', { passthrough: false })
-      console.log('[DesktopPet] 成功：关闭穿透')
+      console.log('[DesktopPet] 尝试关闭穿透...')
+      const result = await invoke('set_mouse_passthrough', { passthrough: false })
+      console.log('[DesktopPet] 成功关闭穿透', result)
     } catch (e) {
-      console.error('[DesktopPet] 关闭穿透失败', e)
+      console.error('[DesktopPet] 关闭穿透失败:', e)
+      console.error('错误详情:', e.message, e.stack)
     }
   }
 }
 
-// 🎯 修改：永远不要开启全局穿透
+// 开启鼠标穿透（当鼠标离开桌宠时）
 const enablePassthrough = async () => {
   if (passthroughTimer) clearTimeout(passthroughTimer)
   
-  // 延迟恢复穿透，但实际不执行开启操作
   passthroughTimer = setTimeout(async () => {
     if (isHovering.value && !isDragging.value) {
       isHovering.value = false
       try {
-        console.log('[DesktopPet] 注意：不开启全局穿透，保持桌宠可点击')
-        // 🎯 注释掉这行：永远不要开启穿透
-        // await invoke('set_mouse_passthrough', { passthrough: true })
+        console.log('[DesktopPet] 尝试开启穿透...')
+        const result = await invoke('set_mouse_passthrough', { passthrough: true })
+        console.log('[DesktopPet] 成功开启穿透', result)
       } catch (e) {
-        console.error('[DesktopPet] 操作失败', e)
+        console.error('[DesktopPet] 开启穿透失败:', e)
+        // 详细显示错误信息
+        console.error('错误详情:', e.message, e.stack)
       }
     }
     passthroughTimer = null
   }, 300)
 }
 
-// 拖拽逻辑保持不变
+// 拖拽逻辑
 const handlePointerDown = (event) => {
   event.stopPropagation()
   disablePassthrough()
@@ -113,7 +116,10 @@ const handlePointerUp = (event) => {
     // ignore
   }
   isDragging.value = false
-  enablePassthrough()
+  // 拖拽结束后不立即开启穿透，让用户有时间移开鼠标
+  setTimeout(() => {
+    enablePassthrough()
+  }, 100)
 }
 
 // 鼠标进入桌宠区域
