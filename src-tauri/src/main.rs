@@ -12,6 +12,8 @@ use tauri::Manager;
 use arboard::Clipboard;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use app_setup::{AppShortcutState, update_shortcut};
 
 #[tauri::command]
 fn test_function() -> String {
@@ -152,11 +154,15 @@ fn main() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(AppShortcutState {
+            current_shortcut: Mutex::new(String::new()),
+        })
         .invoke_handler(tauri::generate_handler![
             test_function,
             write_to_clipboard,
             write_file_to_clipboard,
             copy_file_to_clipboard,
+            update_shortcut,
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
