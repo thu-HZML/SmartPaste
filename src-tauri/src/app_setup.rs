@@ -37,7 +37,6 @@ fn save_shortcut_to_storage(handle: &AppHandle, shortcut: &str) {
     }
 }
 
-// --- 修正后的 Tauri 命令 ---
 #[tauri::command]
 pub fn update_shortcut(
     new_shortcut_str: String,
@@ -77,7 +76,7 @@ pub fn update_shortcut(
 }
 
 
-/// 创建系统托盘图标和菜单 (无改动)
+/// 创建系统托盘图标和菜单 
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let last_click_time = Arc::new(Mutex::new(Instant::now()));
     let show_hide = MenuItem::with_id(app, "show_hide", "显示/隐藏", true, None::<&str>)?;
@@ -119,7 +118,6 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 
-// --- 最终修正版的全局快捷键设置函数 ---
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle_for_closure = handle.clone();
 
@@ -139,7 +137,6 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                     }
                 }
             })
-            // 修正：移除 build() 后面的 '?'
             .build(),
     )?;
 
@@ -147,7 +144,6 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     let shortcut_str = load_shortcut_from_storage(&handle);
     println!("ℹ️ 正在尝试注册快捷键: {}", shortcut_str);
 
-    // 修正：注册前必须先解析
     if let Ok(shortcut) = Shortcut::from_str(&shortcut_str) {
         let manager = handle.global_shortcut();
         if let Err(e) = manager.register(shortcut) {
@@ -167,7 +163,7 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
 }
 
 
-/// 启动后台线程以监控剪贴板 (无改动)
+/// 启动后台线程以监控剪贴板 
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
         let mut last_text = String::new();
@@ -278,7 +274,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 }
 
 
-/// 切换窗口的显示与隐藏状态 (无改动)
+/// 切换窗口的显示与隐藏状态 
 fn toggle_window_visibility(window: &WebviewWindow) {
     if let Ok(is_visible) = window.is_visible() {
         if is_visible {
