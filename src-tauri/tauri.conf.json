@@ -14,15 +14,15 @@
       {
         "label": "main",
         "title": "Desktop Pet",
+        "fullscreen": true,
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,
         "skipTaskbar": true,
-        "acceptFirstMouse": true,
+        "acceptFirstMouse": true,  
         "shadow": false,
         "resizable": false,
-        "x": null,
-        "y": null
+        "focus": false
       }
     ],
     "security": {
@@ -40,8 +40,6 @@
     "icon": [
       "icons/logo.png",
       "icons/tray.png"
-
-
     ]
   }
 }
