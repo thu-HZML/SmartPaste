@@ -5,8 +5,8 @@
       <div class="search-container">
         <div class="search-bar">
           <svg class="search-icon" width="20" height="20" viewBox="0 0 100 100">
-              <circle cx="40" cy="40" r="30" fill="none" stroke="#3498db" stroke-width="6"/>
-                          <line x1="65" y1="65" x2="85" y2="85" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
+            <circle cx="40" cy="40" r="30" fill="none" stroke="#3498db" stroke-width="6"/>
+            <line x1="65" y1="65" x2="85" y2="85" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
           </svg>
           <input 
             type="text" 
@@ -31,13 +31,13 @@
         
         <div class="toolbar-actions">
           <button class="icon-btn" @click="togglePinnedView">
-            📌
+            <LockClosedIcon class="icon-settings" />
           </button>
           <button class="icon-btn" @click="openSettings">         
-            <img
-              class="settings-icon"
-              src="https://ide.code.fun/api/image?token=69034a079520a30011f4f4f9&name=f8435267bedb1f8da2ed89ce0b7f6027.png"
-            />
+            <Cog6ToothIcon class="icon-settings" />
+          </button>
+          <button class="icon-btn" @click="refreshPage">           
+            <ArrowPathIcon class="icon-settings" />
           </button>
         </div>
       </div>
@@ -76,14 +76,15 @@
                   @click="toggleFavorite(index)"
                   :title="item.is_favorite ? '取消收藏' : '收藏'"
                 >
-                  {{ item.is_favorite ? '★' : '☆' }}
+                  <StarIconSolid v-if="item.is_favorite" class="icon-star-solid" />
+                  <StarIcon v-else class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
                   @click="copyItem(item)"
                   title="复制"
                 >
-                  📋
+                  <ClipboardIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
@@ -178,14 +179,14 @@
               <!-- 右上方按钮组 -->
               <div class="item-actions-top">
                 <button 
-                  class="icon-btn-small"                  
+                  class="icon-btn-small" 
                   @click="removeItem(index)"
                   title="删除"
                 >
                   🗑️
                 </button>
               </div>
-            </div>              
+            </div>
           </div>
         </div>
       </div>
@@ -230,289 +231,285 @@
   </div>
 </template>
 
-<script>
-import { ref, computed, onMounted} from 'vue'
+<script setup>
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { 
+  BeakerIcon,
+  Cog6ToothIcon,
+  ArrowPathIcon,
+  LockClosedIcon,
+  StarIcon,
+  ClipboardIcon
+ } from '@heroicons/vue/24/outline'
+import { 
+  StarIcon as StarIconSolid
+} from '@heroicons/vue/24/solid'
 
+const router = useRouter()
+
+// 响应式数据
+const searchQuery = ref('')
+const activeCategory = ref('all')
+const showToast = ref(false)
+const toastMessage = ref('')
+const showEditModal = ref(false)
+const showNoteModal = ref(false)
+const editingIndex = ref(-1)
+const editingText = ref('')
+const notingIndex = ref(-1)
+const notingText = ref('')
 const test = ref('')
-export default {
-  name: 'App',
-  setup() {
-    const router = useRouter()
 
-    const searchQuery = ref('')
-    const activeCategory = ref('all')
-    const showToast = ref(false)
-    const toastMessage = ref('')
-    const showEditModal = ref(false)
-    const showNoteModal = ref(false)
-    const editingIndex = ref(-1)
-    const editingText = ref('')
-    const notingIndex = ref(-1)
-    const notingText = ref('') 
-    
-    // 分类选项
-    const categories = ref([
-      { id: 'all', name: '全部' },
-      { id: 'image', name: '图片' },
-      { id: 'video', name: '视频' },
-      { id: 'file', name: '文件' },
-      { id: 'favorite', name: '收藏' }
-    ])
-    
-    // 历史记录数据结构
-    const history = ref([])
-    const favoriteHistory = ref([])
+// 分类选项
+const categories = ref([
+  { id: 'all', name: '全部' },
+  { id: 'image', name: '图片' },
+  { id: 'video', name: '视频' },
+  { id: 'file', name: '文件' },
+  { id: 'favorite', name: '收藏' }
+])
 
-    // 显示提示信息
-    const showMessage = (message) => {
-      toastMessage.value = message
-      showToast.value = true
-      setTimeout(() => {
-        showToast.value = false
-      }, 2000)
-    }
+// 历史记录数据结构
+const history = ref([])
+const favoriteHistory = ref([])
 
-    // 设置激活分类
-    const setActiveCategory = (categoryId) => {
-      activeCategory.value = categoryId
-    }
-
-    // 切换固定视图
-    const togglePinnedView = () => {
-      showMessage('切换固定视图')
-    }
-
-    // 打开设置
-    const openSettings = async () => {
-      // router.push('/preferences')
-      getAllHistory()
-      showMessage('打开设置')
-    }
-
-    // 过滤后的历史记录
-    const filteredHistory = computed(() => {
-      let filtered = history.value
-      
-      // 搜索过滤 - 搜索内容和备注
-      if (searchQuery.value) {
-        const query = searchQuery.value.toLowerCase()
-        filtered = filtered.filter(item => {
-          const content = item.content ? item.content.toLowerCase() : ''
-          const notes = item.notes ? item.notes.toLowerCase() : ''
-          return content.includes(query) || notes.includes(query)
-        })
-      }
-      
-      
-      // 分类过滤
-      switch (activeCategory.value) {
-        case 'image':
-          filtered = filtered.filter(item => item.item_type === 'image')
-          break
-        case 'video':
-          filtered = filtered.filter(item => item.item_type === 'video')
-          break
-        case 'file':
-          filtered = filtered.filter(item => item.item_type === 'file')
-          break
-        case 'favorite':
-          filtered = filtered.filter(item => item.is_favorite)
-          break
-        // 'all' 不进行过滤
-      }
-      
-      return filtered
+// 过滤后的历史记录
+const filteredHistory = computed(() => {
+  let filtered = history.value
+  
+  // 搜索过滤 - 搜索内容和备注
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    filtered = filtered.filter(item => {
+      const content = item.content ? item.content.toLowerCase() : ''
+      const notes = item.notes ? item.notes.toLowerCase() : ''
+      return content.includes(query) || notes.includes(query)
     })
+  }
+  
+  
+  // 分类过滤
+  switch (activeCategory.value) {
+    case 'image':
+      filtered = filtered.filter(item => item.item_type === 'image')
+      break
+    case 'video':
+      filtered = filtered.filter(item => item.item_type === 'video')
+      break
+    case 'file':
+      filtered = filtered.filter(item => item.item_type === 'file')
+      break
+    case 'favorite':
+      filtered = filtered.filter(item => item.is_favorite)
+      break
+    // 'all' 不进行过滤
+  }
+  
+  return filtered
+})
 
+// 方法定义
+const showMessage = (message) => {
+  toastMessage.value = message
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 2000)
+}
 
-    // 复制项目
-    const copyItem = async (item) => {
-      try {
-        if (item.item_type === 'text') {
-          // 对于文本类型，使用原来的文本复制方法
-          await invoke('write_to_clipboard', { text: item.content });
-          showToast('已复制文本');
-        } else {
-          // 对于文件和图片类型，使用新的文件复制方法
-          await invoke('write_file_to_clipboard', { filePath: item.content });
-          showToast(`已复制文件: ${getFileName(item.content)}`);
-        }
-      } catch (error) {
-        console.error('复制失败:', error);
-        showToast(`复制失败: ${error}`);
-      }
-    }
+// 设置激活分类
+const setActiveCategory = (categoryId) => {
+  activeCategory.value = categoryId
+}
 
-    // 切换收藏状态
-    const toggleFavorite = async (index) => {
-      history.value[index].is_favorite = !history.value[index].is_favorite
-      await invoke('set_favorite_status_by_id', { id: history.value[index].id })
-      showMessage(history.value[index].is_favorite ? '已收藏' : '已取消收藏')
-    }
+// 切换固定视图
+const togglePinnedView = () => {
+  showMessage('切换固定视图')
+}
 
-    // 编辑项目
-    const editItem = (index) => {
-      editingIndex.value = index
-      editingText.value = history.value[index].content
-      showEditModal.value = true
-    }
+// 打开设置
+const openSettings = async () => {
+  router.push('/preferences')
+  showMessage('打开设置')
+}
 
-    // 保存编辑
-    const saveEdit = () => {
-      if (editingIndex.value >= 0 && editingText.value.trim()) {
-        history.value[editingIndex.value].content = editingText.value.trim()
-        history.value[editingIndex.value].timestamp = new Date().getTime()
-        showMessage('内容已更新')
-      }
-      cancelEdit()
-    }
+// 刷新页面
+const refreshPage = async () => {
+  getAllHistory()
+  showMessage('刷新成功')
+}
 
-    // 取消编辑
-    const cancelEdit = () => {
-      showEditModal.value = false
-      editingIndex.value = -1
-      editingText.value = ''
-    }
-
-    // 备注项目
-    const noteItem = (index) => {
-      notingIndex.value = index
-      notingText.value = history.value[index].notes
-      showNoteModal.value = true
-    }
-
-    // 保存备注
-    const saveNote = async () => {
-      if (notingIndex.value >= 0 && notingText.value.trim()) {
-        history.value[notingIndex.value].notes = notingText.value.trim()
-        await invoke('add_notes_by_id', { id: history.value[notingIndex.value].id, notes: notingText.value.trim() })
-        showMessage('备注已更新')
-      }
-      cancelNote()
-    }
-
-    // 取消备注
-    const cancelNote = () => {
-      showNoteModal.value = false
-      notingIndex.value = -1
-      notingText.value = ''
-    }
-
-    // 删除项目
-    const removeItem = async (index) => {
-      history.value.splice(index, 1)
-      await invoke('delete_data_by_id', { id: history.value[index].id })
-      showMessage('已删除记录')
-    }
-
-    // 格式化时间
-    const formatTime = (timestamp) => {
-      if (!timestamp) return '未知时间'
-      const date = new Date(parseInt(timestamp))
-      const now = new Date()
-      const diff = now - date
-      
-      if (diff < 60000) return '刚刚'
-      if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-      if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-      
-      return date.toLocaleDateString()
-    }
-
-    const getAllHistory = async () => {
-      try {
-        const jsonString = await invoke('get_all_data')
-        history.value = JSON.parse(jsonString)
-        // 为现有数组中的每个对象添加 is_focus 字段
-        history.value = history.value.map(item => ({
-          ...item,
-          is_focus: false
-        }))
-      } catch (error) {
-        console.error('调用失败:', error)
-      }
-    }
-
-    // 从路径中提取文件名
-    const getFileName = (path) => {
-      if (!path) return '未知文件'
-      return path.split(/[\\/]/).pop() || '未知文件'
-    }
-
-    // 图片加载错误处理
-    const handleImageError = (event) => {
-      console.error('图片加载失败:', event.target.src)
-    }
-
-    // 检查是否是文档文件
-    const isDocumentFile = (path) => {
-      if (!path) return false
-      const docExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md']
-      return docExtensions.some(ext => path.toLowerCase().endsWith(ext))
-    }
-
-    onMounted(async () => {
-      console.log('开始初始化...')
-
-      
-      history.value = [
-        {
-          id: '0123456',
-          item_type: 'text',        
-          content: '这是一个测试样例',
-          is_favorite: true,
-          notes: '样例备注',
-          timestamp: '1696118400000',
-          is_focus: false
-        }
-      ]
-
-      //test.value = await invoke('test_function')
-
-      // 从本地存储加载历史记录
-      getAllHistory() 
-
-      console.log('数据设置完成:', history.value)
-      console.log('数据长度:', history.value.length)
-    })
-
-    return {
-      searchQuery,
-      activeCategory,
-      categories,
-      history,
-      favoriteHistory,
-      filteredHistory,
-      showToast,
-      toastMessage,
-      showEditModal,
-      showNoteModal,
-      editingText,
-      notingText,
-      test,
-      setActiveCategory,
-      togglePinnedView,
-      openSettings,
-      copyItem,
-      toggleFavorite,
-      editItem,
-      saveEdit,
-      cancelEdit,
-      noteItem,
-      saveNote,
-      cancelNote,
-      removeItem,
-      formatTime,
-      getAllHistory,
-      getFileName,
-      handleImageError,
-      convertFileSrc,
-      isDocumentFile
-    }
+// 添加到历史记录
+const addToHistory = (text) => {
+  if (!text.trim()) return
+  
+  const newItem = {
+    content: text.trim(),
+    timestamp: new Date().getTime(),
+    is_favorite: false,
+    item_type: 'text'
+  }
+  
+  history.value.unshift(newItem)
+  // 限制历史记录数量
+  if (history.value.length > 100) {
+    history.value.pop()
   }
 }
+
+const copyItem = async (item) => {
+try {
+  if (item.item_type === 'text') {
+    // 对于文本类型，使用原来的文本复制方法
+    await invoke('write_to_clipboard', { text: item.content });
+    showToast('已复制文本');
+  } else {
+    // 对于文件和图片类型，使用新的文件复制方法
+    await invoke('write_file_to_clipboard', { filePath: item.content });
+    showToast(`已复制文件: ${getFileName(item.content)}`);
+  }
+} catch (error) {
+  console.error('复制失败:', error);
+  showToast(`复制失败: ${error}`);
+}
+}
+
+// 切换收藏状态
+const toggleFavorite = async (index) => {
+  history.value[index].is_favorite = !history.value[index].is_favorite
+  await invoke('set_favorite_status_by_id', { id: history.value[index].id })
+  showMessage(history.value[index].is_favorite ? '已收藏' : '已取消收藏')
+}
+
+// 编辑项目
+const editItem = (index) => {
+  editingIndex.value = index
+  editingText.value = history.value[index].content
+  showEditModal.value = true
+}
+
+// 保存编辑
+const saveEdit = () => {
+  if (editingIndex.value >= 0 && editingText.value.trim()) {
+    history.value[editingIndex.value].content = editingText.value.trim()
+    history.value[editingIndex.value].timestamp = new Date().getTime()
+    showMessage('内容已更新')
+  }
+  cancelEdit()
+}
+
+// 取消编辑
+const cancelEdit = () => {
+  showEditModal.value = false
+  editingIndex.value = -1
+  editingText.value = ''
+}
+
+// 备注项目
+const noteItem = (index) => {
+  notingIndex.value = index
+  notingText.value = history.value[index].notes
+  showNoteModal.value = true
+}
+
+// 保存备注
+const saveNote = async () => {
+  if (notingIndex.value >= 0 && notingText.value.trim()) {
+    history.value[notingIndex.value].notes = notingText.value.trim()
+    await invoke('add_notes_by_id', { 
+      id: history.value[notingIndex.value].id, 
+      notes: notingText.value.trim() 
+    })
+    showMessage('备注已更新')
+  }
+  cancelNote()
+}
+
+// 取消备注
+const cancelNote = () => {
+  showNoteModal.value = false
+  notingIndex.value = -1
+  notingText.value = ''
+}
+
+// 删除项目
+const removeItem = async (index) => {
+  await invoke('delete_data_by_id', { id: history.value[index].id })
+  history.value.splice(index, 1)
+  showMessage('已删除记录')
+}
+
+// 格式化时间
+const formatTime = (timestamp) => {
+  if (!timestamp) return '未知时间'
+  
+  const date = new Date(parseInt(timestamp))
+  const now = new Date()
+  const diff = now - date
+  
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  
+  return date.toLocaleDateString()
+}
+
+const getAllHistory = async () => {
+  try {
+    const jsonString = await invoke('get_all_data')
+    history.value = JSON.parse(jsonString)
+    // 为现有数组中的每个对象添加 is_focus 字段
+    history.value = history.value.map(item => ({
+      ...item,
+      is_focus: false
+    }))
+  } catch (error) {
+    console.error('调用失败:', error)
+  }
+}
+
+// 从路径中提取文件名
+const getFileName = (path) => {
+  if (!path) return '未知文件'
+  return path.split(/[\\/]/).pop() || '未知文件'
+}
+
+// 图片加载错误处理
+const handleImageError = (event) => {
+  console.error('图片加载失败:', event.target.src)
+}
+
+// 检查是否是文档文件
+const isDocumentFile = (path) => {
+  if (!path) return false
+  const docExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md']
+  return docExtensions.some(ext => path.toLowerCase().endsWith(ext))
+}
+
+// 生命周期
+onMounted(async () => {
+  console.log('开始初始化...')
+  
+  // 设置示例数据
+  history.value = [
+    {
+      id: '0123456',
+      item_type: 'text',        
+      content: '这是一个测试样例',
+      is_favorite: true,
+      notes: '样例备注',
+      timestamp: '1696118400000',
+      is_focus: false
+    }
+  ]
+
+  // 获取真实数据
+  await getAllHistory()
+  console.log('数据设置完成:', history.value)
+  console.log('数据长度:', history.value.length)
+})
 </script>
 
 <style scoped>
@@ -640,13 +637,26 @@ body {
   background: #e9ecef;
 }
 
-.settings-icon {
+.icon-settings {
   width: 1.2rem;
   height: 1.2rem;
   position: relative;
-  top: 3px;
+  top: 3px; 
 }
 
+.icon-default {
+  width: 1.2rem;
+  height: 1.2rem;
+  position: relative;
+  top: 3px; 
+}
+
+.icon-star-solid {
+  width: 1.2rem;
+  height: 1.2rem;
+  color: #f1c40f;
+  top: 3px; 
+}
 /* 主内容区样式 */
 .app-main {
   padding: 8px 10px;
