@@ -39,6 +39,9 @@
           <button class="icon-btn" @click="refreshPage">           
             <ArrowPathIcon class="icon-settings" />
           </button>
+          <button class="icon-btn" @click="deleteAllHistory">           
+            <TrashIcon class="icon-settings" />
+          </button>
         </div>
       </div>
     </header>
@@ -84,7 +87,7 @@
                   @click="copyItem(item)"
                   title="复制"
                 >
-                  <ClipboardIcon class="icon-default" />
+                  <Square2StackIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
@@ -92,21 +95,21 @@
                   title="编辑"
                   :disabled="item.content.length > 500"
                 >
-                  ✏️
+                  <ClipboardIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
                   @click="noteItem(index)"
                   title="备注"
                 >
-                  📤
+                  <PencilSquareIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
                   @click="removeItem(index)"
                   title="删除"
                 >
-                  🗑️
+                  <TrashIcon class="icon-default" />
                 </button>
               </div>
             </div>
@@ -241,7 +244,11 @@ import {
   ArrowPathIcon,
   LockClosedIcon,
   StarIcon,
-  ClipboardIcon
+  ClipboardIcon,
+  PencilSquareIcon,
+  ClipboardDocumentListIcon,
+  TrashIcon,
+  Square2StackIcon
  } from '@heroicons/vue/24/outline'
 import { 
   StarIcon as StarIconSolid
@@ -642,26 +649,47 @@ body {
   height: 1.2rem;
   position: relative;
   top: 3px; 
+  color: #595959;
 }
 
-.icon-default {
+.icon-settings:hover {
   width: 1.2rem;
   height: 1.2rem;
   position: relative;
   top: 3px; 
+  color: #3282f6;
+}
+
+.icon-default {
+  width: 1rem;
+  height: 1rem;
+  position: relative;
+  top: 3px; 
+  color: #595959;
+}
+
+.icon-default:hover {
+  width: 1rem;
+  height: 1rem;
+  position: relative;
+  top: 3px; 
+  color: #3282f6;
 }
 
 .icon-star-solid {
-  width: 1.2rem;
-  height: 1.2rem;
-  color: #f1c40f;
+  width: 1rem;
+  height: 1rem; 
+  position: relative;
   top: 3px; 
+  color: #f1c40f;
 }
 /* 主内容区样式 */
 .app-main {
   padding: 8px 10px;
   margin: 0 auto;
   margin-top: 96px; /* 顶部搜索栏高度 + 工具栏高度 */
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 /* 空状态样式 */
@@ -669,6 +697,7 @@ body {
   text-align: center;
   padding: 60px 20px;
   color: #7f8c8d;
+  max-width: 100%;
 }
 
 .empty-state p {
@@ -685,6 +714,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-width: 100%;
 }
 
 .history-item {
@@ -694,6 +724,7 @@ body {
   padding: 2px 5px;
   transition: all 0.2s ease;
   position: relative;
+  max-width: 100%;
 }
 
 .history-item:hover {

@@ -17,7 +17,7 @@
             :class="['nav-item', { active: activeNav === item.id }]"
             @click="setActiveNav(item.id)"
           >
-            <span class="nav-icon">{{ item.icon }}</span>
+            <component :is="item.icon" class="nav-icon" />
             <span class="nav-text">{{ item.name }}</span>
           </li>
         </ul>
@@ -319,163 +319,148 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { 
+  Cog6ToothIcon,
+  TvIcon,
+  CloudIcon,
+  ClipboardIcon,
+  UserIcon
+ } from '@heroicons/vue/24/outline'
 
-export default {
-  name: 'Settings',
-  setup() {
-    const router = useRouter()
-    
-    const activeNav = ref('general')
-    const showToast = ref(false)
-    const toastMessage = ref('')
-    const recordingShortcut = ref('')
-    const newIgnoredApp = ref('')
-    const userLoggedIn = ref(false)
-    const userEmail = ref('user@example.com')
-    
-    const navItems = [
-      { id: 'general', name: '通用设置', icon: '⚙️' },
-      { id: 'shortcuts', name: '快捷键设置', icon: '⌨️' },
-      { id: 'clipboard', name: '剪贴板参数设置', icon: '📋' },
-      { id: 'cloud', name: '云端入口', icon: '☁️' },
-      { id: 'user', name: '用户信息', icon: '👤' }
-    ]
-    
-    const settings = reactive({
-      autoStart: true,
-      showTrayIcon: true,
-      autoSave: true,
-      retentionDays: '30',
-      maxHistoryItems: 100,
-      ignoreShortText: 3,
-      ignoredApps: ['密码管理器', '银行应用'],
-      previewLength: 115,
-      cloudSync: false,
-      syncFrequency: 'realtime',
-      encryptCloudData: true,
-      shortcuts: {
-        toggleWindow: 'Ctrl+Shift+V',
-        quickPaste: '',
-        clearHistory: ''
-      }
-    })
-    
-    const userInfo = reactive({
-      username: '当前用户',
-      email: 'user@example.com',
-      bio: '剪贴板管理爱好者'
-    })
-    
-    const setActiveNav = (navId) => {
-      activeNav.value = navId
-    }
-    
-    const goBack = () => {
-      router.back()
-    }
-    
-    const startRecording = (shortcutName) => {
-      recordingShortcut.value = shortcutName
-      showMessage('请按下快捷键组合...')
-      // 这里应该添加键盘事件监听器来捕获按键
-      // 简化实现，仅作演示
-      setTimeout(() => {
-        settings.shortcuts[shortcutName] = 'Ctrl+Shift+' + shortcutName.charAt(0).toUpperCase()
-        recordingShortcut.value = ''
-        showMessage('快捷键已设置')
-      }, 1000)
-    }
-    
-    const addIgnoredApp = () => {
-      if (newIgnoredApp.value.trim() && !settings.ignoredApps.includes(newIgnoredApp.value.trim())) {
-        settings.ignoredApps.push(newIgnoredApp.value.trim())
-        newIgnoredApp.value = ''
-        showMessage('已添加忽略应用')
-      }
-    }
-    
-    const removeIgnoredApp = (index) => {
-      settings.ignoredApps.splice(index, 1)
-      showMessage('已移除忽略应用')
-    }
-    
-    const login = () => {
-      // 模拟登录
-      userLoggedIn.value = true
-      showMessage('登录成功')
-    }
-    
-    const logout = () => {
-      userLoggedIn.value = false
-      showMessage('已退出登录')
-    }
-    
-    const saveUserInfo = () => {
-      showMessage('用户信息已保存')
-    }
-    
-    const resetUserInfo = () => {
-      Object.assign(userInfo, {
-        username: '当前用户',
-        email: 'user@example.com',
-        bio: '剪贴板管理爱好者'
-      })
-      showMessage('用户信息已重置')
-    }
-    
-    const changePassword = () => {
-      showMessage('修改密码功能待实现')
-    }
-    
-    const deleteAccount = () => {
-      if (confirm('确定要删除账户吗？此操作不可撤销！')) {
-        showMessage('账户删除功能待实现')
-      }
-    }
-    
-    const showMessage = (message) => {
-      toastMessage.value = message
-      showToast.value = true
-      setTimeout(() => {
-        showToast.value = false
-      }, 2000)
-    }
-    
-    onMounted(() => {
-      // 加载保存的设置
-      const savedSettings = localStorage.getItem('clipboardSettings')
-      if (savedSettings) {
-        Object.assign(settings, JSON.parse(savedSettings))
-      }
-    })
-    
-    return {
-      activeNav,
-      navItems,
-      settings,
-      userInfo,
-      showToast,
-      toastMessage,
-      newIgnoredApp,
-      userLoggedIn,
-      userEmail,
-      setActiveNav,
-      goBack,
-      startRecording,
-      addIgnoredApp,
-      removeIgnoredApp,
-      login,
-      logout,
-      saveUserInfo,
-      resetUserInfo,
-      changePassword,
-      deleteAccount
-    }
+const router = useRouter()
+
+// 响应式数据
+const activeNav = ref('general')
+const showToast = ref(false)
+const toastMessage = ref('')
+const recordingShortcut = ref('')
+const newIgnoredApp = ref('')
+const userLoggedIn = ref(false)
+const userEmail = ref('user@example.com')
+
+// 导航项
+const navItems = ref([
+  { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
+  { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
+  { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
+  { id: 'cloud', name: '云端入口', icon: CloudIcon },
+  { id: 'user', name: '用户信息', icon: UserIcon }
+])
+
+// 设置数据
+const settings = reactive({
+  autoStart: true,
+  showTrayIcon: true,
+  autoSave: true,
+  retentionDays: '30',
+  maxHistoryItems: 100,
+  ignoreShortText: 3,
+  ignoredApps: ['密码管理器', '银行应用'],
+  previewLength: 115,
+  cloudSync: false,
+  syncFrequency: 'realtime',
+  encryptCloudData: true,
+  shortcuts: {
+    toggleWindow: 'Ctrl+Shift+V',
+    quickPaste: '',
+    clearHistory: ''
+  }
+})
+
+// 用户信息
+const userInfo = reactive({
+  username: '当前用户',
+  email: 'user@example.com',
+  bio: '剪贴板管理爱好者'
+})
+
+// 方法定义
+const setActiveNav = (navId) => {
+  activeNav.value = navId
+}
+
+const goBack = () => {
+  router.back()
+}
+
+const startRecording = (shortcutName) => {
+  recordingShortcut.value = shortcutName
+  showMessage('请按下快捷键组合...')
+  // 这里应该添加键盘事件监听器来捕获按键
+  // 简化实现，仅作演示
+  setTimeout(() => {
+    settings.shortcuts[shortcutName] = 'Ctrl+Shift+' + shortcutName.charAt(0).toUpperCase()
+    recordingShortcut.value = ''
+    showMessage('快捷键已设置')
+  }, 1000)
+}
+
+const addIgnoredApp = () => {
+  if (newIgnoredApp.value.trim() && !settings.ignoredApps.includes(newIgnoredApp.value.trim())) {
+    settings.ignoredApps.push(newIgnoredApp.value.trim())
+    newIgnoredApp.value = ''
+    showMessage('已添加忽略应用')
   }
 }
+
+const removeIgnoredApp = (index) => {
+  settings.ignoredApps.splice(index, 1)
+  showMessage('已移除忽略应用')
+}
+
+const login = () => {
+  // 模拟登录
+  userLoggedIn.value = true
+  showMessage('登录成功')
+}
+
+const logout = () => {
+  userLoggedIn.value = false
+  showMessage('已退出登录')
+}
+
+const saveUserInfo = () => {
+  showMessage('用户信息已保存')
+}
+
+const resetUserInfo = () => {
+  Object.assign(userInfo, {
+    username: '当前用户',
+    email: 'user@example.com',
+    bio: '剪贴板管理爱好者'
+  })
+  showMessage('用户信息已重置')
+}
+
+const changePassword = () => {
+  showMessage('修改密码功能待实现')
+}
+
+const deleteAccount = () => {
+  if (confirm('确定要删除账户吗？此操作不可撤销！')) {
+    showMessage('账户删除功能待实现')
+  }
+}
+
+const showMessage = (message) => {
+  toastMessage.value = message
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 2000)
+}
+
+// 生命周期
+onMounted(() => {
+  // 加载保存的设置
+  const savedSettings = localStorage.getItem('clipboardSettings')
+  if (savedSettings) {
+    Object.assign(settings, JSON.parse(savedSettings))
+  }
+})
 </script>
 
 <style scoped>
@@ -555,6 +540,7 @@ export default {
   transition: all 0.1s;
   border: none;
   border-radius: 8px;
+  gap: 8px;
 }
 
 .nav-item:hover {
@@ -567,8 +553,10 @@ export default {
 }
 
 .nav-icon {
-  margin-right: 12px;
-  font-size: 16px;
+  width: 1.2rem;
+  height: 1.2rem;
+  position: relative;
+  top: 1px; 
 }
 
 .nav-text {
