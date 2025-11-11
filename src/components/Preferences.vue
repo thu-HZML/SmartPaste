@@ -322,6 +322,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { invoke } from '@tauri-apps/api/core'
 import { 
   Cog6ToothIcon,
   TvIcon,

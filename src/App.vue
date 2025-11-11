@@ -106,7 +106,7 @@ onUnmounted(() => {
 
 <style>
 /* 全局样式 - 确保全屏透明 */
-/*
+
 html, body {
   margin: 0;
   padding: 0;
@@ -114,6 +114,7 @@ html, body {
   overflow: hidden;
   width: 100vw;
   height: 100vh;
+  
 }
 
 #app {
@@ -123,7 +124,7 @@ html, body {
 }
 */
 /* 应用容器 */
-/*
+
 .app-container {
   width: 100%;
   height: 100%;
@@ -132,7 +133,7 @@ html, body {
 }
 
 /* 菜单覆盖层 */
-/*
+
 .clipboard-menu-overlay {
   position: fixed;
   top: 0;
@@ -145,7 +146,7 @@ html, body {
 }
 
 /* 菜单容器 */
-/*
+
 .clipboard-menu-container {
   position: fixed;
   z-index: 10000;
@@ -161,7 +162,7 @@ html, body {
 }
 
 /* 菜单动画 */
-/*
+
 @keyframes slideIn {
   from {
     opacity: 0;
@@ -175,7 +176,7 @@ html, body {
 
 
 /* 确保菜单中的滚动条样式 */
-/*
+
 .clipboard-menu-container ::-webkit-scrollbar {
   width: 6px;
 }
@@ -193,5 +194,5 @@ html, body {
 .clipboard-menu-container ::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
-*/
+
 </style>
