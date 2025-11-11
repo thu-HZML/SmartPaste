@@ -263,72 +263,7 @@ fn main() {
                 window.hide()?;
             }
 
-            let click_time_clone = Arc::clone(&last_click_time);
-
-            // 创建托盘菜单
-            let menu = Menu::new(app)?;
-            let show_hide = MenuItem::with_id(app, "show_hide", "显示/隐藏", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            menu.append(&show_hide)?;
-            menu.append(&quit)?;
-
-            // 托盘图标
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .tooltip("SmartPaste")
-                .on_menu_event(move |app, event| {
-                    println!("🖱️ 菜单项点击: {}", event.id().as_ref());
-                    if let Some(window) = app.get_webview_window("main") {
-                        match event.id().as_ref() {
-                            "show_hide" => toggle_window_visibility(&window),
-                            "quit" => {
-                                println!("🚪 退出应用");
-                                std::process::exit(0);
-                            }
-                            _ => {}
-                        }
-                    }
-                })
-                .on_tray_icon_event(move |tray, event| {
-                    match event {
-                        TrayIconEvent::Click { button, .. } => {
-                            let now = Instant::now();
-                            let mut last_time = click_time_clone.lock().unwrap();
-
-                            // 防抖：200ms 内的重复点击忽略
-                            if now.duration_since(*last_time) < Duration::from_millis(200) {
-                                println!("⏰ 忽略重复点击");
-                                return;
-                            }
-                            *last_time = now;
-
-                            println!("🎯 托盘点击事件: {:?}", button);
-                            match button {
-                                tauri::tray::MouseButton::Left => {
-                                    if let Some(window) = tray.app_handle().get_webview_window("main")
-                                    {
-                                        toggle_window_visibility(&window);
-                                    }
-                                }
-                                tauri::tray::MouseButton::Right => {
-                                    println!("📋 右键点击，显示菜单");
-                                }
-                                _ => {}
-                            }
-                        }
-                        TrayIconEvent::DoubleClick { .. } => {
-                            println!("🖱️ 托盘双击事件");
-                            if let Some(window) = tray.app_handle().get_webview_window("main") {
-                                toggle_window_visibility(&window);
-                            }
-                        }
-                        _ => {}
-                    }
-                })
-                .build(app)?;
-
-            println!("✅ 托盘图标创建成功");
+            let click_time_clone = Arc::clone(&last_click_time);            
 
             // 设置主窗口为透明 + 穿透
             if let Some(window) = app.get_webview_window("main") {
