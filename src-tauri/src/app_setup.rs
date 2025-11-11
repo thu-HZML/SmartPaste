@@ -12,7 +12,9 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState};
+use tauri_plugin_global_shortcut::{
+    GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState,
+};
 
 pub struct AppShortcutState {
     pub current_shortcut: Mutex<String>,
@@ -28,7 +30,8 @@ fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
 }
 
 fn load_shortcut_from_storage(handle: &AppHandle) -> String {
-    fs::read_to_string(get_shortcut_config_path(handle)).unwrap_or_else(|_| "Alt+Shift+V".to_string())
+    fs::read_to_string(get_shortcut_config_path(handle))
+        .unwrap_or_else(|_| "Alt+Shift+V".to_string())
 }
 
 fn save_shortcut_to_storage(handle: &AppHandle, shortcut: &str) {
@@ -50,19 +53,22 @@ pub fn update_shortcut(
     if !current_shortcut_str.is_empty() {
         if let Ok(old_shortcut) = Shortcut::from_str(&*current_shortcut_str) {
             if let Err(e) = manager.unregister(old_shortcut) {
-                eprintln!("⚠️ 注销旧快捷键 {} 可能失败: {:?}", &*current_shortcut_str, e);
+                eprintln!(
+                    "⚠️ 注销旧快捷键 {} 可能失败: {:?}",
+                    &*current_shortcut_str, e
+                );
             }
         }
     }
-    
+
     // 2. 尝试注册新的快捷键 (先解析成 Shortcut 对象)
     let new_shortcut = Shortcut::from_str(&new_shortcut_str).map_err(|e| e.to_string())?;
     if let Err(e) = manager.register(new_shortcut.clone()) {
         // 如果注册失败，尝试恢复旧的快捷键
         if !current_shortcut_str.is_empty() {
-             if let Ok(old_shortcut_revert) = Shortcut::from_str(&*current_shortcut_str) {
+            if let Ok(old_shortcut_revert) = Shortcut::from_str(&*current_shortcut_str) {
                 manager.register(old_shortcut_revert).ok();
-             }
+            }
         }
         return Err(format!("注册新快捷键失败，可能已被占用: {}", e));
     }
@@ -75,8 +81,7 @@ pub fn update_shortcut(
     Ok(())
 }
 
-
-/// 创建系统托盘图标和菜单 
+/// 创建系统托盘图标和菜单
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let last_click_time = Arc::new(Mutex::new(Instant::now()));
     let show_hide = MenuItem::with_id(app, "show_hide", "显示/隐藏", true, None::<&str>)?;
@@ -117,7 +122,6 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle_for_closure = handle.clone();
 
@@ -127,9 +131,10 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
             .with_handler(move |_app, shortcut, event| {
                 let state = handle_for_closure.state::<AppShortcutState>();
                 let active_shortcut_str = state.current_shortcut.lock().unwrap();
-                
+
                 if let Ok(active_shortcut) = Shortcut::from_str(&active_shortcut_str) {
-                    if shortcut == &active_shortcut && event.state() == PluginShortcutState::Pressed {
+                    if shortcut == &active_shortcut && event.state() == PluginShortcutState::Pressed
+                    {
                         if let Some(window) = handle_for_closure.get_webview_window("main") {
                             println!("✅ 快捷键触发，执行窗口切换逻辑");
                             toggle_window_visibility(&window);
@@ -147,14 +152,17 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     if let Ok(shortcut) = Shortcut::from_str(&shortcut_str) {
         let manager = handle.global_shortcut();
         if let Err(e) = manager.register(shortcut) {
-            eprintln!("❌ 注册初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。", shortcut_str, e);
+            eprintln!(
+                "❌ 注册初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。",
+                shortcut_str, e
+            );
         } else {
             println!("✅ 已成功注册全局快捷键: {}", shortcut_str);
         }
     } else {
         eprintln!("❌ 初始快捷键 '{}' 格式无效。", shortcut_str);
     }
-    
+
     // 3. 将加载的快捷键字符串存入状态管理
     let state = handle.state::<AppShortcutState>();
     *state.current_shortcut.lock().unwrap() = shortcut_str;
@@ -162,8 +170,7 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-
-/// 启动后台线程以监控剪贴板 
+/// 启动后台线程以监控剪贴板
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
         let mut last_text = String::new();
@@ -273,8 +280,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     });
 }
 
-
-/// 切换窗口的显示与隐藏状态 
+/// 切换窗口的显示与隐藏状态
 fn toggle_window_visibility(window: &WebviewWindow) {
     if let Ok(is_visible) = window.is_visible() {
         if is_visible {
