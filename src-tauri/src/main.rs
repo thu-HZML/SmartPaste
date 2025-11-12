@@ -21,7 +21,12 @@ fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
 }
 
-// 开机自启命令
+/// 设置或取消应用的开机自启。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
+/// enable: bool - true表示启用开机自启，false表示禁用。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
 #[tauri::command]
 async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
     let autolaunch = app.autolaunch();
@@ -39,6 +44,11 @@ async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String
     Ok(())
 }
 
+/// 检查应用是否已设置为开机自启。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
+/// # Returns
+/// Result<bool, String> - 操作成功则返回 Ok(bool)，其中 true 表示已启用自启，false 表示未启用。失败则返回包含错误信息的 Err。
 #[tauri::command]
 async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
     let autolaunch = app.autolaunch();
@@ -47,6 +57,8 @@ async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
         .is_enabled()
         .map_err(|e| format!("检查自启状态失败: {}", e))
 }
+
+
 #[tauri::command]
 fn write_to_clipboard(
     text: String, 
@@ -61,7 +73,14 @@ fn write_to_clipboard(
     
     Ok(())
 }
-
+/// 将指定的文本写入系统剪贴板。作为 Tauri command 暴露给前端调用。
+/// 此函数会设置一个状态标志，以区分是前端主动复制还是由其他程序引起的剪贴板变化。
+/// # Param
+/// text: String - 需要写入剪贴板的文本内容。
+/// app_handle: tauri::AppHandle - Tauri 的应用句柄。
+/// state: State<'_,ClipboardSourceState> - 用于管理剪贴板来源状态的 Tauri 状态。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
 #[tauri::command]
 async fn write_file_to_clipboard(
     app_handle: tauri::AppHandle,
@@ -89,7 +108,14 @@ async fn write_file_to_clipboard(
     // 根据不同平台调用相应的文件复制方法
     copy_file_to_clipboard(absolute_path)
 }
-// 跨平台文件复制到剪贴板
+
+
+/// 跨平台地将文件复制到系统剪贴板。作为 Tauri command 暴露给前端调用。
+/// 此函数会根据编译的目标操作系统（Windows, macOS, Linux）调用相应的底层实现。
+/// # Param
+/// file_path: PathBuf - 要复制的文件的路径。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败（如路径非法或底层实现出错）则返回包含错误信息的 Err。
 #[tauri::command]
 fn copy_file_to_clipboard(file_path: PathBuf) -> Result<(), String> {
     let file_path_str = file_path.to_str().ok_or("文件路径包含非法字符")?;

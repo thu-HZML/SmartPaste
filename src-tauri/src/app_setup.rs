@@ -25,7 +25,14 @@ pub struct AppShortcutState {
 pub struct AppShortcutState2 {
     pub current_shortcut: Mutex<String>,
 }
-
+/// 构建并返回主快捷键配置文件的完整路径。
+/// 该文件名为 `shortcut_config.txt`，存储在应用的配置目录下。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于获取应用目录。
+/// # Returns
+/// PathBuf - 指向配置文件的路径对象。
+/// # Panics
+/// 如果无法获取应用配置目录，程序会 panic。
 fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
     let mut path = handle
         .path()
@@ -34,7 +41,14 @@ fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
     path.push("shortcut_config.txt");
     path
 }
-
+/// 构建并返回第二个界面快捷键配置文件的完整路径。
+/// 该文件名为 `shortcut_config2.txt`，存储在应用的配置目录下。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于获取应用目录。
+/// # Returns
+/// PathBuf - 指向配置文件的路径对象。
+/// # Panics
+/// 如果无法获取应用配置目录，程序会 panic。
 fn get_shortcut_config_path2(handle: &AppHandle) -> PathBuf {
     let mut path = handle
         .path()
@@ -43,29 +57,65 @@ fn get_shortcut_config_path2(handle: &AppHandle) -> PathBuf {
     path.push("shortcut_config2.txt");
     path
 }
-
+/// 从本地存储中加载主快捷键配置。
+/// 如果配置文件不存在或读取失败，将返回默认快捷键 "Alt+Shift+V"。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// # Returns
+/// String - 从文件中读取到的快捷键字符串，或默认值。
 fn load_shortcut_from_storage(handle: &AppHandle) -> String {
     fs::read_to_string(get_shortcut_config_path(handle))
         .unwrap_or_else(|_| "Alt+Shift+V".to_string())
 }
+/// 从本地存储中加载第二个界面的快捷键配置。
+/// 如果配置文件不存在或读取失败，将返回默认快捷键 "Alt+Shift+C"。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// # Returns
+/// String - 从文件中读取到的快捷键字符串，或默认值。
 fn load_shortcut_from_storage2(handle: &AppHandle) -> String {
     fs::read_to_string(get_shortcut_config_path2(handle))
         .unwrap_or_else(|_| "Alt+Shift+C".to_string())
 }
 
-
+/// 将主快捷键配置字符串保存到本地文件中。
+/// 如果保存失败，会向 stderr 打印一条错误信息。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// shortcut: &str - 需要保存的快捷键字符串。
+/// # Returns
+/// ()
 fn save_shortcut_to_storage(handle: &AppHandle, shortcut: &str) {
     if let Err(e) = fs::write(get_shortcut_config_path(handle), shortcut) {
         eprintln!("❌ 保存快捷键配置失败: {:?}", e);
     }
 }
+/// 将第二个界面的快捷键配置字符串保存到本地文件中。
+/// 如果保存失败，会向 stderr 打印一条错误信息。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// shortcut: &str - 需要保存的快捷键字符串。
+/// # Returns
+/// ()
 fn save_shortcut_to_storage2(handle: &AppHandle, shortcut: &str) {
     if let Err(e) = fs::write(get_shortcut_config_path2(handle), shortcut) {
         eprintln!("❌ 保存第二个界面快捷键配置失败: {:?}", e);
     }
 }
-
-
+/// 动态更新并注册应用的主全局快捷键。作为 Tauri command 暴露给前端调用。
+///
+/// 该函数会执行以下操作：
+/// 1. 从状态中获取并注销当前已注册的快捷键。
+/// 2. 尝试注册用户提供的新快捷键。
+/// 3. 如果注册失败（例如快捷键已被占用），则会尝试恢复注册旧的快捷键，并返回错误。
+/// 4. 如果注册成功，则更新应用状态，并将新快捷键持久化到本地存储中。
+///
+/// # Param
+/// new_shortcut_str: String - 新的快捷键组合字符串，例如 "CmdOrCtrl+Shift+V"。
+/// handle: AppHandle - Tauri 的应用句柄，用于访问全局快捷键管理器。
+/// state: State<AppShortcutState> - 存储当前主快捷键的 Tauri 状态。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
 #[tauri::command]
 pub fn update_shortcut(
     new_shortcut_str: String,
@@ -106,7 +156,18 @@ pub fn update_shortcut(
 
     Ok(())
 }
-
+/// 动态更新并注册应用的第二个全局快捷键。作为 Tauri command 暴露给前端调用。
+///
+/// 功能与 `update_shortcut` 类似，但针对的是第二个独立的快捷键。
+/// 它会注销旧的、注册新的，并在失败时回滚。成功后会更新对应的状态 `AppShortcutState2`
+/// 并调用 `save_shortcut_to_storage2` 进行持久化。
+///
+/// # Param
+/// new_shortcut_str: String - 新的快捷键组合字符串。
+/// handle: AppHandle - Tauri 的应用句柄，用于访问全局快捷键管理器。
+/// state: State<AppShortcutState2> - 存储当前第二个快捷键的 Tauri 状态。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
 #[tauri::command]
 pub fn update_shortcut2(
     new_shortcut_str: String,
@@ -188,6 +249,7 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ 托盘图标创建成功");
     Ok(())
 }
+
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle_for_closure = handle.clone();
 
