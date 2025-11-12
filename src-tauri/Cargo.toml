@@ -26,7 +26,10 @@ clipboard-files = "0.1.1"
 tempfile = "3.3"  
 arboard = "3.2"
 uuid = { version = "1", features = ["v4"] }
-tauri-plugin-autostart = "2.0"
+tauri-plugin-autostart = "2.0"anyhow = "1.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+uni-ocr = {git = "https://github.com/mediar-ai/uniocr.git"}
+
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
