@@ -16,7 +16,9 @@ use uuid::Uuid;
 use tauri_plugin_global_shortcut::{
     GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState,
 };
-
+pub struct ClipboardSourceState {
+    pub is_frontend_copy: Mutex<bool>,
+}
 pub struct AppShortcutState {
     pub current_shortcut: Mutex<String>,
 }
@@ -283,6 +285,15 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         fs::create_dir_all(&files_dir).unwrap();
 
         loop {
+            // 获取当前是否是前端复制状态
+            let is_frontend_copy = {
+                let state = app_handle.state::<ClipboardSourceState>();
+                let mut flag = state.is_frontend_copy.lock().unwrap();
+                let current = *flag;
+                // 重置标志，以便下次检测
+                *flag = false;
+                current
+            };
             // ... 内部逻辑无改动 ...
             if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() && text != last_text {
@@ -301,8 +312,11 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         notes: "".to_string(),
                         timestamp: Utc::now().timestamp(),
                     };
-                    if let Err(e) = db::insert_received_data(new_item) {
-                        eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
+                    
+                    if !is_frontend_copy {
+                        if let Err(e) = db::insert_received_data(new_item) {
+                            eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
+                        }
                     }
                 }
             }
@@ -336,8 +350,10 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             notes: "".to_string(),
                             timestamp: Utc::now().timestamp(),
                         };
-                        if let Err(e) = db::insert_received_data(new_item) {
-                            eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
+                        if !is_frontend_copy {
+                            if let Err(e) = db::insert_received_data(new_item) {
+                                eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
+                            }
                         }
                     }
                 }
@@ -366,8 +382,10 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                     notes: "".to_string(),
                                     timestamp: Utc::now().timestamp(),
                                 };
-                                if let Err(e) = db::insert_received_data(new_item) {
-                                    eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
+                                if !is_frontend_copy {
+                                    if let Err(e) = db::insert_received_data(new_item) {
+                                        eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
+                                    }
                                 }
                             }
                         }

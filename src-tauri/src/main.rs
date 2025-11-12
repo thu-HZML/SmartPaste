@@ -7,12 +7,12 @@ mod app_setup;
 mod clipboard;
 mod db;
 
-use app_setup::{update_shortcut,update_shortcut2, AppShortcutState, AppShortcutState2};
+use app_setup::{ClipboardSourceState,update_shortcut,update_shortcut2, AppShortcutState, AppShortcutState2};
 use arboard::Clipboard;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
 
@@ -48,9 +48,17 @@ async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
         .map_err(|e| format!("检查自启状态失败: {}", e))
 }
 #[tauri::command]
-fn write_to_clipboard(text: String) -> Result<(), String> {
+fn write_to_clipboard(
+    text: String, 
+    app_handle: tauri::AppHandle,
+    state: State<'_,ClipboardSourceState>
+) -> Result<(), String> {
+    // 设置标志，表示这是前端触发的复制
+    *state.is_frontend_copy.lock().unwrap() = true;
+    
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(text).map_err(|e| e.to_string())?;
+    
     Ok(())
 }
 
@@ -58,7 +66,10 @@ fn write_to_clipboard(text: String) -> Result<(), String> {
 async fn write_file_to_clipboard(
     app_handle: tauri::AppHandle,
     file_path: String,
+    state: State<'_,ClipboardSourceState>
 ) -> Result<(), String> {
+    // 设置标志，表示这是前端触发的复制
+    *state.is_frontend_copy.lock().unwrap() = true;
     let path = Path::new(&file_path);
 
     // 检查文件是否存在
@@ -189,8 +200,9 @@ fn main() {
         })
         .manage(AppShortcutState2 {
             current_shortcut: Mutex::new(String::new()),
+        }).manage(ClipboardSourceState { // 新增的状态
+            is_frontend_copy: Mutex::new(false),
         })
-
         .invoke_handler(tauri::generate_handler![
             test_function,
             write_to_clipboard,
