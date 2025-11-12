@@ -7,7 +7,7 @@ mod app_setup;
 mod clipboard;
 mod db;
 
-use app_setup::{update_shortcut, AppShortcutState};
+use app_setup::{update_shortcut,update_shortcut2, AppShortcutState, AppShortcutState2};
 use arboard::Clipboard;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -187,12 +187,17 @@ fn main() {
         .manage(AppShortcutState {
             current_shortcut: Mutex::new(String::new()),
         })
+        .manage(AppShortcutState2 {
+            current_shortcut: Mutex::new(String::new()),
+        })
+
         .invoke_handler(tauri::generate_handler![
             test_function,
             write_to_clipboard,
             write_file_to_clipboard,
             copy_file_to_clipboard,
             update_shortcut,
+            update_shortcut2,
             set_autostart,
             is_autostart_enabled,
             db::insert_received_data,

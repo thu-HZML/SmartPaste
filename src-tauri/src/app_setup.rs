@@ -20,6 +20,9 @@ use tauri_plugin_global_shortcut::{
 pub struct AppShortcutState {
     pub current_shortcut: Mutex<String>,
 }
+pub struct AppShortcutState2 {
+    pub current_shortcut: Mutex<String>,
+}
 
 fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
     let mut path = handle
@@ -30,16 +33,36 @@ fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
     path
 }
 
+fn get_shortcut_config_path2(handle: &AppHandle) -> PathBuf {
+    let mut path = handle
+        .path()
+        .app_config_dir()
+        .expect("无法获取应用配置目录");
+    path.push("shortcut_config2.txt");
+    path
+}
+
 fn load_shortcut_from_storage(handle: &AppHandle) -> String {
     fs::read_to_string(get_shortcut_config_path(handle))
         .unwrap_or_else(|_| "Alt+Shift+V".to_string())
 }
+fn load_shortcut_from_storage2(handle: &AppHandle) -> String {
+    fs::read_to_string(get_shortcut_config_path2(handle))
+        .unwrap_or_else(|_| "Alt+Shift+C".to_string())
+}
+
 
 fn save_shortcut_to_storage(handle: &AppHandle, shortcut: &str) {
     if let Err(e) = fs::write(get_shortcut_config_path(handle), shortcut) {
         eprintln!("❌ 保存快捷键配置失败: {:?}", e);
     }
 }
+fn save_shortcut_to_storage2(handle: &AppHandle, shortcut: &str) {
+    if let Err(e) = fs::write(get_shortcut_config_path2(handle), shortcut) {
+        eprintln!("❌ 保存第二个界面快捷键配置失败: {:?}", e);
+    }
+}
+
 
 #[tauri::command]
 pub fn update_shortcut(
@@ -82,6 +105,46 @@ pub fn update_shortcut(
     Ok(())
 }
 
+#[tauri::command]
+pub fn update_shortcut2(
+    new_shortcut_str: String,
+    handle: AppHandle,
+    state: State<AppShortcutState2>,
+) -> Result<(), String> {
+    let mut current_shortcut_str = state.current_shortcut.lock().unwrap();
+    let manager = handle.global_shortcut();
+
+    // 1. 注销旧的快捷键 (先解析成 Shortcut 对象)
+    if !current_shortcut_str.is_empty() {
+        if let Ok(old_shortcut) = Shortcut::from_str(&*current_shortcut_str) {
+            if let Err(e) = manager.unregister(old_shortcut) {
+                eprintln!(
+                    "⚠️ 注销第二个界面旧快捷键 {} 可能失败: {:?}",
+                    &*current_shortcut_str, e
+                );
+            }
+        }
+    }
+
+    // 2. 尝试注册新的快捷键 (先解析成 Shortcut 对象)
+    let new_shortcut = Shortcut::from_str(&new_shortcut_str).map_err(|e| e.to_string())?;
+    if let Err(e) = manager.register(new_shortcut.clone()) {
+        // 如果注册失败，尝试恢复旧的快捷键
+        if !current_shortcut_str.is_empty() {
+            if let Ok(old_shortcut_revert) = Shortcut::from_str(&*current_shortcut_str) {
+                manager.register(old_shortcut_revert).ok();
+            }
+        }
+        return Err(format!("注册第二个界面新快捷键失败，可能已被占用: {}", e));
+    }
+
+    // 3. 成功后，更新状态并保存
+    println!("✅ 已成功更新并注册第二个界面快捷键: {}", new_shortcut_str);
+    *current_shortcut_str = new_shortcut_str.clone();
+    save_shortcut_to_storage2(&handle, &new_shortcut_str);
+
+    Ok(())
+}
 
 /// 创建系统托盘图标和菜单
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
@@ -123,7 +186,6 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ 托盘图标创建成功");
     Ok(())
 }
-
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle_for_closure = handle.clone();
 
@@ -138,7 +200,21 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                     if shortcut == &active_shortcut && event.state() == PluginShortcutState::Pressed
                     {
                         if let Some(window) = handle_for_closure.get_webview_window("main") {
-                            println!("✅ 快捷键触发，执行窗口切换逻辑");
+                            println!("✅ 第一个界面快捷键触发，执行窗口切换逻辑");
+                            toggle_window_visibility(&window);
+                        }
+                    }
+                }
+
+                // 添加第二个界面的快捷键处理
+                let state2 = handle_for_closure.state::<AppShortcutState2>();
+                let active_shortcut_str2 = state2.current_shortcut.lock().unwrap();
+
+                if let Ok(active_shortcut2) = Shortcut::from_str(&active_shortcut_str2) {
+                    if shortcut == &active_shortcut2 && event.state() == PluginShortcutState::Pressed
+                    {
+                        if let Some(window) = handle_for_closure.get_webview_window("second_window") {
+                            println!("✅ 第二个界面快捷键触发，执行窗口切换逻辑");
                             toggle_window_visibility(&window);
                         }
                     }
@@ -147,27 +223,49 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
             .build(),
     )?;
 
-    // 2. 加载、存储并注册初始的快捷键
+    // 2. 加载、存储并注册第一个界面的初始快捷键
     let shortcut_str = load_shortcut_from_storage(&handle);
-    println!("ℹ️ 正在尝试注册快捷键: {}", shortcut_str);
+    println!("ℹ️ 正在尝试注册第一个界面快捷键: {}", shortcut_str);
 
     if let Ok(shortcut) = Shortcut::from_str(&shortcut_str) {
         let manager = handle.global_shortcut();
         if let Err(e) = manager.register(shortcut) {
             eprintln!(
-                "❌ 注册初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。",
+                "❌ 注册第一个界面初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。",
                 shortcut_str, e
             );
         } else {
-            println!("✅ 已成功注册全局快捷键: {}", shortcut_str);
+            println!("✅ 已成功注册第一个界面全局快捷键: {}", shortcut_str);
         }
     } else {
-        eprintln!("❌ 初始快捷键 '{}' 格式无效。", shortcut_str);
+        eprintln!("❌ 第一个界面初始快捷键 '{}' 格式无效。", shortcut_str);
     }
 
     // 3. 将加载的快捷键字符串存入状态管理
     let state = handle.state::<AppShortcutState>();
     *state.current_shortcut.lock().unwrap() = shortcut_str;
+
+    // 4. 加载、存储并注册第二个界面的初始快捷键
+    let shortcut_str2 = load_shortcut_from_storage2(&handle);
+    println!("ℹ️ 正在尝试注册第二个界面快捷键: {}", shortcut_str2);
+
+    if let Ok(shortcut2) = Shortcut::from_str(&shortcut_str2) {
+        let manager = handle.global_shortcut();
+        if let Err(e) = manager.register(shortcut2) {
+            eprintln!(
+                "❌ 注册第二个界面初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。",
+                shortcut_str2, e
+            );
+        } else {
+            println!("✅ 已成功注册第二个界面全局快捷键: {}", shortcut_str2);
+        }
+    } else {
+        eprintln!("❌ 第二个界面初始快捷键 '{}' 格式无效。", shortcut_str2);
+    }
+
+    // 5. 将加载的第二个界面快捷键字符串存入状态管理
+    let state2 = handle.state::<AppShortcutState2>();
+    *state2.current_shortcut.lock().unwrap() = shortcut_str2;
 
     Ok(())
 }
