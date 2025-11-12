@@ -1,39 +1,23 @@
 // src/utils/actions.js
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { getCurrent } from '@tauri-apps/api/window'
 
 // 存储所有窗口实例
 const windowInstances = new Map()
 
+// 全局状态存储主窗口位置
+let mainWindowPosition = { x: 100, y: 100, width: 200, height: 200 }
+
 /**
- * 创建登录窗口
+ * 更新主窗口位置（在主窗口组件中调用）
  */
-export async function loginWin() {
-  try {
-    const webview = new WebviewWindow('login', {
-      url: '/login',
-      title: '登录',
-      width: 400,
-      height: 500,
-      resizable: false,
-      center: true,
-      decorations: false,
-      alwaysOnTop: true
-    })
-    
-    webview.once('tauri://created', () => {
-      console.log('登录窗口创建成功')
-      windowInstances.set('login', webview)
-    })
-    
-    webview.once('tauri://error', (e) => {
-      console.error('登录窗口创建失败:', e)
-    })
-    
-    return webview
-  } catch (error) {
-    console.error('创建登录窗口错误:', error)
+export function updateMainWindowPosition(position, size) {
+  mainWindowPosition = {
+    x: position.x,
+    y: position.y,
+    width: size.width,
+    height: size.height
   }
+  console.log('更新主窗口位置:', mainWindowPosition)
 }
 
 /**
@@ -47,7 +31,7 @@ export async function createClipboardWindow(options = {}) {
     const { x = 100, y = 100, width = 400, height = 600 } = options
     
     const webview = new WebviewWindow(windowId, {
-      url: '/clipboard',
+      url: '/clipboardapp',
       title: '剪贴板',
       width,
       height,
@@ -94,26 +78,36 @@ export async function toggleClipboardWindow() {
   if (clipboardWindows.length > 0) {
     // 如果存在剪贴板窗口，关闭它们
     for (const [windowId, window] of clipboardWindows) {
-      await window.close()
-      windowInstances.delete(windowId)
+      try {
+        await window.close()
+        windowInstances.delete(windowId)
+      } catch (error) {
+        console.error('关闭窗口失败:', error)
+      }
     }
     return null
   } else {
     // 如果不存在，创建新窗口
-    const currentWindow = getCurrent()
-    const position = await currentWindow.innerPosition()
-    const size = await currentWindow.innerSize()
-    
-    // 计算新窗口位置（在桌宠右侧）
-    const newX = position.x + size.width + 10
-    const newY = position.y
-    
-    return await createClipboardWindow({
-      x: newX,
-      y: newY,
-      width: 400,
-      height: 600
-    })
+    try {
+      // 使用全局存储的主窗口位置
+      const { x, y, width, height } = mainWindowPosition
+      
+      // 计算新窗口位置（在桌宠右侧）
+      const newX = x + width + 10
+      const newY = y
+      
+      console.log('使用主窗口位置创建剪贴板窗口:', { newX, newY })
+      
+      return await createClipboardWindow({
+        x: newX,
+        y: newY,
+        width: 400,
+        height: 600
+      })
+    } catch (error) {
+      console.error('创建剪贴板窗口错误:', error)
+      return await createClipboardWindow() // 创建默认位置的窗口
+    }
   }
 }
 
@@ -133,8 +127,12 @@ export function getAllWindows() {
 export async function closeWindowById(windowId) {
   const window = windowInstances.get(windowId)
   if (window) {
-    await window.close()
-    windowInstances.delete(windowId)
+    try {
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭窗口失败:', error)
+    }
   }
 }
 
@@ -146,7 +144,11 @@ export async function closeAllClipboardWindows() {
     .filter(([key]) => key.startsWith('clipboard_'))
   
   for (const [windowId, window] of clipboardWindows) {
-    await window.close()
-    windowInstances.delete(windowId)
+    try {
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭窗口失败:', error)
+    }
   }
 }

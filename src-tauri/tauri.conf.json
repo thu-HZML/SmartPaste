@@ -30,7 +30,7 @@
         "enable": true,
         "scope": ["$APPDATA/*", "$LOCALDATA/*", "**/*.jpg", "**/*.png", "**/*.jpeg", "**/*.gif", "**/*.webp"]
       }
-    }
+    }   
   },
   "bundle": {
     "active": true,
@@ -40,5 +40,13 @@
       "icons/logo.png",
       "icons/tray.png"
     ]
+  },
+  "plugins": {
+    "window": {
+      "label": "main",
+      "defaultIcon": {
+        "icon": "icons/logo.png"
+      }
+    }
   }
 }

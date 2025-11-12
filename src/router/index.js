@@ -4,18 +4,17 @@ import Settings from '../components/Settings.vue'
 import Preferences from '../components/Preferences.vue'
 import DesktopPet from '../components/DesktopPet.vue'  // 新增桌宠组件
 import Menu from '../components/Menu.vue'
-import Global from '../components/Global.vue'
 
 const routes = [
   {
     path: '/',
     name: 'DesktopPet',
-    component: ClipboardApp
+    component: DesktopPet
   },
   {
     path: '/clipboardapp',
     name: 'ClipboardApp',
-    component: DesktopPet
+    component: ClipboardApp
   },
   {
     path: '/settings',
