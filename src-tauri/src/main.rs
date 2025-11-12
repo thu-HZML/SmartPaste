@@ -145,8 +145,6 @@ fn copy_file_to_clipboard_linux(file_path: &str) -> Result<(), String> {
 }
 
 fn main() {
-    let last_click_time = Arc::new(Mutex::new(Instant::now()));
-    let app_state = Arc::new(AppState::default());
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
@@ -174,10 +172,7 @@ fn main() {
             db::add_item_to_folder,
             db::remove_item_from_folder,
             db::filter_data_by_folder,
-            set_mouse_passthrough, 
-            update_pet_position,
         ])
-        .manage(app_state.clone())
         .setup(move|app| {
             // 初始化数据库路径
             let app_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
@@ -210,13 +205,10 @@ fn main() {
             // 初始隐藏主窗口，避免启动时闪烁
             if let Some(window) = app.get_webview_window("main") {
                 window.hide()?;
-            }
-
-            let click_time_clone = Arc::clone(&last_click_time);            
+            }           
 
             // 设置主窗口为透明 + 穿透
-            if let Some(window) = app.get_webview_window("main") {
-                
+            if let Some(window) = app.get_webview_window("main") {               
                 window.show()?;
             }
 
