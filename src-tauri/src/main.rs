@@ -7,14 +7,45 @@ mod app_setup;
 mod clipboard;
 mod db;
 
+use app_setup::{update_shortcut, AppShortcutState};
 use arboard::Clipboard;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::Manager;
+use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_autostart::ManagerExt;
 
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
+}
+
+// 开机自启命令
+#[tauri::command]
+async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
+    let autolaunch = app.autolaunch();
+    
+    if enable {
+        autolaunch
+            .enable()
+            .map_err(|e| format!("启用开机自启失败: {}", e))?;
+    } else {
+        autolaunch
+            .disable()
+            .map_err(|e| format!("禁用开机自启失败: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    let autolaunch = app.autolaunch();
+    
+    autolaunch
+        .is_enabled()
+        .map_err(|e| format!("检查自启状态失败: {}", e))
 }
 #[tauri::command]
 fn write_to_clipboard(text: String) -> Result<(), String> {
@@ -146,13 +177,24 @@ fn copy_file_to_clipboard_linux(file_path: &str) -> Result<(), String> {
 
 fn main() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![]), // 可以传递启动参数，这里为空
+        ))
+        .manage(AppShortcutState {
+            current_shortcut: Mutex::new(String::new()),
+        })
         .invoke_handler(tauri::generate_handler![
             test_function,
             write_to_clipboard,
             write_file_to_clipboard,
             copy_file_to_clipboard,
+            update_shortcut,
+            set_autostart,
+            is_autostart_enabled,
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
