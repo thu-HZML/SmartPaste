@@ -36,7 +36,7 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoStart">
+                <input type="checkbox" v-model="settings.autoStart" @change="toggleAutoStart">
                 <span class="slider"></span>
               </label>
             </div>
@@ -342,6 +342,15 @@ const newIgnoredApp = ref('')
 const userLoggedIn = ref(false)
 const userEmail = ref('user@example.com')
 
+const autostart = ref(false)
+const loading = ref(false)
+
+// 添加快捷键设置所需的变量
+const errorMsg = ref('')
+const successMsg = ref('')
+const currentShortcut = ref('')
+let timer = null
+
 // 导航项
 const navItems = ref([
   { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
@@ -399,19 +408,6 @@ const startRecording = (shortcutName) => {
   }, 1000)
 }
 
-const addIgnoredApp = () => {
-  if (newIgnoredApp.value.trim() && !settings.ignoredApps.includes(newIgnoredApp.value.trim())) {
-    settings.ignoredApps.push(newIgnoredApp.value.trim())
-    newIgnoredApp.value = ''
-    showMessage('已添加忽略应用')
-  }
-}
-
-const removeIgnoredApp = (index) => {
-  settings.ignoredApps.splice(index, 1)
-  showMessage('已移除忽略应用')
-}
-
 const login = () => {
   // 模拟登录
   userLoggedIn.value = true
@@ -423,10 +419,6 @@ const logout = () => {
   showMessage('已退出登录')
 }
 
-const saveUserInfo = () => {
-  showMessage('用户信息已保存')
-}
-
 const resetUserInfo = () => {
   Object.assign(userInfo, {
     username: '当前用户',
@@ -436,15 +428,6 @@ const resetUserInfo = () => {
   showMessage('用户信息已重置')
 }
 
-const changePassword = () => {
-  showMessage('修改密码功能待实现')
-}
-
-const deleteAccount = () => {
-  if (confirm('确定要删除账户吗？此操作不可撤销！')) {
-    showMessage('账户删除功能待实现')
-  }
-}
 
 const showMessage = (message) => {
   toastMessage.value = message
@@ -455,13 +438,409 @@ const showMessage = (message) => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   // 加载保存的设置
   const savedSettings = localStorage.getItem('clipboardSettings')
   if (savedSettings) {
     Object.assign(settings, JSON.parse(savedSettings))
   }
+  await checkAutostartStatus()
 })
+
+// 新添加
+// 通用设置相关函数
+// 启动时自动运行
+// 检查自启状态
+const checkAutostartStatus = async () => {
+  try {
+    const isEnabled = await invoke('is_autostart_enabled')
+    settings.autoStart = isEnabled
+    console.log('当前自启状态:', isEnabled)
+  } catch (error) {
+    console.error('检查自启状态失败:', error)
+    showMessage('检查自启状态失败')
+  }
+}
+
+// 切换自启状态 - 唯一的函数
+const toggleAutoStart = async () => {
+  loading.value = true
+  try {
+    await invoke('set_autostart', { enable: settings.autoStart })
+    const message = settings.autoStart ? '已开启开机自启' : '已关闭开机自启'
+    console.log(message)
+    showMessage(message)
+  } catch (error) {
+    console.error('设置自启失败:', error)
+    showMessage(`设置失败: ${error}`)
+    // 出错时恢复原状态
+    settings.autoStart = !settings.autoStart
+  } finally {
+    loading.value = false
+  }
+}
+// 显示系统托盘图标
+const toggleTrayIcon = async () => {
+  try {
+    await invoke('set_tray_icon_visibility', { visible: settings.showTrayIcon })
+    showMessage(settings.showTrayIcon ? '已显示托盘图标' : '已隐藏托盘图标')
+  } catch (error) {
+    console.error('设置托盘图标失败:', error)
+    settings.showTrayIcon = !settings.showTrayIcon
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 自动保存剪贴板历史
+const toggleAutoSave = async () => {
+  try {
+    await invoke('set_auto_save', { enabled: settings.autoSave })
+    showMessage(settings.autoSave ? '已启用自动保存' : '已禁用自动保存')
+  } catch (error) {
+    console.error('设置自动保存失败:', error)
+    settings.autoSave = !settings.autoSave
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 历史记录保留时间
+const updateRetentionDays = async () => {
+  try {
+    await invoke('set_retention_days', { days: parseInt(settings.retentionDays) })
+    showMessage(`历史记录保留时间已设置为 ${settings.retentionDays} 天`)
+  } catch (error) {
+    console.error('设置保留时间失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 快捷键设置相关函数
+// 显示/隐藏主窗口快捷键
+const setToggleWindowShortcut = async () => {
+  try {
+    recordingShortcut.value = 'toggleWindow'
+    showMessage('请按下显示/隐藏主窗口的快捷键...')
+    
+    const shortcut = await invoke('record_shortcut', { action: 'toggle_window' })
+    settings.shortcuts.toggleWindow = shortcut
+    showMessage(`已设置显示/隐藏快捷键: ${shortcut}`)
+  } catch (error) {
+    console.error('设置快捷键失败:', error)
+    showMessage(`设置失败: ${error}`)
+  } finally {
+    recordingShortcut.value = ''
+  }
+}
+
+// 快速粘贴快捷键
+const setQuickPasteShortcut = async () => {
+  try {
+    recordingShortcut.value = 'quickPaste'
+    showMessage('请按下快速粘贴的快捷键...')
+    
+    const shortcut = await invoke('record_shortcut', { action: 'quick_paste' })
+    settings.shortcuts.quickPaste = shortcut
+    showMessage(`已设置快速粘贴快捷键: ${shortcut}`)
+  } catch (error) {
+    console.error('设置快捷键失败:', error)
+    showMessage(`设置失败: ${error}`)
+  } finally {
+    recordingShortcut.value = ''
+  }
+}
+
+// 清空剪贴板历史快捷键
+const setClearHistoryShortcut = async () => {
+  try {
+    recordingShortcut.value = 'clearHistory'
+    showMessage('请按下清空历史的快捷键...')
+    
+    const shortcut = await invoke('record_shortcut', { action: 'clear_history' })
+    settings.shortcuts.clearHistory = shortcut
+    showMessage(`已设置清空历史快捷键: ${shortcut}`)
+  } catch (error) {
+    console.error('设置快捷键失败:', error)
+    showMessage(`设置失败: ${error}`)
+  } finally {
+    recordingShortcut.value = ''
+  }
+}
+
+const setShortcut = async (shortcut) => {
+  errorMsg.value = '';
+  successMsg.value = '';
+
+  try {
+    await invoke('update_shortcut', { newShortcutStr: shortcut });
+
+    currentShortcut.value = shortcut; // 更新界面显示
+    successMsg.value = '快捷键设置成功！';
+    console.log(`✅ 快捷键已成功更新为: ${shortcut}`);
+
+  } catch (err) {
+    errorMsg.value = `设置失败: ${err}`;
+    console.error('❌ 设置快捷键失败:', err);
+  }
+
+  // 3秒后自动清除提示消息
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    successMsg.value = '';
+    errorMsg.value = '';
+  }, 3000);
+}
+
+// 剪贴板参数设置相关函数
+// 最大历史记录数量
+const updateMaxHistoryItems = async () => {
+  try {
+    await invoke('set_max_history_items', { maxItems: settings.maxHistoryItems })
+    showMessage(`最大历史记录数量已设置为 ${settings.maxHistoryItems}`)
+  } catch (error) {
+    console.error('设置最大历史记录数量失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 忽略短文本
+const updateIgnoreShortText = async () => {
+  try {
+    await invoke('set_ignore_short_text', { minLength: settings.ignoreShortText })
+    showMessage(`已设置忽略 ${settings.ignoreShortText} 字符以下的文本`)
+  } catch (error) {
+    console.error('设置忽略短文本失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 添加忽略应用
+const addIgnoredApp = async () => {
+  if (newIgnoredApp.value.trim() && !settings.ignoredApps.includes(newIgnoredApp.value.trim())) {
+    const newApp = newIgnoredApp.value.trim()
+    settings.ignoredApps.push(newApp)
+    newIgnoredApp.value = ''
+    
+    try {
+      await invoke('add_ignored_app', { appName: newApp })
+      showMessage(`已添加忽略应用: ${newApp}`)
+    } catch (error) {
+      console.error('添加忽略应用失败:', error)
+      settings.ignoredApps.pop() // 回滚
+      showMessage(`添加失败: ${error}`)
+    }
+  }
+}
+
+// 移除忽略应用
+const removeIgnoredApp = async (index) => {
+  const removedApp = settings.ignoredApps[index]
+  settings.ignoredApps.splice(index, 1)
+  
+  try {
+    await invoke('remove_ignored_app', { appName: removedApp })
+    showMessage(`已移除忽略应用: ${removedApp}`)
+  } catch (error) {
+    console.error('移除忽略应用失败:', error)
+    settings.ignoredApps.splice(index, 0, removedApp) // 回滚
+    showMessage(`移除失败: ${error}`)
+  }
+}
+
+// 文本预览长度
+const updatePreviewLength = async () => {
+  try {
+    await invoke('set_preview_length', { length: settings.previewLength })
+    showMessage(`文本预览长度已设置为 ${settings.previewLength} 字符`)
+  } catch (error) {
+    console.error('设置预览长度失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 清空所有忽略应用
+const clearAllIgnoredApps = async () => {
+  if (settings.ignoredApps.length === 0) {
+    showMessage('没有可清空的忽略应用')
+    return
+  }
+  
+  if (confirm('确定要清空所有忽略应用吗？')) {
+    const oldApps = [...settings.ignoredApps]
+    settings.ignoredApps = []
+    
+    try {
+      await invoke('clear_all_ignored_apps')
+      showMessage('已清空所有忽略应用')
+    } catch (error) {
+      console.error('清空忽略应用失败:', error)
+      settings.ignoredApps = oldApps // 回滚
+      showMessage(`清空失败: ${error}`)
+    }
+  }
+}
+
+// 云端同步相关函数
+// 启用/禁用云端同步
+const toggleCloudSync = async () => {
+  try {
+    await invoke('set_cloud_sync', { enabled: settings.cloudSync })
+    showMessage(settings.cloudSync ? '已启用云端同步' : '已禁用云端同步')
+  } catch (error) {
+    console.error('设置云端同步失败:', error)
+    settings.cloudSync = !settings.cloudSync
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 同步频率
+const updateSyncFrequency = async () => {
+  try {
+    await invoke('set_sync_frequency', { frequency: settings.syncFrequency })
+    showMessage(`同步频率已设置为 ${getFrequencyText(settings.syncFrequency)}`)
+  } catch (error) {
+    console.error('设置同步频率失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 加密同步数据
+const toggleEncryptCloudData = async () => {
+  try {
+    await invoke('set_encrypt_cloud_data', { enabled: settings.encryptCloudData })
+    showMessage(settings.encryptCloudData ? '已启用数据加密' : '已禁用数据加密')
+  } catch (error) {
+    console.error('设置数据加密失败:', error)
+    settings.encryptCloudData = !settings.encryptCloudData
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 立即同步
+const syncNow = async () => {
+  try {
+    showMessage('正在同步...')
+    await invoke('force_cloud_sync')
+    showMessage('云端同步完成')
+  } catch (error) {
+    console.error('同步失败:', error)
+    showMessage(`同步失败: ${error}`)
+  }
+}
+
+// 查看同步状态
+const checkSyncStatus = async () => {
+  try {
+    const status = await invoke('get_sync_status')
+    showMessage(`同步状态: ${status.lastSync ? `最后同步 ${formatTime(status.lastSync)}` : '从未同步'}`)
+  } catch (error) {
+    console.error('获取同步状态失败:', error)
+    showMessage(`获取状态失败: ${error}`)
+  }
+}
+
+// 辅助函数：获取频率文本
+const getFrequencyText = (frequency) => {
+  const frequencyMap = {
+    'realtime': '实时',
+    '5min': '5分钟',
+    '15min': '15分钟', 
+    '1hour': '1小时'
+  }
+  return frequencyMap[frequency] || frequency
+}
+
+// 用户信息相关函数
+// 保存用户信息
+const saveUserInfo = async () => {
+  try {
+    await invoke('update_user_profile', {
+      username: userInfo.username,
+      email: userInfo.email,
+      bio: userInfo.bio
+    })
+    showMessage('用户信息已保存')
+  } catch (error) {
+    console.error('保存用户信息失败:', error)
+    showMessage(`保存失败: ${error}`)
+  }
+}
+
+// 更换头像
+const changeAvatar = async () => {
+  try {
+    const filePath = await invoke('select_avatar_file')
+    if (filePath) {
+      await invoke('upload_user_avatar', { filePath })
+      showMessage('头像更换成功')
+    }
+  } catch (error) {
+    console.error('更换头像失败:', error)
+    showMessage(`更换失败: ${error}`)
+  }
+}
+
+// 修改密码
+const changePassword = async () => {
+  try {
+    // 这里应该打开密码修改模态框
+    const result = await invoke('open_change_password_dialog')
+    if (result.success) {
+      showMessage('密码修改成功')
+    }
+  } catch (error) {
+    console.error('修改密码失败:', error)
+    showMessage(`修改失败: ${error}`)
+  }
+}
+
+// 删除账户
+const deleteAccount = async () => {
+  if (confirm('确定要删除账户吗？此操作将永久删除所有数据且不可恢复！')) {
+    try {
+      await invoke('delete_user_account')
+      showMessage('账户已删除')
+      router.push('/')
+    } catch (error) {
+      console.error('删除账户失败:', error)
+      showMessage(`删除失败: ${error}`)
+    }
+  }
+}
+
+// 导出用户数据
+const exportUserData = async () => {
+  try {
+    const exportPath = await invoke('export_user_data')
+    showMessage(`用户数据已导出到: ${exportPath}`)
+  } catch (error) {
+    console.error('导出数据失败:', error)
+    showMessage(`导出失败: ${error}`)
+  }
+}
+
+// 导入用户数据
+const importUserData = async () => {
+  try {
+    const importPath = await invoke('import_user_data')
+    showMessage('用户数据导入成功')
+    // 重新加载用户信息
+    await loadUserInfo()
+  } catch (error) {
+    console.error('导入数据失败:', error)
+    showMessage(`导入失败: ${error}`)
+  }
+}
+
+// 加载用户信息
+const loadUserInfo = async () => {
+  try {
+    const profile = await invoke('get_user_profile')
+    Object.assign(userInfo, profile)
+  } catch (error) {
+    console.error('加载用户信息失败:', error)
+  }
+}
+
 </script>
 
 <style scoped>
