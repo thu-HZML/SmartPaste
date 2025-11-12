@@ -99,6 +99,18 @@
               </div>
             </div>
           </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>显示/隐藏剪贴板</h3>
+              <p>快速显示或隐藏剪贴板</p>
+            </div>
+            <div class="setting-control">
+              <div class="shortcut-input" @click="startRecording('pasteWindow')">
+                {{ settings.shortcuts.pasteWindow || '点击设置' }}
+              </div>
+            </div>
+          </div>
           
           <div class="setting-item">
             <div class="setting-info">
@@ -378,6 +390,7 @@ const settings = reactive({
   encryptCloudData: true,
   shortcuts: {
     toggleWindow: 'Ctrl+Shift+V',
+    pasteWindow: '',
     quickPaste: '',
     clearHistory: ''
   }
@@ -673,6 +686,7 @@ const setShortcut = async (newShortcutStr, shortcutType = null) => {
 const getShortcutDisplayName = (shortcutType) => {
   const nameMap = {
     'toggleWindow': '显示/隐藏主窗口',
+    'asteWindow': '显示/隐藏剪贴板',
     'quickPaste': '快速粘贴', 
     'clearHistory': '清空剪贴板历史'
   };
