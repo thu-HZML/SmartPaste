@@ -14,14 +14,13 @@
       {
         "label": "main",
         "title": "Desktop Pet",
-        "fullscreen": true,
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,
         "skipTaskbar": true,
         "acceptFirstMouse": true,  
         "shadow": false,
-        "resizable": false,
+        "resizable": true,
         "focus": false
       }
     ],
@@ -31,7 +30,7 @@
         "enable": true,
         "scope": ["$APPDATA/*", "$LOCALDATA/*", "**/*.jpg", "**/*.png", "**/*.jpeg", "**/*.gif", "**/*.webp"]
       }
-    }
+    }   
   },
   "bundle": {
     "active": true,
@@ -41,5 +40,13 @@
       "icons/logo.png",
       "icons/tray.png"
     ]
+  },
+  "plugins": {
+    "window": {
+      "label": "main",
+      "defaultIcon": {
+        "icon": "icons/logo.png"
+      }
+    }
   }
 }

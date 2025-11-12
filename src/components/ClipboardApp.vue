@@ -46,156 +46,154 @@
       </div>
     </header>
 
-    <div class="scroll-container">
-      <!-- 剪贴板记录列表 -->
-      <main class="app-main">
-        <!-- "全部"、"图片"、"视频"、"文件"界面 -->
-        <div v-if="['all', 'image', 'video', 'file'].includes(activeCategory)">
-          <div v-if="filteredHistory.length === 0" class="empty-state">
-            <p v-if="searchQuery">未找到匹配的记录</p>
-            <p v-else>暂无剪贴板记录</p>
-            <p class="hint">复制的内容将显示在这里</p>
-          </div>
-          
-          <div v-else class="history-list">
-            <div 
-              v-for="(item, index) in filteredHistory" 
-              :key="index" 
-              class="history-item"
-              tabindex="0"
-              @mouseenter="item.is_focus = true"
-              @mouseleave="item.is_focus = false"
-            >
-              <div class="item-info">
-                <div class="item-meta">
-                  <span>{{ item.item_type }}</span>
-                  <span>{{ item.content.length }}字符</span>
-                  <span>{{ formatTime(item.timestamp) }}</span>
-                </div>
-
-                <!-- 右上方按钮组 -->
-                <div class="item-actions-top">
-                  <button 
-                    class="icon-btn-small" 
-                    @click="toggleFavorite(index)"
-                    :title="item.is_favorite ? '取消收藏' : '收藏'"
-                  >
-                    <StarIconSolid v-if="item.is_favorite" class="icon-star-solid" />
-                    <StarIcon v-else class="icon-default" />
-                  </button>
-                  <button 
-                    class="icon-btn-small" 
-                    @click="copyItem(item)"
-                    title="复制"
-                  >
-                    <Square2StackIcon class="icon-default" />
-                  </button>
-                  <button 
-                    class="icon-btn-small" 
-                    @click="editItem(index)"
-                    title="编辑"
-                    :disabled="item.content.length > 500"
-                  >
-                    <ClipboardIcon class="icon-default" />
-                  </button>
-                  <button 
-                    class="icon-btn-small" 
-                    @click="noteItem(index)"
-                    title="备注"
-                  >
-                    <PencilSquareIcon class="icon-default" />
-                  </button>
-                  <button 
-                    class="icon-btn-small" 
-                    @click="removeItem(index)"
-                    title="删除"
-                  >
-                    <TrashIcon class="icon-default" />
-                  </button>
-                </div>
+    <!-- 剪贴板记录列表 -->
+    <main class="app-main">
+      <!-- "全部"、"图片"、"视频"、"文件"界面 -->
+      <div v-if="['all', 'image', 'video', 'file'].includes(activeCategory)">
+        <div v-if="filteredHistory.length === 0" class="empty-state">
+          <p v-if="searchQuery">未找到匹配的记录</p>
+          <p v-else>暂无剪贴板记录</p>
+          <p class="hint">复制的内容将显示在这里</p>
+        </div>
+        
+        <div v-else class="history-list">
+          <div 
+            v-for="(item, index) in filteredHistory" 
+            :key="index" 
+            class="history-item"
+            tabindex="0"
+            @mouseenter="item.is_focus = true"
+            @mouseleave="item.is_focus = false"
+          >
+            <div class="item-info">
+              <div class="item-meta">
+                <span>{{ item.item_type }}</span>
+                <span>{{ item.content.length }}字符</span>
+                <span>{{ formatTime(item.timestamp) }}</span>
               </div>
-              <div class="item-content"> 
-                <transition name="fade" mode="out-in">               
-                    <div v-if="item.is_focus || !item.notes" class="item-text">
 
-                      <!-- 显示文本 -->
-                      <div v-if="item.item_type === 'text'" :title="item.content">
-                        {{ item.content }}
-                      </div>
-                      
-                      <!-- 显示图片 -->
-                      <div v-else-if="item.item_type === 'image'" class="image-container">
-                        <img 
-                          v-if="item.content"
-                          :src="convertFileSrc(item.content)" 
-                          :alt="'图片: ' + getFileName(item.content)"
-                          class="preview-image"
-                          @error="handleImageError"
-                        />
-                        <div v-else class="loading">加载中...</div>
-                        <div class="image-filename">{{ getFileName(item.content) }}</div>
-                      </div>
-
-                      <!-- 显示文件 -->
-                      <div v-else-if="item.item_type === 'file'" class="file-container">
-                        <div class="file-icon">
-                          <!-- 可以根据文件类型显示不同的图标 -->
-                          <span v-if="isDocumentFile(item.content)" class="icon">📄</span>
-                          <span v-else class="icon">📎</span>
-                        </div>
-                        <div class="file-info">
-                          <div class="file-name">{{ getFileName(item.content) }}</div>
-                        </div>
-                      </div>
-
-                      <!-- 未知类型 -->
-                      <div v-else :title="item.content">
-                        {{ item.content }}
-                      </div>
-                    </div>
-                    <div v-else class="item-text">
-                      {{ item.notes }}
-                    </div>
-                </transition> 
-              </div>    
+              <!-- 右上方按钮组 -->
+              <div class="item-actions-top">
+                <button 
+                  class="icon-btn-small" 
+                  @click="toggleFavorite(index)"
+                  :title="item.is_favorite ? '取消收藏' : '收藏'"
+                >
+                  <StarIconSolid v-if="item.is_favorite" class="icon-star-solid" />
+                  <StarIcon v-else class="icon-default" />
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="copyItem(item)"
+                  title="复制"
+                >
+                  <Square2StackIcon class="icon-default" />
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="editItem(index)"
+                  title="编辑"
+                  :disabled="item.content.length > 500"
+                >
+                  <ClipboardIcon class="icon-default" />
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="noteItem(index)"
+                  title="备注"
+                >
+                  <PencilSquareIcon class="icon-default" />
+                </button>
+                <button 
+                  class="icon-btn-small" 
+                  @click="removeItem(index)"
+                  title="删除"
+                >
+                  <TrashIcon class="icon-default" />
+                </button>
+              </div>
             </div>
+            <div class="item-content"> 
+              <transition name="fade" mode="out-in">               
+                  <div v-if="item.is_focus || !item.notes" class="item-text">
+
+                    <!-- 显示文本 -->
+                    <div v-if="item.item_type === 'text'" :title="item.content">
+                      {{ item.content }}
+                    </div>
+                    
+                    <!-- 显示图片 -->
+                    <div v-else-if="item.item_type === 'image'" class="image-container">
+                      <img 
+                        v-if="item.content"
+                        :src="convertFileSrc(item.content)" 
+                        :alt="'图片: ' + getFileName(item.content)"
+                        class="preview-image"
+                        @error="handleImageError"
+                      />
+                      <div v-else class="loading">加载中...</div>
+                      <div class="image-filename">{{ getFileName(item.content) }}</div>
+                    </div>
+
+                    <!-- 显示文件 -->
+                    <div v-else-if="item.item_type === 'file'" class="file-container">
+                      <div class="file-icon">
+                        <!-- 可以根据文件类型显示不同的图标 -->
+                        <span v-if="isDocumentFile(item.content)" class="icon">📄</span>
+                        <span v-else class="icon">📎</span>
+                      </div>
+                      <div class="file-info">
+                        <div class="file-name">{{ getFileName(item.content) }}</div>
+                      </div>
+                    </div>
+
+                    <!-- 未知类型 -->
+                    <div v-else :title="item.content">
+                      {{ item.content }}
+                    </div>
+                  </div>
+                  <div v-else class="item-text">
+                    {{ item.notes }}
+                  </div>
+              </transition> 
+            </div>    
           </div>
         </div>
+      </div>
 
-        <!-- "收藏"界面 -->
-        <div v-if="activeCategory === 'favorite'">
-          <div v-if="favoriteHistory.length === 0" class="empty-state">
-            <p>暂无收藏记录</p>
-          </div>
-          <div v-else class="history-list">
-            <div 
-              v-for="(item, index) in favoriteHistory" 
-              :key="index" 
-              class="history-item"
-              tabindex="0"
-            >
-              <div class="item-info">
-                <div class="item-meta">
-                  <span>{{ item.name }}</span>
-                  <span>{{ item.num }}个内容</span>
-                </div>
+      <!-- "收藏"界面 -->
+      <div v-if="activeCategory === 'favorite'">
+        <div v-if="favoriteHistory.length === 0" class="empty-state">
+          <p>暂无收藏记录</p>
+        </div>
+        <div v-else class="history-list">
+          <div 
+            v-for="(item, index) in favoriteHistory" 
+            :key="index" 
+            class="history-item"
+            tabindex="0"
+          >
+            <div class="item-info">
+              <div class="item-meta">
+                <span>{{ item.name }}</span>
+                <span>{{ item.num }}个内容</span>
+              </div>
 
-                <!-- 右上方按钮组 -->
-                <div class="item-actions-top">
-                  <button 
-                    class="icon-btn-small" 
-                    @click="removeItem(index)"
-                    title="删除"
-                  >
-                    🗑️
-                  </button>
-                </div>
+              <!-- 右上方按钮组 -->
+              <div class="item-actions-top">
+                <button 
+                  class="icon-btn-small" 
+                  @click="removeItem(index)"
+                  title="删除"
+                >
+                  🗑️
+                </button>
               </div>
             </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
 
     <!-- 操作提示 -->
     <div v-if="showToast" class="toast">
@@ -241,15 +239,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { 
-  Cog6ToothIcon,  // 设置图标
-  ArrowPathIcon,  // 刷新图标
-  LockClosedIcon, // 固定图标
-  StarIcon, // 收藏图标
-  ClipboardIcon,  // 编辑图标
-  PencilSquareIcon, // 备注图标
-  ClipboardDocumentListIcon,  // 历史图标（暂未使用）
-  TrashIcon,      // 删除图标
-  Square2StackIcon  // 复制图标
+  BeakerIcon,
+  Cog6ToothIcon,
+  ArrowPathIcon,
+  LockClosedIcon,
+  StarIcon,
+  ClipboardIcon,
+  PencilSquareIcon,
+  ClipboardDocumentListIcon,
+  TrashIcon,
+  Square2StackIcon
  } from '@heroicons/vue/24/outline'
 import { 
   StarIcon as StarIconSolid
@@ -368,20 +367,20 @@ const addToHistory = (text) => {
 }
 
 const copyItem = async (item) => {
-  try {
-    if (item.item_type === 'text') {
-      // 对于文本类型，使用原来的文本复制方法
-      await invoke('write_to_clipboard', { text: item.content });
-      showToast('已复制文本');
-    } else {
-      // 对于文件和图片类型，使用新的文件复制方法
-      await invoke('write_file_to_clipboard', { filePath: item.content });
-      showToast(`已复制文件: ${getFileName(item.content)}`);
-    }
-  } catch (error) {
-    console.error('复制失败:', error);
-    showToast(`复制失败: ${error}`);
+try {
+  if (item.item_type === 'text') {
+    // 对于文本类型，使用原来的文本复制方法
+    await invoke('write_to_clipboard', { text: item.content });
+    showToast('已复制文本');
+  } else {
+    // 对于文件和图片类型，使用新的文件复制方法
+    await invoke('write_file_to_clipboard', { filePath: item.content });
+    showToast(`已复制文件: ${getFileName(item.content)}`);
   }
+} catch (error) {
+  console.error('复制失败:', error);
+  showToast(`复制失败: ${error}`);
+}
 }
 
 // 切换收藏状态
@@ -541,13 +540,16 @@ body {
   background: white;
   overflow-x: hidden;
   max-width: 100%;
+  max-height: 100%;
 }
 
 /* 顶部搜索栏样式 */
 .app-header {
-  position: sticky; /* 改为粘性定位 */
-  top: 0; /* 在容器内顶部固定 */
-  z-index: 10; /* 新增：确保在其他内容之上 */
+  position: fixed; /* 新增：固定定位 */
+  top: 0; /* 新增：固定在顶部 */
+  left: 0; /* 新增：左侧对齐 */
+  right: 0; /* 新增：右侧对齐 */
+  z-index: 1000; /* 新增：确保在其他内容之上 */
   background: white;
   border-bottom: 1px solid #e1e8ed;
   padding: 0;
@@ -557,11 +559,13 @@ body {
 .search-container {
   padding: 8px 10px;
   border-bottom: 1px solid #f0f0f0;
+  -webkit-app-region: drag;
 }
 
 .search-bar {
   position: relative;
   margin: 0 auto;
+  -webkit-app-region: no-drag;
 }
 
 .search-icon {
@@ -597,11 +601,12 @@ body {
   justify-content: space-between;
   padding: 8px 10px;
   background: #ffffff;
+  -webkit-app-region: drag;
 }
 
 .category-buttons {
   display: flex;
-  gap: 8px;
+  gap: 0px;
 }
 
 .category-btn {
@@ -613,6 +618,7 @@ body {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
+  -webkit-app-region: no-drag;
 }
 
 .category-btn:hover {
@@ -626,7 +632,7 @@ body {
 
 .toolbar-actions {
   display: flex;
-  gap: 8px;
+  gap: 0px;
 }
 
 .icon-btn {
@@ -682,41 +688,13 @@ body {
   top: 3px; 
   color: #f1c40f;
 }
-
-/* 专门的滚动容器 */
-.scroll-container {
-  flex: 1;
-  overflow-x: hidden;
-  overflow-y: auto; /* 允许垂直滚动 */
-  display: flex;
-  flex-direction: column;
-}
-
 /* 主内容区样式 */
 .app-main {
   padding: 8px 10px;
-  flex: 1;
-  overflow-x: hidden; /* 确保没有横向滚动 */
-}
-
-/* 确保历史项不会导致横向滚动 */
-.history-item,
-.item-content,
-.item-text {
+  margin: 0 auto;
+  margin-top: 96px; /* 顶部搜索栏高度 + 工具栏高度 */
+  overflow-x: hidden;
   max-width: 100%;
-  overflow-wrap: break-word; /* 长单词换行 */
-  word-break: break-word;   /* 中英文都换行 */
-}
-
-/* 图片和文件容器也要限制宽度 */
-.image-container,
-.file-container {
-  max-width: 100%;
-}
-
-.preview-image {
-  max-width: 100%;
-  height: auto;
 }
 
 /* 空状态样式 */
@@ -1022,7 +1000,6 @@ body {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .toolbar {
-    gap: 12px;
     align-items: stretch;
   }
   
@@ -1046,19 +1023,6 @@ body {
   .item-actions-bottom {
     justify-content: flex-start;
     flex-wrap: wrap;
-  }
-  
-  .app-main {
-    padding: 16px;
-    margin-top: 90px;
-  }
-  
-  .search-container {
-    padding: 12px 16px;
-  }
-  
-  .toolbar {
-    padding: 12px 16px;
   }
 }
 </style>

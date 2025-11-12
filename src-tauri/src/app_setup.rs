@@ -1,30 +1,96 @@
-// src/app_setup.rs
-
 use crate::clipboard::ClipboardItem;
 use crate::db;
 use chrono::Utc;
 use image::ColorType;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr; // 修正：导入 FromStr trait 以使用 .parse()
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{App, AppHandle, Manager, WebviewWindow};
+use tauri::{App, AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use uuid::Uuid;
+use tauri_plugin_global_shortcut::{
+    GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState,
+};
+
+pub struct AppShortcutState {
+    pub current_shortcut: Mutex<String>,
+}
+
+fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
+    let mut path = handle
+        .path()
+        .app_config_dir()
+        .expect("无法获取应用配置目录");
+    path.push("shortcut_config.txt");
+    path
+}
+
+fn load_shortcut_from_storage(handle: &AppHandle) -> String {
+    fs::read_to_string(get_shortcut_config_path(handle))
+        .unwrap_or_else(|_| "Alt+Shift+V".to_string())
+}
+
+fn save_shortcut_to_storage(handle: &AppHandle, shortcut: &str) {
+    if let Err(e) = fs::write(get_shortcut_config_path(handle), shortcut) {
+        eprintln!("❌ 保存快捷键配置失败: {:?}", e);
+    }
+}
+
+#[tauri::command]
+pub fn update_shortcut(
+    new_shortcut_str: String,
+    handle: AppHandle,
+    state: State<AppShortcutState>,
+) -> Result<(), String> {
+    let mut current_shortcut_str = state.current_shortcut.lock().unwrap();
+    let manager = handle.global_shortcut();
+
+    // 1. 注销旧的快捷键 (先解析成 Shortcut 对象)
+    if !current_shortcut_str.is_empty() {
+        if let Ok(old_shortcut) = Shortcut::from_str(&*current_shortcut_str) {
+            if let Err(e) = manager.unregister(old_shortcut) {
+                eprintln!(
+                    "⚠️ 注销旧快捷键 {} 可能失败: {:?}",
+                    &*current_shortcut_str, e
+                );
+            }
+        }
+    }
+
+    // 2. 尝试注册新的快捷键 (先解析成 Shortcut 对象)
+    let new_shortcut = Shortcut::from_str(&new_shortcut_str).map_err(|e| e.to_string())?;
+    if let Err(e) = manager.register(new_shortcut.clone()) {
+        // 如果注册失败，尝试恢复旧的快捷键
+        if !current_shortcut_str.is_empty() {
+            if let Ok(old_shortcut_revert) = Shortcut::from_str(&*current_shortcut_str) {
+                manager.register(old_shortcut_revert).ok();
+            }
+        }
+        return Err(format!("注册新快捷键失败，可能已被占用: {}", e));
+    }
+
+    // 3. 成功后，更新状态并保存
+    println!("✅ 已成功更新并注册快捷键: {}", new_shortcut_str);
+    *current_shortcut_str = new_shortcut_str.clone();
+    save_shortcut_to_storage(&handle, &new_shortcut_str);
+
+    Ok(())
+}
+
 
 /// 创建系统托盘图标和菜单
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let last_click_time = Arc::new(Mutex::new(Instant::now()));
-
     let show_hide = MenuItem::with_id(app, "show_hide", "显示/隐藏", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::new(app)?;
     menu.append(&show_hide)?;
     menu.append(&quit)?;
-
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
@@ -46,7 +112,6 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
                 *last_time = now;
-
                 if let tauri::tray::MouseButton::Left = button {
                     if let Some(window) = tray.app_handle().get_webview_window("main") {
                         toggle_window_visibility(&window);
@@ -55,62 +120,58 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .build(app)?;
-
     println!("✅ 托盘图标创建成功");
     Ok(())
 }
 
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    // 1. 定义主要快捷键和备用快捷键
-    let primary_shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
-    let alternative_shortcut = Shortcut::new(
-        Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT),
-        Code::KeyV,
-    );
-
-    // 2. 为闭包提前克隆变量
     let handle_for_closure = handle.clone();
-    let primary_for_handler = primary_shortcut.clone();
-    let alternative_for_handler = alternative_shortcut.clone();
 
-    // 3. 设置能够响应任一快捷键的处理器
+    // 1. 设置一个全局的、唯一的事件处理器
     handle.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |_app, shortcut, event| {
-                // 判断按下的快捷键是否是我们定义的两个之一
-                if (shortcut == &primary_for_handler || shortcut == &alternative_for_handler)
-                    && event.state() == ShortcutState::Pressed
-                {
-                    if let Some(window) = handle_for_closure.get_webview_window("main") {
-                        println!("✅ 快捷键触发，执行窗口切换逻辑");
-                        toggle_window_visibility(&window);
+                let state = handle_for_closure.state::<AppShortcutState>();
+                let active_shortcut_str = state.current_shortcut.lock().unwrap();
+
+                if let Ok(active_shortcut) = Shortcut::from_str(&active_shortcut_str) {
+                    if shortcut == &active_shortcut && event.state() == PluginShortcutState::Pressed
+                    {
+                        if let Some(window) = handle_for_closure.get_webview_window("main") {
+                            println!("✅ 快捷键触发，执行窗口切换逻辑");
+                            toggle_window_visibility(&window);
+                        }
                     }
                 }
             })
             .build(),
     )?;
 
-    // 4. 尝试注册快捷键，并在失败时提供备用方案
-    let manager = handle.global_shortcut();
-    match manager.register(primary_shortcut) {
-        Ok(_) => {
-            println!("✅ 已注册全局快捷键: Alt-Shift-V");
+    // 2. 加载、存储并注册初始的快捷键
+    let shortcut_str = load_shortcut_from_storage(&handle);
+    println!("ℹ️ 正在尝试注册快捷键: {}", shortcut_str);
+
+    if let Ok(shortcut) = Shortcut::from_str(&shortcut_str) {
+        let manager = handle.global_shortcut();
+        if let Err(e) = manager.register(shortcut) {
+            eprintln!(
+                "❌ 注册初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。",
+                shortcut_str, e
+            );
+        } else {
+            println!("✅ 已成功注册全局快捷键: {}", shortcut_str);
         }
-        Err(e) => {
-            eprintln!("⚠️ 注册 Alt-Shift-V 失败: {:?}. 正在尝试备用快捷键...", e);
-            // 尝试注册备用快捷键
-            match manager.register(alternative_shortcut) {
-                Ok(_) => {
-                    println!("✅ 已成功注册备用全局快捷键: Ctrl-Alt-Shift-V");
-                }
-                Err(e2) => {
-                    eprintln!("❌ 注册备用快捷键也失败了: {:?}", e2);
-                }
-            }
-        }
-    };
+    } else {
+        eprintln!("❌ 初始快捷键 '{}' 格式无效。", shortcut_str);
+    }
+
+    // 3. 将加载的快捷键字符串存入状态管理
+    let state = handle.state::<AppShortcutState>();
+    *state.current_shortcut.lock().unwrap() = shortcut_str;
+
     Ok(())
 }
+
 /// 启动后台线程以监控剪贴板
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
@@ -118,12 +179,13 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         let mut last_image_bytes: Vec<u8> = Vec::new();
         let mut last_file_paths: Vec<PathBuf> = Vec::new();
 
+        // 修正 #2: 确保这里也使用正确的 .path() 方法
         let app_dir = app_handle.path().app_data_dir().unwrap();
         let files_dir = app_dir.join("files");
         fs::create_dir_all(&files_dir).unwrap();
 
         loop {
-            // --- 1. 监听文本 ---
+            // ... 内部逻辑无改动 ...
             if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() && text != last_text {
                     println!("检测到新的文本内容: {}", text);
@@ -133,7 +195,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
                     let size = Some(text.chars().count() as u64);
                     let new_item = ClipboardItem {
-                        id: Utc::now().timestamp_millis().to_string(),
+                        id: Uuid::new_v4().to_string(),
                         item_type: "text".to_string(),
                         content: text,
                         size,
@@ -147,7 +209,6 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                 }
             }
 
-            // --- 2. 监听图片 ---
             if let Ok(image) = app_handle.clipboard().read_image() {
                 let current_image_bytes = image.rgba().to_vec();
                 if !current_image_bytes.is_empty() && current_image_bytes != last_image_bytes {
@@ -156,7 +217,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     last_text.clear();
                     last_file_paths.clear();
 
-                    let image_id = Utc::now().timestamp_millis().to_string();
+                    let image_id = Uuid::new_v4().to_string();
                     let dest_path = files_dir.join(format!("{}.png", image_id));
 
                     if image::save_buffer(
@@ -184,7 +245,6 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                 }
             }
 
-            // --- 3. 监听文件 ---
             if let Ok(paths) = clipboard_files::read() {
                 if !paths.is_empty() && paths != last_file_paths {
                     println!("检测到新的文件复制: {:?}", paths);
@@ -200,7 +260,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
                             if fs::copy(&path, &dest_path).is_ok() {
                                 let new_item = ClipboardItem {
-                                    id: timestamp.to_string(),
+                                    id: Uuid::new_v4().to_string(),
                                     item_type: "file".to_string(),
                                     content: dest_path.to_str().unwrap().to_string(),
                                     size: fs::metadata(&dest_path).ok().map(|m| m.len()),

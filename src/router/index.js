@@ -8,6 +8,11 @@ import Menu from '../components/Menu.vue'
 const routes = [
   {
     path: '/',
+    name: 'DesktopPet',
+    component: DesktopPet
+  },
+  {
+    path: '/clipboardapp',
     name: 'ClipboardApp',
     component: ClipboardApp
   },
