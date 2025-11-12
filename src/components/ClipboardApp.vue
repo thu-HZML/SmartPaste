@@ -235,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { 
@@ -267,7 +267,11 @@ const editingIndex = ref(-1)
 const editingText = ref('')
 const notingIndex = ref(-1)
 const notingText = ref('')
+const searchLoading = ref(false)
 const test = ref('')
+
+// 防抖定时器
+let searchTimeout = null
 
 // 分类选项
 const categories = ref([
@@ -281,43 +285,72 @@ const categories = ref([
 // 历史记录数据结构
 const history = ref([])
 const favoriteHistory = ref([])
+const filteredHistory = ref([])
 
-// 过滤后的历史记录
-const filteredHistory = computed(() => {
-  let filtered = history.value
+// 监听 searchQuery 变化
+watch(searchQuery, (newQuery) => {
+  // 清除之前的定时器
+  clearTimeout(searchTimeout)
   
-  // 搜索过滤 - 搜索内容和备注
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(item => {
-      const content = item.content ? item.content.toLowerCase() : ''
-      const notes = item.notes ? item.notes.toLowerCase() : ''
-      return content.includes(query) || notes.includes(query)
-    })
+  // 空查询立即返回
+  if (newQuery.trim() === '') {
+    filteredHistory.value = history.value
+    searchLoading.value = false
+    return
   }
   
+  searchLoading.value = true
   
-  // 分类过滤
-  switch (activeCategory.value) {
-    case 'image':
-      filtered = filtered.filter(item => item.item_type === 'image')
-      break
-    case 'video':
-      filtered = filtered.filter(item => item.item_type === 'video')
-      break
-    case 'file':
-      filtered = filtered.filter(item => item.item_type === 'file')
-      break
-    case 'favorite':
-      filtered = filtered.filter(item => item.is_favorite)
-      break
-    // 'all' 不进行过滤
-  }
-  
-  return filtered
+  // 设置新的定时器（300ms 防抖）
+  searchTimeout = setTimeout(async () => {
+    await performSearch(newQuery)
+  }, 300)
 })
 
-// 方法定义
+// 监听 activeCategory 变化
+watch(activeCategory, async (currentCategory) => {
+  if (['image', 'video', 'file'].includes(currentCategory)) {
+    searchLoading.value = true
+    await performClassify(currentCategory)
+    return
+  }
+  else if (currentCategory.trim() === 'all'){
+    searchLoading.value = true
+    filteredHistory.value = history.value
+  }
+
+})
+
+// 搜索过滤
+const performSearch = async (query) => { 
+  try {
+    const result = await invoke('search_text_content', { 
+      query: query.trim() 
+    })
+    
+    filteredHistory.value = JSON.parse(result)
+  } catch (err) {
+    console.error('搜索失败:', err)
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+// 分类过滤
+const performClassify = async (currentCategory) => { 
+  try {
+    const result = await invoke('filter_data_by_type', { 
+      itemType: currentCategory.trim() 
+    })    
+    filteredHistory.value = JSON.parse(result)
+  } catch (err) {
+    console.error('分类失败:', err)
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+// 消息弹窗
 const showMessage = (message) => {
   toastMessage.value = message
   showToast.value = true
@@ -366,21 +399,22 @@ const addToHistory = (text) => {
   }
 }
 
+// 复制历史内容
 const copyItem = async (item) => {
-try {
-  if (item.item_type === 'text') {
-    // 对于文本类型，使用原来的文本复制方法
-    await invoke('write_to_clipboard', { text: item.content });
-    showToast('已复制文本');
-  } else {
-    // 对于文件和图片类型，使用新的文件复制方法
-    await invoke('write_file_to_clipboard', { filePath: item.content });
-    showToast(`已复制文件: ${getFileName(item.content)}`);
+  try {
+    if (item.item_type === 'text') {
+      // 对于文本类型，使用原来的文本复制方法
+      await invoke('write_to_clipboard', { text: item.content });
+      showToast('已复制文本');
+    } else {
+      // 对于文件和图片类型，使用新的文件复制方法
+      await invoke('write_file_to_clipboard', { filePath: item.content });
+      showToast(`已复制文件: ${getFileName(item.content)}`);
+    }
+  } catch (error) {
+    console.error('复制失败:', error);
+    showToast(`复制失败: ${error}`);
   }
-} catch (error) {
-  console.error('复制失败:', error);
-  showToast(`复制失败: ${error}`);
-}
 }
 
 // 切换收藏状态
@@ -449,10 +483,14 @@ const cancelNote = () => {
   notingText.value = ''
 }
 
-// 删除项目
+// 删除历史记录
 const removeItem = async (index) => {
-  await invoke('delete_data_by_id', { id: history.value[index].id })
-  history.value.splice(index, 1)
+  /* 图片OCR
+  const result = await invoke('ocr_image', { filePath: history.value[index].content })
+  console.log(result)
+  */ 
+  await invoke('delete_data_by_id', { id: filteredHistory.value[index].id })
+  filteredHistory.value.splice(index, 1)
   showMessage('已删除记录')
 }
 
@@ -480,6 +518,7 @@ const getAllHistory = async () => {
       ...item,
       is_focus: false
     }))
+    filteredHistory.value = history.value
   } catch (error) {
     console.error('调用失败:', error)
   }
@@ -524,6 +563,9 @@ onMounted(async () => {
   await getAllHistory()
   console.log('数据设置完成:', history.value)
   console.log('数据长度:', history.value.length)
+
+  // OCR配置
+  await invoke('configure_ocr', {})
 })
 </script>
 
