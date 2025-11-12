@@ -48,7 +48,7 @@ fn load_shortcut_from_storage(handle: &AppHandle) -> String {
 }
 fn load_shortcut_from_storage2(handle: &AppHandle) -> String {
     fs::read_to_string(get_shortcut_config_path2(handle))
-        .unwrap_or_else(|_| "Alt+Shift+C".to_string())
+        .unwrap_or_else(|_| "Shift+C".to_string())
 }
 
 
@@ -213,9 +213,16 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                 if let Ok(active_shortcut2) = Shortcut::from_str(&active_shortcut_str2) {
                     if shortcut == &active_shortcut2 && event.state() == PluginShortcutState::Pressed
                     {
-                        if let Some(window) = handle_for_closure.get_webview_window("second_window") {
-                            println!("✅ 第二个界面快捷键触发，执行窗口切换逻辑");
-                            toggle_window_visibility(&window);
+                        if let Some(window) = handle_for_closure.get_webview_window("main") {
+                            println!("🎯 执行前端 toggleClipboardWindow 函数");
+                            match window.eval(
+                                "if (typeof toggleClipboardWindow === 'function') { console.log('Rust: 调用剪贴板窗口切换'); toggleClipboardWindow(); } else { console.error('Rust: toggleClipboardWindow 未找到'); }"
+                            ) {
+                                Ok(_) => println!("✅ JavaScript 执行命令发送成功"),
+                                Err(e) => println!("❌ JavaScript 执行失败: {:?}", e),
+                            }
+                        } else {
+                            println!("❌ 主窗口未找到，无法执行前端函数");
                         }
                     }
                 }
