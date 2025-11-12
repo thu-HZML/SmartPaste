@@ -398,10 +398,14 @@ const editItem = (index) => {
 }
 
 // 保存编辑
-const saveEdit = () => {
+const saveEdit = async () => {
   if (editingIndex.value >= 0 && editingText.value.trim()) {
     history.value[editingIndex.value].content = editingText.value.trim()
     history.value[editingIndex.value].timestamp = new Date().getTime()
+    await invoke('update_data_content_by_id', { 
+      id: history.value[editingIndex.value].id, 
+      newContent: editingText.value.trim() 
+    })
     showMessage('内容已更新')
   }
   cancelEdit()
@@ -425,10 +429,14 @@ const noteItem = (index) => {
 const saveNote = async () => {
   if (notingIndex.value >= 0 && notingText.value.trim()) {
     history.value[notingIndex.value].notes = notingText.value.trim()
-    await invoke('add_notes_by_id', { 
-      id: history.value[notingIndex.value].id, 
-      notes: notingText.value.trim() 
-    })
+    if (!notingText.value || notingText.value.trim() === '') {
+      showMessage('内容不能为空')
+    } else {
+      await invoke('add_notes_by_id', { 
+        id: history.value[notingIndex.value].id, 
+        notes: notingText.value.trim() 
+      })
+    }
     showMessage('备注已更新')
   }
   cancelNote()
@@ -643,6 +651,7 @@ body {
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.2s;
+  -webkit-app-region: no-drag;
 }
 
 .icon-btn:hover {
