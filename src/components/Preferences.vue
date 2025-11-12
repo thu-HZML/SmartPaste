@@ -350,6 +350,9 @@ const errorMsg = ref('')
 const successMsg = ref('')
 const currentShortcut = ref('')
 let timer = null
+const recordingShortcutType = ref('') // 当前正在录制的快捷键类型
+const isRecording = ref(false) // 是否正在录制
+let currentKeys = new Set() // 记录当前按下的键
 
 // 导航项
 const navItems = ref([
@@ -394,18 +397,6 @@ const setActiveNav = (navId) => {
 
 const goBack = () => {
   router.back()
-}
-
-const startRecording = (shortcutName) => {
-  recordingShortcut.value = shortcutName
-  showMessage('请按下快捷键组合...')
-  // 这里应该添加键盘事件监听器来捕获按键
-  // 简化实现，仅作演示
-  setTimeout(() => {
-    settings.shortcuts[shortcutName] = 'Ctrl+Shift+' + shortcutName.charAt(0).toUpperCase()
-    recordingShortcut.value = ''
-    showMessage('快捷键已设置')
-  }, 1000)
 }
 
 const login = () => {
@@ -515,71 +506,158 @@ const updateRetentionDays = async () => {
 }
 
 // 快捷键设置相关函数
-// 显示/隐藏主窗口快捷键
-const setToggleWindowShortcut = async () => {
-  try {
-    recordingShortcut.value = 'toggleWindow'
-    showMessage('请按下显示/隐藏主窗口的快捷键...')
-    
-    const shortcut = await invoke('record_shortcut', { action: 'toggle_window' })
-    settings.shortcuts.toggleWindow = shortcut
-    showMessage(`已设置显示/隐藏快捷键: ${shortcut}`)
-  } catch (error) {
-    console.error('设置快捷键失败:', error)
-    showMessage(`设置失败: ${error}`)
-  } finally {
-    recordingShortcut.value = ''
+// 开始录制快捷键
+const startRecording = (shortcutType) => {
+  recordingShortcutType.value = shortcutType
+  isRecording.value = true
+  currentKeys.clear()
+  showMessage(`请按下 ${getShortcutDisplayName(shortcutType)} 的快捷键...`)
+  
+  // 添加全局键盘事件监听
+  window.addEventListener('keydown', handleKeyDownDuringRecording)
+  window.addEventListener('keyup', handleKeyUpDuringRecording)
+}
+
+// 处理录制期间的按键
+const handleKeyDownDuringRecording = (event) => {
+  if (!isRecording.value) return
+  
+  event.preventDefault()
+  event.stopPropagation()
+  
+  // 记录按下的键
+  const key = getKeyName(event)
+  if (key) {
+    currentKeys.add(key)
+  }
+  
+  // 如果按下了 Escape 键，取消录制
+  if (event.key === 'Escape') {
+    cancelRecording()
+    return
+  }
+  
+  // 当有至少一个普通键（非修饰键）被按下时，完成录制
+  const hasRegularKey = Array.from(currentKeys).some(key => 
+    !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(key)
+  )
+  
+  if (hasRegularKey && currentKeys.size > 0) {
+    const shortcutStr = Array.from(currentKeys).join('+')
+    finishRecording(shortcutStr)
   }
 }
 
-// 快速粘贴快捷键
-const setQuickPasteShortcut = async () => {
-  try {
-    recordingShortcut.value = 'quickPaste'
-    showMessage('请按下快速粘贴的快捷键...')
-    
-    const shortcut = await invoke('record_shortcut', { action: 'quick_paste' })
-    settings.shortcuts.quickPaste = shortcut
-    showMessage(`已设置快速粘贴快捷键: ${shortcut}`)
-  } catch (error) {
-    console.error('设置快捷键失败:', error)
-    showMessage(`设置失败: ${error}`)
-  } finally {
-    recordingShortcut.value = ''
+// 处理按键释放
+const handleKeyUpDuringRecording = (event) => {
+  if (!isRecording.value) return
+  
+  const key = getKeyName(event)
+  if (key) {
+    currentKeys.delete(key)
   }
 }
 
-// 清空剪贴板历史快捷键
-const setClearHistoryShortcut = async () => {
-  try {
-    recordingShortcut.value = 'clearHistory'
-    showMessage('请按下清空历史的快捷键...')
-    
-    const shortcut = await invoke('record_shortcut', { action: 'clear_history' })
-    settings.shortcuts.clearHistory = shortcut
-    showMessage(`已设置清空历史快捷键: ${shortcut}`)
-  } catch (error) {
-    console.error('设置快捷键失败:', error)
-    showMessage(`设置失败: ${error}`)
-  } finally {
-    recordingShortcut.value = ''
+// 获取按键名称
+const getKeyName = (event) => {
+  if (event.key === 'Control') return 'Ctrl'
+  if (event.key === 'Alt') return 'Alt'
+  if (event.key === 'Shift') return 'Shift'
+  if (event.key === 'Meta') return 'Meta'
+  
+  // 排除修饰键
+  if (event.key === 'Control' || event.key === 'Alt' || 
+      event.key === 'Shift' || event.key === 'Meta') {
+    return null
   }
+  
+  // 处理特殊按键
+  if (event.key === ' ') return 'Space'
+  if (event.key === 'Escape') return 'Escape'
+  
+  // 处理功能键
+  if (event.key.startsWith('F') && event.key.length > 1) {
+    const fNumber = event.key.slice(1)
+    if (!isNaN(fNumber)) {
+      return event.key
+    }
+  }
+  
+  // 处理字母键（转换为大写）
+  if (event.key.length === 1 && event.key.match(/[a-zA-Z]/)) {
+    return event.key.toUpperCase()
+  }
+  
+  // 处理数字键
+  if (event.key.match(/^[0-9]$/)) {
+    return event.key
+  }
+  
+  // 处理其他常见按键
+  const specialKeys = {
+    'ArrowUp': 'Up',
+    'ArrowDown': 'Down', 
+    'ArrowLeft': 'Left',
+    'ArrowRight': 'Right',
+    'Enter': 'Enter',
+    'Tab': 'Tab',
+    'CapsLock': 'CapsLock',
+    'Backspace': 'Backspace',
+    'Delete': 'Delete',
+    'Insert': 'Insert',
+    'Home': 'Home',
+    'End': 'End',
+    'PageUp': 'PageUp',
+    'PageDown': 'PageDown',
+    ' ': 'Space'
+  }
+  
+  return specialKeys[event.key] || event.key
 }
 
-const setShortcut = async (shortcut) => {
+// 完成录制并设置快捷键
+const finishRecording = async (newShortcut) => {
+  isRecording.value = false
+  const shortcutType = recordingShortcutType.value
+  recordingShortcutType.value = ''
+  
+  // 移除事件监听
+  window.removeEventListener('keydown', handleKeyDownDuringRecording)
+  window.removeEventListener('keyup', handleKeyUpDuringRecording)
+  
+  // 调用你的 setShortcut 函数
+  await setShortcut(newShortcut, shortcutType)
+}
+
+const setShortcut = async (newShortcutStr, shortcutType = null) => {
+  const targetType = shortcutType || recordingShortcutType.value
+  if (!targetType) {
+    console.error('没有指定快捷键类型')
+    return
+  }
+  
   errorMsg.value = '';
   successMsg.value = '';
 
   try {
-    await invoke('update_shortcut', { newShortcutStr: shortcut });
+    // 根据后端函数，只传递 new_shortcut_str 参数
+    await invoke('update_shortcut', { 
+      newShortcutStr: newShortcutStr 
+    });
 
-    currentShortcut.value = shortcut; // 更新界面显示
-    successMsg.value = '快捷键设置成功！';
-    console.log(`✅ 快捷键已成功更新为: ${shortcut}`);
+    // 更新界面显示
+    settings.shortcuts[targetType] = newShortcutStr;
+    successMsg.value = `${getShortcutDisplayName(targetType)} 快捷键设置成功！`;
+    console.log(`✅ ${getShortcutDisplayName(targetType)} 快捷键已成功更新为: ${newShortcutStr}`);
 
   } catch (err) {
     errorMsg.value = `设置失败: ${err}`;
     console.error('❌ 设置快捷键失败:', err);
+    
+    // 如果出错，可能是因为快捷键冲突，提示用户
+    if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
+      errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键';
+    }
   }
 
   // 3秒后自动清除提示消息
@@ -588,6 +666,26 @@ const setShortcut = async (shortcut) => {
     successMsg.value = '';
     errorMsg.value = '';
   }, 3000);
+}
+
+
+// 辅助函数：获取快捷键显示名称
+const getShortcutDisplayName = (shortcutType) => {
+  const nameMap = {
+    'toggleWindow': '显示/隐藏主窗口',
+    'quickPaste': '快速粘贴', 
+    'clearHistory': '清空剪贴板历史'
+  };
+  return nameMap[shortcutType] || shortcutType;
+}
+
+// 取消录制（可选）
+const cancelRecording = () => {
+  isRecording.value = false
+  recordingShortcutType.value = ''
+  window.removeEventListener('keydown', handleKeyDownDuringRecording)
+  window.removeEventListener('keyup', handleKeyUpDuringRecording)
+  showMessage('已取消快捷键设置')
 }
 
 // 剪贴板参数设置相关函数
