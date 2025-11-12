@@ -643,6 +643,7 @@ body {
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.2s;
+  -webkit-app-region: no-drag;  
 }
 
 .icon-btn:hover {
