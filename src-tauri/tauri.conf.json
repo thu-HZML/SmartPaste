@@ -14,14 +14,13 @@
       {
         "label": "main",
         "title": "Desktop Pet",
-        "fullscreen": true,
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,
         "skipTaskbar": true,
         "acceptFirstMouse": true,  
         "shadow": false,
-        "resizable": false,
+        "resizable": true,
         "focus": false
       }
     ],

@@ -240,11 +240,12 @@ fn main() {
             db::set_db_path(db_path);
 
             // 调试：读取并打印数据库中所有记录
+            /*
             match db::get_all_data() {
                 Ok(json) => println!("DEBUG get_all_data: {}", json),
                 Err(e) => eprintln!("DEBUG get_all_data error: {}", e),
             }
-
+            */
             // 现有快捷键 / 线程 / 文件路径逻辑继续使用 app_dir
             let files_dir = app_dir.join("files");
             std::fs::create_dir_all(&files_dir).unwrap();

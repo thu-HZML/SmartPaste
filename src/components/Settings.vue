@@ -198,11 +198,6 @@ body * {
   flex-shrink: 0;
 }
 
-#app {
-  width: 100vw;
-  height: 100vh;
-}
-
 .flex-row {
   display: flex;
   flex-direction: row;
