@@ -4,9 +4,12 @@ use uuid::Uuid;
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
+use crate::clipboard::folder_item_to_json;
+use crate::clipboard::folder_items_to_json;
 use crate::clipboard::clipboard_item_to_json;
 use crate::clipboard::clipboard_items_to_json;
 use crate::clipboard::ClipboardItem;
+use crate::clipboard::FolderItem;
 
 // const DB_PATH: &str = "smartpaste.db";
 
@@ -192,6 +195,39 @@ pub fn get_data_by_id(id: &str) -> Result<String, String> {
         Ok("null".to_string())
     }
 }
+
+/// 删除所有数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// usize - 受影响的行数
+#[tauri::command]
+pub fn delete_all_data() -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let rows_affected = conn
+        .execute("DELETE FROM data", [])
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows_affected)
+}
+
+/// 删除所有未收藏的数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// usize - 受影响的行数
+#[tauri::command]
+pub fn delete_unfavorited_data() -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let rows_affected = conn
+        .execute("DELETE FROM data WHERE is_favorite = 0", [])
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows_affected)
+}
+
 /// 删除数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// data: ClipboardDBItem - 包含要删除数据的 ID 字段
@@ -214,6 +250,33 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(rows_affected)
+}
+
+/// 根据 ID 修改数据内容。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// id: &str - 要修改数据的 ID
+/// new_content: &str - 新的内容
+/// # Returns
+/// String - 更新后的记录的 JSON 字符串
+#[tauri::command]
+pub fn update_data_content_by_id(id: &str, new_content: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "UPDATE data SET content = ?1 WHERE id = ?2",
+        params![new_content, id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // 返回更新后的记录（以 JSON 字符串形式）
+    let json = get_data_by_id(id)?;
+    if json == "null" {
+        Err("Item not found after update".to_string())
+    } else {
+        Ok(json)
+    }
 }
 
 /// 根据 ID 修改收藏状态。作为 Tauri command 暴露给前端调用。
@@ -459,6 +522,36 @@ pub fn delete_folder(folder_id: &str) -> Result<String, String> {
     .map_err(|e| e.to_string())?;
 
     Ok("deleted".to_string())
+}
+
+/// 返回所有收藏夹的列表。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// String - 包含所有收藏夹项的 JSON 字符串
+#[tauri::command]
+pub fn get_all_folders() -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT id, name FROM folders")
+        .map_err(|e| e.to_string())?;
+
+    let folder_iter = stmt
+        .query_map([], |row| {
+            Ok(FolderItem {
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in folder_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    folder_items_to_json(results)
 }
 
 /// 向收藏夹添加数据项。作为 Tauri command 暴露给前端调用。

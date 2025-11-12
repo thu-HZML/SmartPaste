@@ -14,6 +14,7 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Manager, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use uuid::Uuid;
 
 /// 创建系统托盘图标和菜单
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
@@ -133,7 +134,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
                     let size = Some(text.chars().count() as u64);
                     let new_item = ClipboardItem {
-                        id: Utc::now().timestamp_millis().to_string(),
+                        id: Uuid::new_v4().to_string(),
                         item_type: "text".to_string(),
                         content: text,
                         size,
@@ -156,7 +157,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     last_text.clear();
                     last_file_paths.clear();
 
-                    let image_id = Utc::now().timestamp_millis().to_string();
+                    let image_id = Uuid::new_v4().to_string();
                     let dest_path = files_dir.join(format!("{}.png", image_id));
 
                     if image::save_buffer(
@@ -200,7 +201,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
                             if fs::copy(&path, &dest_path).is_ok() {
                                 let new_item = ClipboardItem {
-                                    id: timestamp.to_string(),
+                                    id: Uuid::new_v4().to_string(),
                                     item_type: "file".to_string(),
                                     content: dest_path.to_str().unwrap().to_string(),
                                     size: fs::metadata(&dest_path).ok().map(|m| m.len()),
