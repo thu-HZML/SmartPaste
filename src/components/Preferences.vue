@@ -389,8 +389,8 @@ const settings = reactive({
   syncFrequency: 'realtime',
   encryptCloudData: true,
   shortcuts: {
-    toggleWindow: 'Shift+D',
-    pasteWindow: 'Alt+Shift+C',
+    toggleWindow: '',
+    pasteWindow: '',
     quickPaste: '',
     clearHistory: ''
   }
@@ -441,6 +441,27 @@ const showMessage = (message) => {
   }, 2000)
 }
 
+// 加载当前快捷键设置
+const loadCurrentShortcuts = async () => {
+  try {
+    const toggleWindowShortcut = await invoke('get_current_shortcut')
+    const pasteWindowShortcut = await invoke('get_current_shortcut2')
+    
+    settings.shortcuts.toggleWindow = toggleWindowShortcut || 'Shift+D'
+    settings.shortcuts.pasteWindow = pasteWindowShortcut || 'Alt+Shift+C'
+    
+    console.log('加载当前快捷键:', {
+      toggleWindow: settings.shortcuts.toggleWindow,
+      pasteWindow: settings.shortcuts.pasteWindow
+    })
+  } catch (error) {
+    console.error('加载快捷键失败:', error)
+    // 设置默认值
+    settings.shortcuts.toggleWindow = 'Shift+D'
+    settings.shortcuts.pasteWindow = 'Alt+Shift+C'
+  }
+}
+
 // 生命周期
 onMounted(async () => {
   // 加载保存的设置
@@ -449,6 +470,7 @@ onMounted(async () => {
     Object.assign(settings, JSON.parse(savedSettings))
   }
   await checkAutostartStatus()
+  await loadCurrentShortcuts()
 })
 
 // 新添加
@@ -716,6 +738,7 @@ const setShortcut = async (newShortcutStr, shortcutType = null) => {
     successMsg.value = `${getShortcutDisplayName(targetType)} 快捷键设置成功！`;
     console.log(`✅ ${getShortcutDisplayName(targetType)} 快捷键已成功更新为: ${newShortcutStr}`);
 
+    await loadCurrentShortcuts();
   } catch (err) {
     errorMsg.value = `设置失败: ${err}`;
     console.error('❌ 设置快捷键失败:', err);
@@ -754,7 +777,7 @@ const setShortcut2 = async (newShortcutStr, shortcutType = null) => {
     settings.shortcuts[targetType] = newShortcutStr;
     successMsg.value = `${getShortcutDisplayName(targetType)} 快捷键设置成功！`;
     console.log(`✅ ${getShortcutDisplayName(targetType)} 快捷键已成功更新为: ${newShortcutStr}`);
-
+    await loadCurrentShortcuts();
   } catch (err) {
     errorMsg.value = `设置失败: ${err}`;
     console.error('❌ 设置快捷键失败:', err);
