@@ -10,8 +10,12 @@ const dragStartPos = ref({ x: 0, y: 0 })
 const windowStartPos = ref({ x: 0, y: 0 })
 const currentWindow = getCurrentWindow();
 const scaleFactor = ref(1.486) // 根据调试信息计算的缩放比例
+const allowClickPet = ref(true)
 
 const emit = defineEmits(['show-menu', 'hide-menu'])
+
+// 点击防抖定时器
+let clickPetTimeout = null
 
 onMounted(async () => {
   console.log('[DesktopPet] mounted')
@@ -55,6 +59,9 @@ const handlePointerDown = async (event) => {
 
 // 鼠标移动 - 处理拖动
 const handlePointerMove = async (event) => {  
+  console.log('删除点击定时器')
+  clearTimeout(clickPetTimeout)
+
   const deltaX = event.screenX - dragStartPos.value.x
   const deltaY = event.screenY - dragStartPos.value.y
   
@@ -69,6 +76,13 @@ const handlePointerMove = async (event) => {
   } catch (error) {
     console.error('移动窗口失败:', error)
   }
+
+  // 禁止点击 20ms
+  allowClickPet.value = false
+  console.log('设置点击定时器')
+  clickPetTimeout = setTimeout(async () => {
+    allowClickPet.value = true
+  }, 500)
 }
 
 // 鼠标释放 - 结束拖动
@@ -91,6 +105,11 @@ const handlePointerLeave = (event) => {
 
 // 左键切换剪贴板窗口
 const handleLeftClick = async (event) => {
+  if (!allowClickPet.value) {
+    console.log('点击被禁止')
+    return
+  }
+
   console.log('🖱️ 桌宠被点击，切换剪贴板窗口')
 
   setTimeout(() => {
