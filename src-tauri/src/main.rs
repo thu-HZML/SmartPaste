@@ -211,7 +211,15 @@ fn copy_file_to_clipboard_linux(file_path: &str) -> Result<(), String> {
 
     Err("Linux系统文件复制功能受限，请确保已安装xclip".to_string())
 }
+#[tauri::command]
+fn get_current_shortcut(state: tauri::State<AppShortcutState>) -> String {
+    state.current_shortcut.lock().unwrap().clone()
+}
 
+#[tauri::command]
+fn get_current_shortcut2(state: tauri::State<AppShortcutState2>) -> String {
+    state.current_shortcut.lock().unwrap().clone()
+}
 fn main() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::Builder::new().build())
@@ -236,6 +244,8 @@ fn main() {
             copy_file_to_clipboard,
             update_shortcut,
             update_shortcut2,
+            get_current_shortcut, 
+            get_current_shortcut2,
             set_autostart,
             is_autostart_enabled,
             db::insert_received_data,

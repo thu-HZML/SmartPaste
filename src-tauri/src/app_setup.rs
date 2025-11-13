@@ -75,7 +75,7 @@ fn load_shortcut_from_storage(handle: &AppHandle) -> String {
 /// String - 从文件中读取到的快捷键字符串，或默认值。
 fn load_shortcut_from_storage2(handle: &AppHandle) -> String {
     fs::read_to_string(get_shortcut_config_path2(handle))
-        .unwrap_or_else(|_| "Shift+C".to_string())
+        .unwrap_or_else(|_| "Alt+Shift+C".to_string())
 }
 
 /// 将主快捷键配置字符串保存到本地文件中。
