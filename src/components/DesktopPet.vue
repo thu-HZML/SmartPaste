@@ -21,7 +21,7 @@ onMounted(async () => {
   console.log('[DesktopPet] mounted')
 
   try {
-    await currentWindow.setSize(new LogicalSize(100, 100));
+    await currentWindow.setSize(new LogicalSize(120, 120));
     await currentWindow.setPosition(new LogicalPosition(1600, 800))
     const actualScaleFactor = await currentWindow.scaleFactor();
     console.log('系统缩放比例:', actualScaleFactor);
@@ -190,6 +190,8 @@ const cleanupEventListeners = () => {
   width: 100%;
   height: 100%;
   display: flex;
+  top: 10px;
+  left: 10px;
   background: transparent;
   position: relative;
 }
@@ -200,6 +202,7 @@ const cleanupEventListeners = () => {
   filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
   transition: all 0.3s ease;
   background: transparent;
+  flex-shrink: 0;
 }
 
 .pet-image.hover {

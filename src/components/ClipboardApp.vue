@@ -76,7 +76,7 @@
               <div class="item-actions-top">
                 <button 
                   class="icon-btn-small" 
-                  @click="toggleFavorite(index)"
+                  @click="toggleFavorite(item)"
                   :title="item.is_favorite ? '取消收藏' : '收藏'"
                 >
                   <StarIconSolid v-if="item.is_favorite" class="icon-star-solid" />
@@ -91,7 +91,7 @@
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="editItem(index)"
+                  @click="editItem(item)"
                   title="编辑"
                   :disabled="item.content.length > 500"
                 >
@@ -99,14 +99,14 @@
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="noteItem(index)"
+                  @click="noteItem(item)"
                   title="备注"
                 >
                   <PencilSquareIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="removeItem(index)"
+                  @click="removeItem(item)"
                   title="删除"
                 >
                   <TrashIcon class="icon-default" />
@@ -263,10 +263,10 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const showEditModal = ref(false)
 const showNoteModal = ref(false)
-const editingIndex = ref(-1)
 const editingText = ref('')
-const notingIndex = ref(-1)
+const editingItem = ref(null)
 const notingText = ref('')
+const notingItem = ref(null)
 const searchLoading = ref(false)
 const test = ref('')
 
@@ -405,39 +405,39 @@ const copyItem = async (item) => {
     if (item.item_type === 'text') {
       // 对于文本类型，使用原来的文本复制方法
       await invoke('write_to_clipboard', { text: item.content });
-      showToast('已复制文本');
+      showMessage('已复制文本');
     } else {
       // 对于文件和图片类型，使用新的文件复制方法
       await invoke('write_file_to_clipboard', { filePath: item.content });
-      showToast(`已复制文件: ${getFileName(item.content)}`);
+      showMessage(`已复制文件: ${getFileName(item.content)}`);
     }
   } catch (error) {
     console.error('复制失败:', error);
-    showToast(`复制失败: ${error}`);
+    showMessage(`复制失败: ${error}`);
   }
 }
 
 // 切换收藏状态
-const toggleFavorite = async (index) => {
-  history.value[index].is_favorite = !history.value[index].is_favorite
-  await invoke('set_favorite_status_by_id', { id: history.value[index].id })
-  showMessage(history.value[index].is_favorite ? '已收藏' : '已取消收藏')
+const toggleFavorite = async (item) => {
+  item.is_favorite = !item.is_favorite
+  await invoke('set_favorite_status_by_id', { id: item.id })
+  showMessage(item.is_favorite ? '已收藏' : '已取消收藏')
 }
 
 // 编辑项目
-const editItem = (index) => {
-  editingIndex.value = index
-  editingText.value = history.value[index].content
+const editItem = (item) => {
+  editingItem.value = item
+  editingText.value = item.content
   showEditModal.value = true
 }
 
 // 保存编辑
 const saveEdit = async () => {
-  if (editingIndex.value >= 0 && editingText.value.trim()) {
-    history.value[editingIndex.value].content = editingText.value.trim()
-    history.value[editingIndex.value].timestamp = new Date().getTime()
+  if (editingText.value.trim() && editingItem) {
+    editingItem.value.content = editingText.value.trim()
+    editingItem.value.timestamp = new Date().getTime()
     await invoke('update_data_content_by_id', { 
-      id: history.value[editingIndex.value].id, 
+      id: editingItem.value.id,
       newContent: editingText.value.trim() 
     })
     showMessage('内容已更新')
@@ -448,26 +448,26 @@ const saveEdit = async () => {
 // 取消编辑
 const cancelEdit = () => {
   showEditModal.value = false
-  editingIndex.value = -1
+  editingItem.value = null
   editingText.value = ''
 }
 
 // 备注项目
-const noteItem = (index) => {
-  notingIndex.value = index
-  notingText.value = history.value[index].notes
+const noteItem = (item) => {
+  notingItem.value = item
+  notingText.value = item.notes
   showNoteModal.value = true
 }
 
 // 保存备注
 const saveNote = async () => {
-  if (notingIndex.value >= 0 && notingText.value.trim()) {
-    history.value[notingIndex.value].notes = notingText.value.trim()
+  if (notingText.value.trim() && notingItem) {
+    notingItem.value.notes = notingText.value.trim()
     if (!notingText.value || notingText.value.trim() === '') {
       showMessage('内容不能为空')
     } else {
       await invoke('add_notes_by_id', { 
-        id: history.value[notingIndex.value].id, 
+        id: notingItem.value.id, 
         notes: notingText.value.trim() 
       })
     }
@@ -479,18 +479,21 @@ const saveNote = async () => {
 // 取消备注
 const cancelNote = () => {
   showNoteModal.value = false
-  notingIndex.value = -1
+  notingItem.value = null
   notingText.value = ''
 }
 
 // 删除历史记录
-const removeItem = async (index) => {
+const removeItem = async (item) => {
   /* 图片OCR
   const result = await invoke('ocr_image', { filePath: history.value[index].content })
   console.log(result)
   */ 
-  await invoke('delete_data_by_id', { id: filteredHistory.value[index].id })
-  filteredHistory.value.splice(index, 1)
+  await invoke('delete_data_by_id', { id: item.id })
+  const index = filteredHistory.value.findIndex(i => i.id === item.id)
+  if (index !== -1) {
+    filteredHistory.value.splice(index, 1)
+  }
   showMessage('已删除记录')
 }
 
