@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // 声明模块
+mod OCR;
 mod app_setup;
 mod clipboard;
 mod db;
@@ -267,6 +268,8 @@ fn main() {
             db::add_item_to_folder,
             db::remove_item_from_folder,
             db::filter_data_by_folder,
+            OCR::configure_ocr,
+            OCR::ocr_image
         ])
         .setup(move|app| {
             // 初始化数据库路径

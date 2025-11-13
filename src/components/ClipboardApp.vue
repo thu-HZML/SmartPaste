@@ -76,7 +76,7 @@
               <div class="item-actions-top">
                 <button 
                   class="icon-btn-small" 
-                  @click="toggleFavorite(index)"
+                  @click="toggleFavorite(item)"
                   :title="item.is_favorite ? '取消收藏' : '收藏'"
                 >
                   <StarIconSolid v-if="item.is_favorite" class="icon-star-solid" />
@@ -91,7 +91,7 @@
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="editItem(index)"
+                  @click="editItem(item)"
                   title="编辑"
                   :disabled="item.content.length > 500"
                 >
@@ -99,14 +99,14 @@
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="noteItem(index)"
+                  @click="noteItem(item)"
                   title="备注"
                 >
                   <PencilSquareIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="removeItem(index)"
+                  @click="removeItem(item)"
                   title="删除"
                 >
                   <TrashIcon class="icon-default" />
@@ -235,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { 
@@ -263,11 +263,15 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const showEditModal = ref(false)
 const showNoteModal = ref(false)
-const editingIndex = ref(-1)
 const editingText = ref('')
-const notingIndex = ref(-1)
+const editingItem = ref(null)
 const notingText = ref('')
+const notingItem = ref(null)
+const searchLoading = ref(false)
 const test = ref('')
+
+// 防抖定时器
+let searchTimeout = null
 
 // 分类选项
 const categories = ref([
@@ -281,43 +285,72 @@ const categories = ref([
 // 历史记录数据结构
 const history = ref([])
 const favoriteHistory = ref([])
+const filteredHistory = ref([])
 
-// 过滤后的历史记录
-const filteredHistory = computed(() => {
-  let filtered = history.value
+// 监听 searchQuery 变化
+watch(searchQuery, (newQuery) => {
+  // 清除之前的定时器
+  clearTimeout(searchTimeout)
   
-  // 搜索过滤 - 搜索内容和备注
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(item => {
-      const content = item.content ? item.content.toLowerCase() : ''
-      const notes = item.notes ? item.notes.toLowerCase() : ''
-      return content.includes(query) || notes.includes(query)
-    })
+  // 空查询立即返回
+  if (newQuery.trim() === '') {
+    filteredHistory.value = history.value
+    searchLoading.value = false
+    return
   }
   
+  searchLoading.value = true
   
-  // 分类过滤
-  switch (activeCategory.value) {
-    case 'image':
-      filtered = filtered.filter(item => item.item_type === 'image')
-      break
-    case 'video':
-      filtered = filtered.filter(item => item.item_type === 'video')
-      break
-    case 'file':
-      filtered = filtered.filter(item => item.item_type === 'file')
-      break
-    case 'favorite':
-      filtered = filtered.filter(item => item.is_favorite)
-      break
-    // 'all' 不进行过滤
-  }
-  
-  return filtered
+  // 设置新的定时器（300ms 防抖）
+  searchTimeout = setTimeout(async () => {
+    await performSearch(newQuery)
+  }, 300)
 })
 
-// 方法定义
+// 监听 activeCategory 变化
+watch(activeCategory, async (currentCategory) => {
+  if (['image', 'video', 'file'].includes(currentCategory)) {
+    searchLoading.value = true
+    await performClassify(currentCategory)
+    return
+  }
+  else if (currentCategory.trim() === 'all'){
+    searchLoading.value = true
+    filteredHistory.value = history.value
+  }
+
+})
+
+// 搜索过滤
+const performSearch = async (query) => { 
+  try {
+    const result = await invoke('search_text_content', { 
+      query: query.trim() 
+    })
+    
+    filteredHistory.value = JSON.parse(result)
+  } catch (err) {
+    console.error('搜索失败:', err)
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+// 分类过滤
+const performClassify = async (currentCategory) => { 
+  try {
+    const result = await invoke('filter_data_by_type', { 
+      itemType: currentCategory.trim() 
+    })    
+    filteredHistory.value = JSON.parse(result)
+  } catch (err) {
+    console.error('分类失败:', err)
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+// 消息弹窗
 const showMessage = (message) => {
   toastMessage.value = message
   showToast.value = true
@@ -366,42 +399,47 @@ const addToHistory = (text) => {
   }
 }
 
+// 复制历史内容
 const copyItem = async (item) => {
-try {
-  if (item.item_type === 'text') {
-    // 对于文本类型，使用原来的文本复制方法
-    await invoke('write_to_clipboard', { text: item.content });
-    showToast('已复制文本');
-  } else {
-    // 对于文件和图片类型，使用新的文件复制方法
-    await invoke('write_file_to_clipboard', { filePath: item.content });
-    showToast(`已复制文件: ${getFileName(item.content)}`);
+  try {
+    if (item.item_type === 'text') {
+      // 对于文本类型，使用原来的文本复制方法
+      await invoke('write_to_clipboard', { text: item.content });
+      showMessage('已复制文本');
+    } else {
+      // 对于文件和图片类型，使用新的文件复制方法
+      await invoke('write_file_to_clipboard', { filePath: item.content });
+      showMessage(`已复制文件: ${getFileName(item.content)}`);
+    }
+  } catch (error) {
+    console.error('复制失败:', error);
+    showMessage(`复制失败: ${error}`);
   }
-} catch (error) {
-  console.error('复制失败:', error);
-  showToast(`复制失败: ${error}`);
-}
 }
 
 // 切换收藏状态
-const toggleFavorite = async (index) => {
-  history.value[index].is_favorite = !history.value[index].is_favorite
-  await invoke('set_favorite_status_by_id', { id: history.value[index].id })
-  showMessage(history.value[index].is_favorite ? '已收藏' : '已取消收藏')
+const toggleFavorite = async (item) => {
+  item.is_favorite = !item.is_favorite
+  await invoke('set_favorite_status_by_id', { id: item.id })
+  showMessage(item.is_favorite ? '已收藏' : '已取消收藏')
 }
 
 // 编辑项目
-const editItem = (index) => {
-  editingIndex.value = index
-  editingText.value = history.value[index].content
+const editItem = (item) => {
+  editingItem.value = item
+  editingText.value = item.content
   showEditModal.value = true
 }
 
 // 保存编辑
-const saveEdit = () => {
-  if (editingIndex.value >= 0 && editingText.value.trim()) {
-    history.value[editingIndex.value].content = editingText.value.trim()
-    history.value[editingIndex.value].timestamp = new Date().getTime()
+const saveEdit = async () => {
+  if (editingText.value.trim() && editingItem) {
+    editingItem.value.content = editingText.value.trim()
+    editingItem.value.timestamp = new Date().getTime()
+    await invoke('update_data_content_by_id', { 
+      id: editingItem.value.id,
+      newContent: editingText.value.trim() 
+    })
     showMessage('内容已更新')
   }
   cancelEdit()
@@ -410,25 +448,29 @@ const saveEdit = () => {
 // 取消编辑
 const cancelEdit = () => {
   showEditModal.value = false
-  editingIndex.value = -1
+  editingItem.value = null
   editingText.value = ''
 }
 
 // 备注项目
-const noteItem = (index) => {
-  notingIndex.value = index
-  notingText.value = history.value[index].notes
+const noteItem = (item) => {
+  notingItem.value = item
+  notingText.value = item.notes
   showNoteModal.value = true
 }
 
 // 保存备注
 const saveNote = async () => {
-  if (notingIndex.value >= 0 && notingText.value.trim()) {
-    history.value[notingIndex.value].notes = notingText.value.trim()
-    await invoke('add_notes_by_id', { 
-      id: history.value[notingIndex.value].id, 
-      notes: notingText.value.trim() 
-    })
+  if (notingText.value.trim() && notingItem) {
+    notingItem.value.notes = notingText.value.trim()
+    if (!notingText.value || notingText.value.trim() === '') {
+      showMessage('内容不能为空')
+    } else {
+      await invoke('add_notes_by_id', { 
+        id: notingItem.value.id, 
+        notes: notingText.value.trim() 
+      })
+    }
     showMessage('备注已更新')
   }
   cancelNote()
@@ -437,14 +479,21 @@ const saveNote = async () => {
 // 取消备注
 const cancelNote = () => {
   showNoteModal.value = false
-  notingIndex.value = -1
+  notingItem.value = null
   notingText.value = ''
 }
 
-// 删除项目
-const removeItem = async (index) => {
-  await invoke('delete_data_by_id', { id: history.value[index].id })
-  history.value.splice(index, 1)
+// 删除历史记录
+const removeItem = async (item) => {
+  /* 图片OCR
+  const result = await invoke('ocr_image', { filePath: history.value[index].content })
+  console.log(result)
+  */ 
+  await invoke('delete_data_by_id', { id: item.id })
+  const index = filteredHistory.value.findIndex(i => i.id === item.id)
+  if (index !== -1) {
+    filteredHistory.value.splice(index, 1)
+  }
   showMessage('已删除记录')
 }
 
@@ -472,6 +521,7 @@ const getAllHistory = async () => {
       ...item,
       is_focus: false
     }))
+    filteredHistory.value = history.value
   } catch (error) {
     console.error('调用失败:', error)
   }
@@ -516,6 +566,9 @@ onMounted(async () => {
   await getAllHistory()
   console.log('数据设置完成:', history.value)
   console.log('数据长度:', history.value.length)
+
+  // OCR配置
+  await invoke('configure_ocr', {})
 })
 </script>
 
