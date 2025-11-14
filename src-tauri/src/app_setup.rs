@@ -348,6 +348,8 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         let mut last_image_bytes: Vec<u8> = Vec::new();
         let mut last_file_paths: Vec<PathBuf> = Vec::new();
 
+        let mut is_first_run = true;
+
         // 修正 #2: 确保这里也使用正确的 .path() 方法
         let app_dir = app_handle.path().app_data_dir().unwrap();
         let files_dir = app_dir.join("files");
@@ -363,6 +365,39 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                 *flag = false;
                 current
             };
+            // 如果是首次运行，初始化最后的内容但不保存到数据库
+            if is_first_run {
+                println!("首次启动，初始化剪贴板监控...");
+                
+                // 初始化文本内容
+                if let Ok(text) = app_handle.clipboard().read_text() {
+                    if !text.is_empty() {
+                        last_text = text;
+                        println!("初始化文本内容: {}", last_text);
+                    }
+                }
+                
+                // 初始化图片内容
+                if let Ok(image) = app_handle.clipboard().read_image() {
+                    let current_image_bytes = image.rgba().to_vec();
+                    if !current_image_bytes.is_empty() {
+                        last_image_bytes = current_image_bytes;
+                        println!("初始化图片内容");
+                    }
+                }
+                
+                // 初始化文件内容
+                if let Ok(paths) = clipboard_files::read() {
+                    if !paths.is_empty() {
+                        last_file_paths = paths;
+                        println!("初始化文件内容: {:?}", last_file_paths);
+                    }
+                }
+                
+                is_first_run = false;
+                thread::sleep(Duration::from_millis(1000)); // 等待一秒再开始正常监控
+                continue; // 跳过本次循环的其余部分
+            }
             // ... 内部逻辑无改动 ...
             if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() && text != last_text {
