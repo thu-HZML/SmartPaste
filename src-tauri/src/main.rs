@@ -3,10 +3,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // 声明模块
-mod OCR;
 mod app_setup;
 mod clipboard;
+mod config;
 mod db;
+mod ocr;
 
 use app_setup::{ClipboardSourceState,update_shortcut,update_shortcut2, AppShortcutState, AppShortcutState2};
 use arboard::Clipboard;
@@ -269,8 +270,53 @@ fn main() {
             db::add_item_to_folder,
             db::remove_item_from_folder,
             db::filter_data_by_folder,
-            OCR::configure_ocr,
-            OCR::ocr_image
+            ocr::configure_ocr,
+            ocr::ocr_image,
+            config::get_config_json,
+            config::set_autostart,
+            config::set_tray_icon_visible,
+            config::set_minimize_to_tray,
+            config::set_auto_save,
+            config::set_retention_days,
+            config::set_max_history_items,
+            config::set_ignore_short_text,
+            config::set_ignore_big_file,
+            config::add_ignored_app,
+            config::remove_ignored_app,
+            config::clear_all_ignored_apps,
+            config::set_auto_classify,
+            config::set_ocr_auto_recognition,
+            config::set_delete_confirmation,
+            config::set_keep_favorites,
+            config::set_auto_sort,
+            config::set_ai_enabled,
+            config::set_ai_service,
+            config::set_ai_api_key,
+            config::set_ai_auto_tag,
+            config::set_ai_auto_summary,
+            config::set_ai_translation,
+            config::set_ai_web_search,
+            config::set_sensitive_filter,
+            config::set_filter_passwords,
+            config::set_filter_bank_cards,
+            config::set_filter_id_cards,
+            config::set_filter_phone_numbers,
+            config::set_privacy_retention_days,
+            config::get_privacy_records,
+            config::delete_all_privacy_records,
+            config::set_storage_path,
+            config::set_auto_backup,
+            config::set_backup_frequency,
+            config::set_last_backup_path,
+            config::set_cloud_sync_enabled,
+            config::set_sync_frequency,
+            config::set_sync_content_type,
+            config::set_encrypt_cloud_data,
+            config::set_sync_only_wifi,
+            config::set_username,
+            config::set_email,
+            config::set_bio,
+            config::set_avatar_path,
         ])
         .setup(move|app| {
             // 初始化数据库路径
@@ -278,8 +324,20 @@ fn main() {
             if !app_dir.exists() {
                 std::fs::create_dir_all(&app_dir).expect("无法创建应用数据目录");
             }
+
+            // 初始化配置文件
+            let config_path = app_dir.join("config.json");
+            config::set_config_path(config_path.clone());
+            let init_result = config::init_config();
+            println!("配置初始化结果: {}", init_result);
+
+            // 设置数据库路径
             let db_path = app_dir.join("smartpaste.db");
-            db::set_db_path(db_path);
+            db::set_db_path(db_path.clone());
+
+            // 以现有数据库路径，修改 Config 中的数据存储路径
+            let set_db_path_result = config::set_db_storage_path(db_path.clone());
+            println!("设置数据库路径结果: {}", set_db_path_result);
 
             // 调试：读取并打印数据库中所有记录
             /*
