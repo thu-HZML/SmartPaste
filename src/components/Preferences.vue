@@ -41,6 +41,19 @@
               </label>
             </div>
           </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>启动时最小化到托盘</h3>
+              <p>启动时不弹出窗口，挂载在后台</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleMinimizeToTray">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
           
           <div class="setting-item">
             <div class="setting-info">
@@ -49,7 +62,7 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon">
+                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleTrayIcon">
                 <span class="slider"></span>
               </label>
             </div>
@@ -62,7 +75,7 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoSave">
+                <input type="checkbox" v-model="settings.autoSave" @change="toggleAutoSave">
                 <span class="slider"></span>
               </label>
             </div>
@@ -74,7 +87,7 @@
               <p>自动删除超过指定天数的历史记录</p>
             </div>
             <div class="setting-control">
-              <select v-model="settings.retentionDays" class="select-input">
+              <select v-model="settings.retentionDays" class="select-input" @change="updateRetentionDays">
                 <option value="7">7天</option>
                 <option value="30">30天</option>
                 <option value="90">90天</option>
@@ -90,8 +103,8 @@
           
           <div class="setting-item">
             <div class="setting-info">
-              <h3>显示/隐藏主窗口</h3>
-              <p>快速显示或隐藏剪贴板管理器主窗口</p>
+              <h3>显示/隐藏桌宠</h3>
+              <p>快速显示或隐藏剪贴板管理器桌宠</p>
             </div>
             <div class="setting-control">
               <div class="shortcut-input" @click="startRecording('toggleWindow')">
@@ -111,11 +124,59 @@
               </div>
             </div>
           </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>显示/隐藏AI Agent</h3>
+              <p>快速显示或隐藏AI助手</p>
+            </div>
+            <div class="setting-control">
+              <div class="shortcut-input" @click="startRecording2('AIWindow')">
+                {{ settings.shortcuts.AIWindow || '点击设置' }}
+              </div>
+            </div>
+          </div>
           
           <div class="setting-item">
             <div class="setting-info">
               <h3>快速粘贴</h3>
               <p>使用快捷键快速粘贴最近的内容</p>
+            </div>
+            <div class="setting-control">
+              <div class="shortcut-input" @click="startRecording('quickPaste')">
+                {{ settings.shortcuts.quickPaste || '点击设置' }}
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>快速收藏</h3>
+              <p>使用快捷键快速收藏最近的复制内容</p>
+            </div>
+            <div class="setting-control">
+              <div class="shortcut-input" @click="startRecording('quickPaste')">
+                {{ settings.shortcuts.quickPaste || '点击设置' }}
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>快速Tag</h3>
+              <p>还没想好</p>
+            </div>
+            <div class="setting-control">
+              <div class="shortcut-input" @click="startRecording('quickPaste')">
+                {{ settings.shortcuts.quickPaste || '点击设置' }}
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>截图并识别</h3>
+              <p>使用快捷键快速截图并使用OCR识别</p>
             </div>
             <div class="setting-control">
               <div class="shortcut-input" @click="startRecording('quickPaste')">
@@ -177,6 +238,23 @@
               <span class="unit">字符</span>
             </div>
           </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>忽略大文件</h3>
+              <p>不保存字符数大于指定值的文件</p>
+            </div>
+            <div class="setting-control">
+              <input 
+                type="number" 
+                v-model="settings.ignoreBigFile" 
+                min="5" 
+                max="100" 
+                class="number-input"
+              >
+              <span class="unit">MB</span>
+            </div>
+          </div>
           
           <div class="setting-item">
             <div class="setting-info">
@@ -220,12 +298,344 @@
               <span class="unit">字符</span>
             </div>
           </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>自动分类</h3>
+              <p>自动分类开关</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleAutoClassify">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>OCR自动识别</h3>
+              <p>OCR自动识别开关</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleOCRAutoRecognition">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>删除确认</h3>
+              <p>删除剪贴板内容时弹出确认对话框</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleOCRAutoRecognition">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>收藏保留</h3>
+              <p>点击全部删除按钮时是否保留已收藏内容</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleKeepFavorites">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>自动排序</h3>
+              <p>复制已存在的内容时排列到最前面</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleAutoSort">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+
+        </div>
+
+        <!-- AI Agent 设置 -->
+        <div v-if="activeNav === 'ai'" class="panel-section">
+          <h2>AI Agent 设置</h2>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>启用AI助手</h3>
+              <p>启用AI智能助手功能</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.aiEnabled" @change="toggleAIEnabled">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="settings.aiEnabled" class="ai-settings">
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>选择AI服务</h3>
+                <p>选择使用的AI服务提供商</p>
+              </div>
+              <div class="setting-control">
+                <select v-model="settings.aiService" class="select-input" @change="updateAIService">
+                  <option value="openai">OpenAI</option>
+                  <option value="claude">Claude</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="custom">自定义</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>API密钥</h3>
+                <p>设置AI服务的API密钥</p>
+              </div>
+              <div class="setting-control">
+                <input type="password" v-model="settings.aiApiKey" @blur="updateAIApiKey" class="text-input" placeholder="输入API密钥">
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>AI功能开关</h3>
+                <p>启用或禁用各项AI功能</p>
+              </div>
+              <div class="setting-control">
+                <div class="checkbox-group">
+                  <label class="checkbox-item">
+                    <input type="checkbox" v-model="settings.aiAutoTag"  @change="toggleAIAutoTag"> 自动打Tag
+                  </label>
+                  <label class="checkbox-item">
+                    <input type="checkbox" v-model="settings.aiAutoSummary" @change="toggleAIAutoSummary"> 自动总结
+                  </label>
+                  <label class="checkbox-item">
+                    <input type="checkbox" v-model="settings.aiTranslation" @change="toggleAITranslation"> 翻译
+                  </label>
+                  <label class="checkbox-item">
+                    <input type="checkbox" v-model="settings.aiWebSearch" @change="toggleAIWebSearch"> 联网搜索
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>清空AI对话历史</h3>
+                <p>清除所有AI对话记录</p>
+              </div>
+              <div class="setting-control">
+                <button class="btn btn-secondary" @click="clearAiHistory">清空历史</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 安全与隐私 -->
+        <div v-if="activeNav === 'security'" class="panel-section">
+          <h2>安全与隐私</h2>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>敏感词过滤</h3>
+              <p>自动屏蔽密码、银行卡号等敏感信息</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.sensitiveFilter" @change="toggleSensitiveFilter">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="settings.sensitiveFilter" class="setting-item">
+            <div class="setting-info">
+              <h3>过滤类型</h3>
+              <p>选择要过滤的敏感信息类型</p>
+            </div>
+            <div class="setting-control">
+              <div class="checkbox-group">
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.filterPasswords" @change="toggleFilterPasswords"> 密码
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.filterBankCards" @change="toggleFilterBankCards"> 银行卡号
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.filterIDCards"  @change="toggleFilterIDCards"> 身份证号
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.filterPhoneNumbers" @change="toggleFilterPhoneNumbers"> 手机号
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>隐私记录管理</h3>
+              <p>查看和管理标记为隐私的记录</p>
+            </div>
+            <div class="setting-control">
+              <button class="btn btn-secondary" @click="viewPrivacyRecords">查看隐私记录</button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>自动清理隐私记录</h3>
+              <p>自动删除超过指定天数的隐私记录</p>
+            </div>
+            <div class="setting-control">
+              <select v-model="settings.privacyRetentionDays" class="select-input"  @change="updatePrivacyRetentionDays">
+                <option value="1">1天</option>
+                <option value="7">7天</option>
+                <option value="30">30天</option>
+                <option value="0">手动删除</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>删除所有隐私记录</h3>
+              <p>永久删除所有标记为隐私的记录</p>
+            </div>
+            <div class="setting-control">
+              <button class="btn btn-danger" @click="deleteAllPrivacyRecords">删除所有隐私记录</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 数据备份 -->
+        <div v-if="activeNav === 'backup'" class="panel-section">
+          <h2>数据备份</h2>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>数据存储路径</h3>
+              <p>设置数据文件的存储位置</p>
+            </div>
+            <div class="setting-control">
+              <div class="path-input-container">
+                <div class="path-input-group">
+                  <input 
+                    type="text" 
+                    v-model="settings.dataStoragePath" 
+                    class="text-input path-input" 
+                    readonly
+                    :title="settings.dataStoragePath || '未设置存储路径'"
+                    placeholder="点击右侧按钮选择路径"
+                  >
+                  <button class="btn btn-secondary path-btn" @click="changeStoragePath">
+                    {{ settings.dataStoragePath ? '更改路径' : '选择路径' }}
+                  </button>
+                </div>
+                <div v-if="!settings.dataStoragePath" class="path-hint">
+                  <small>请选择数据存储路径</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>自动备份</h3>
+              <p>定期自动备份数据</p>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="settings.autoBackup" @change="toggleAutoBackup">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="settings.autoBackup" class="setting-item">
+            <div class="setting-info">
+              <h3>备份频率</h3>
+              <p>自动备份的频率</p>
+            </div>
+            <div class="setting-control">
+              <select v-model="settings.backupFrequency" class="select-input" @change="updateBackupFrequency">>
+                <option value="daily">每天</option>
+                <option value="weekly">每周</option>
+                <option value="monthly">每月</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="backup-actions">
+            <h3>数据操作</h3>
+
+            <div class="action-group">
+              <div class="action-item">
+                <div class="action-info">
+                  <h4>导出数据</h4>
+                  <p>将数据导出为本地文件（离线操作）</p>
+                </div>
+                <button class="btn btn-primary" @click="exportData">导出数据</button>
+              </div>
+
+              <div class="action-item">
+                <div class="action-info">
+                  <h4>导入数据</h4>
+                  <p>从本地文件导入数据（离线操作）</p>
+                </div>
+                <button class="btn btn-secondary" @click="importData">导入数据</button>
+              </div>
+
+              <div class="action-item">
+                <div class="action-info">
+                  <h4>立即备份</h4>
+                  <p>立即创建数据备份</p>
+                </div>
+                <button class="btn btn-secondary" @click="createBackup">立即备份</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 云端入口 -->
         <div v-if="activeNav === 'cloud'" class="panel-section">
           <h2>云端同步</h2>
           
+          <!-- 同步状态显示 -->
+          <div class="sync-status" v-if="userLoggedIn">
+            <div class="status-item">
+              <span class="status-label">同步状态:</span>
+              <span class="status-value" :class="{'success': lastSyncStatus === 'success', 'error': lastSyncStatus === 'error'}">
+                {{ lastSyncStatus === 'success' ? '同步成功' : lastSyncStatus === 'error' ? '同步失败' : '未同步' }}
+              </span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">上次同步时间:</span>
+              <span class="status-value">
+                {{ lastSyncTime ? formatTime(lastSyncTime) : '从未同步' }}
+              </span>
+            </div>
+            <div class="status-actions">
+              <button class="btn btn-small" @click="manualSync" :disabled="isSyncing">
+                {{ isSyncing ? '同步中...' : '立即同步' }}
+              </button>
+            </div>
+          </div>
+
           <div class="setting-item">
             <div class="setting-info">
               <h3>启用云端同步</h3>
@@ -254,6 +664,20 @@
                 </select>
               </div>
             </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>同步内容类型</h3>
+                <p>同步(仅文本 / 包含图片 / 包含文件)</p>
+              </div>
+              <div class="setting-control">
+                <select v-model="settings.syncContantType" class="select-input">
+                  <option value="onlytxt">仅文本</option>
+                  <option value="containphoto">包含图片</option>
+                  <option value="containfile">包含文件</option>
+                </select>
+              </div>
+            </div>
             
             <div class="setting-item">
               <div class="setting-info">
@@ -263,6 +687,19 @@
               <div class="setting-control">
                 <label class="toggle-switch">
                   <input type="checkbox" v-model="settings.encryptCloudData">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>仅WiFi下同步</h3>
+                <p>仅WiFi下同步</p>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" v-model="settings.syncOnlyWifi">
                   <span class="slider"></span>
                 </label>
               </div>
@@ -340,7 +777,10 @@ import {
   TvIcon,
   CloudIcon,
   ClipboardIcon,
-  UserIcon
+  UserIcon,
+  SparklesIcon,     // 新增
+  ShieldCheckIcon,   // 新增
+  ArchiveBoxIcon
  } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
@@ -351,7 +791,7 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const recordingShortcut = ref('')
 const newIgnoredApp = ref('')
-const userLoggedIn = ref(false)
+const userLoggedIn = ref(true)
 const userEmail = ref('user@example.com')
 
 const autostart = ref(false)
@@ -371,8 +811,12 @@ const navItems = ref([
   { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
   { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
   { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
-  { id: 'cloud', name: '云端入口', icon: CloudIcon },
+  { id: 'ai', name: 'AI Agent 设置', icon: ClipboardIcon },
+  { id: 'security', name: '安全与隐私', icon: ClipboardIcon }, 
+  { id: 'backup', name: '数据备份', icon: ClipboardIcon },
+    { id: 'cloud', name: '云端入口', icon: CloudIcon },
   { id: 'user', name: '用户信息', icon: UserIcon }
+  
 ])
 
 // 设置数据
@@ -383,18 +827,57 @@ const settings = reactive({
   retentionDays: '30',
   maxHistoryItems: 100,
   ignoreShortText: 3,
+  ignoreBigFile: 5,
   ignoredApps: ['密码管理器', '银行应用'],
   previewLength: 115,
-  cloudSync: false,
+  cloudSync: true,
   syncFrequency: 'realtime',
+  syncContantType: 'onlytxt',
+  syncOnlyWifi: true,
   encryptCloudData: true,
+
+  // 剪贴板参数设置
+  autoClassify: true,
+  ocrAutoRecognition: true,
+  deleteConfirmation: true,
+  keepFavorites: true,
+  autoSort: true,
+
+  // AI Agent 设置
+  aiEnabled: false,
+  aiService: 'openai',
+  aiApiKey: '',
+  aiAutoTag: true,
+  aiAutoSummary: true,
+  aiTranslation: true,
+  aiWebSearch: false,
+  
+  // 安全与隐私
+  sensitiveFilter: true,
+  filterPasswords: true,
+  filterBankCards: true,
+  filterIDCards: true,
+  filterPhoneNumbers: true,
+  privacyRetentionDays: '7',
+  
+  // 数据备份
+  dataStoragePath: '',
+  autoBackup: true,
+  backupFrequency: 'weekly',
+
   shortcuts: {
     toggleWindow: '',
     pasteWindow: '',
+    AIWindow: '',
     quickPaste: '',
     clearHistory: ''
   }
 })
+
+// 同步状态相关数据
+const lastSyncTime = ref(null) // 上次同步时间戳
+const lastSyncStatus = ref('') // 'success', 'error', ''
+const isSyncing = ref(false) // 是否正在同步
 
 // 用户信息
 const userInfo = reactive({
@@ -469,11 +952,14 @@ onMounted(async () => {
   if (savedSettings) {
     Object.assign(settings, JSON.parse(savedSettings))
   }
+  const savedTime = localStorage.getItem('lastSyncTime');
+  if (savedTime) {
+    lastSyncTime.value = parseInt(savedTime);
+  }
   await checkAutostartStatus()
   await loadCurrentShortcuts()
 })
 
-// 新添加
 // 通用设置相关函数
 // 启动时自动运行
 // 检查自启状态
@@ -512,6 +998,18 @@ const toggleTrayIcon = async () => {
     showMessage(settings.showTrayIcon ? '已显示托盘图标' : '已隐藏托盘图标')
   } catch (error) {
     console.error('设置托盘图标失败:', error)
+    settings.showTrayIcon = !settings.showTrayIcon
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+//启动时最小化到托盘
+const toggleMinimizeToTray = async () => {
+  try {
+    await invoke('set_minimize_to_tray', { enabled: settings.showTrayIcon })
+    showMessage(settings.showTrayIcon ? '已启用启动时最小化到托盘' : '已禁用启动时最小化到托盘')
+  } catch (error) {
+    console.error('设置最小化到托盘失败:', error)
     settings.showTrayIcon = !settings.showTrayIcon
     showMessage(`设置失败: ${error}`)
   }
@@ -839,6 +1337,17 @@ const updateIgnoreShortText = async () => {
   }
 }
 
+// 忽略大文件
+const updateIgnoreBigFile = async () => {
+  try {
+    await invoke('set_ignore_big_file', { mincapacity: settings.ignoreBigFile })
+    showMessage(`已设置忽略 ${settings.ignoreBigFile} MB以上的文件`)
+  } catch (error) {
+    console.error('设置忽略大文件失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
 // 添加忽略应用
 const addIgnoredApp = async () => {
   if (newIgnoredApp.value.trim() && !settings.ignoredApps.includes(newIgnoredApp.value.trim())) {
@@ -904,6 +1413,326 @@ const clearAllIgnoredApps = async () => {
     }
   }
 }
+//自动分类开关
+const toggleAutoClassify = async () => {
+  try {
+    await invoke('set_auto_classify', { enabled: settings.autoClassify })
+    showMessage(settings.autoClassify ? '已启用自动分类' : '已禁用自动分类')
+  } catch (error) {
+    console.error('设置自动分类失败:', error)
+    settings.autoClassify = !settings.autoClassify
+    showMessage(`设置失败: ${error}`)
+  }
+}
+//OCR自动识别
+const toggleOCRAutoRecognition = async () => {
+  try {
+    await invoke('set_ocr_auto_recognition', { enabled: settings.ocrAutoRecognition })
+    showMessage(settings.ocrAutoRecognition ? '已启用OCR自动识别' : '已禁用OCR自动识别')
+  } catch (error) {
+    console.error('设置OCR自动识别失败:', error)
+    settings.ocrAutoRecognition = !settings.ocrAutoRecognition
+    showMessage(`设置失败: ${error}`)
+  }
+}
+//删除确认
+const toggleDeleteConfirmation = async () => {
+  try {
+    await invoke('set_delete_confirmation', { enabled: settings.deleteConfirmation })
+    showMessage(settings.deleteConfirmation ? '已启用删除确认' : '已禁用删除确认')
+  } catch (error) {
+    console.error('设置删除确认失败:', error)
+    settings.deleteConfirmation = !settings.deleteConfirmation
+    showMessage(`设置失败: ${error}`)
+  }
+}
+//收藏保留
+const toggleKeepFavorites = async () => {
+  try {
+    await invoke('set_keep_favorites', { enabled: settings.keepFavorites })
+    showMessage(settings.keepFavorites ? '已启用收藏保留' : '已禁用收藏保留')
+  } catch (error) {
+    console.error('设置收藏保留失败:', error)
+    settings.keepFavorites = !settings.keepFavorites
+    showMessage(`设置失败: ${error}`)
+  }
+}
+//自动排序
+const toggleAutoSort = async () => {
+  try {
+    await invoke('set_auto_sort', { enabled: settings.autoSort })
+    showMessage(settings.autoSort ? '已启用自动排序' : '已禁用自动排序')
+  } catch (error) {
+    console.error('设置自动排序失败:', error)
+    settings.autoSort = !settings.autoSort
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// AI Agent 设置相关方法
+const toggleAIEnabled = async () => {
+  try {
+    await invoke('set_ai_enabled', { enabled: settings.aiEnabled })
+    showMessage(settings.aiEnabled ? '已启用AI助手' : '已禁用AI助手')
+  } catch (error) {
+    console.error('设置AI助手失败:', error)
+    settings.aiEnabled = !settings.aiEnabled
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const updateAIService = async () => {
+  try {
+    await invoke('set_ai_service', { service: settings.aiService })
+    showMessage(`AI服务已设置为 ${getAIServiceName(settings.aiService)}`)
+  } catch (error) {
+    console.error('设置AI服务失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const updateAIApiKey = async () => {
+  try {
+    await invoke('set_ai_api_key', { apiKey: settings.aiApiKey })
+    showMessage('API密钥已保存')
+  } catch (error) {
+    console.error('设置API密钥失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleAIAutoTag = async () => {
+  try {
+    await invoke('set_ai_auto_tag', { enabled: settings.aiAutoTag })
+    showMessage(settings.aiAutoTag ? '已启用自动打Tag' : '已禁用自动打Tag')
+  } catch (error) {
+    console.error('设置自动打Tag失败:', error)
+    settings.aiAutoTag = !settings.aiAutoTag
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleAIAutoSummary = async () => {
+  try {
+    await invoke('set_ai_auto_summary', { enabled: settings.aiAutoSummary })
+    showMessage(settings.aiAutoSummary ? '已启用自动总结' : '已禁用自动总结')
+  } catch (error) {
+    console.error('设置自动总结失败:', error)
+    settings.aiAutoSummary = !settings.aiAutoSummary
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleAITranslation = async () => {
+  try {
+    await invoke('set_ai_translation', { enabled: settings.aiTranslation })
+    showMessage(settings.aiTranslation ? '已启用翻译功能' : '已禁用翻译功能')
+  } catch (error) {
+    console.error('设置翻译功能失败:', error)
+    settings.aiTranslation = !settings.aiTranslation
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleAIWebSearch = async () => {
+  try {
+    await invoke('set_ai_web_search', { enabled: settings.aiWebSearch })
+    showMessage(settings.aiWebSearch ? '已启用联网搜索' : '已禁用联网搜索')
+  } catch (error) {
+    console.error('设置联网搜索失败:', error)
+    settings.aiWebSearch = !settings.aiWebSearch
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const clearAiHistory = async () => {
+  if (confirm('确定要清空所有AI对话历史吗？此操作不可恢复。')) {
+    try {
+      await invoke('clear_ai_history')
+      showMessage('AI对话历史已清空')
+    } catch (error) {
+      console.error('清空AI历史失败:', error)
+      showMessage(`清空失败: ${error}`)
+    }
+  }
+}
+
+// 安全与隐私相关方法
+const toggleSensitiveFilter = async () => {
+  try {
+    await invoke('set_sensitive_filter', { enabled: settings.sensitiveFilter })
+    showMessage(settings.sensitiveFilter ? '已启用敏感词过滤' : '已禁用敏感词过滤')
+  } catch (error) {
+    console.error('设置敏感词过滤失败:', error)
+    settings.sensitiveFilter = !settings.sensitiveFilter
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleFilterPasswords = async () => {
+  try {
+    await invoke('set_filter_passwords', { enabled: settings.filterPasswords })
+    showMessage(settings.filterPasswords ? '已启用密码过滤' : '已禁用密码过滤')
+  } catch (error) {
+    console.error('设置密码过滤失败:', error)
+    settings.filterPasswords = !settings.filterPasswords
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleFilterBankCards = async () => {
+  try {
+    await invoke('set_filter_bank_cards', { enabled: settings.filterBankCards })
+    showMessage(settings.filterBankCards ? '已启用银行卡号过滤' : '已禁用银行卡号过滤')
+  } catch (error) {
+    console.error('设置银行卡号过滤失败:', error)
+    settings.filterBankCards = !settings.filterBankCards
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleFilterIDCards = async () => {
+  try {
+    await invoke('set_filter_id_cards', { enabled: settings.filterIDCards })
+    showMessage(settings.filterIDCards ? '已启用身份证号过滤' : '已禁用身份证号过滤')
+  } catch (error) {
+    console.error('设置身份证号过滤失败:', error)
+    settings.filterIDCards = !settings.filterIDCards
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const toggleFilterPhoneNumbers = async () => {
+  try {
+    await invoke('set_filter_phone_numbers', { enabled: settings.filterPhoneNumbers })
+    showMessage(settings.filterPhoneNumbers ? '已启用手机号过滤' : '已禁用手机号过滤')
+  } catch (error) {
+    console.error('设置手机号过滤失败:', error)
+    settings.filterPhoneNumbers = !settings.filterPhoneNumbers
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const updatePrivacyRetentionDays = async () => {
+  try {
+    await invoke('set_privacy_retention_days', { days: parseInt(settings.privacyRetentionDays) })
+    showMessage(`隐私记录保留时间已设置为 ${settings.privacyRetentionDays} 天`)
+  } catch (error) {
+    console.error('设置隐私记录保留时间失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+const viewPrivacyRecords = async () => {
+  try {
+    const records = await invoke('get_privacy_records')
+    // 这里可以打开一个模态框显示隐私记录
+    showMessage(`找到 ${records.length} 条隐私记录`)
+  } catch (error) {
+    console.error('获取隐私记录失败:', error)
+    showMessage(`获取失败: ${error}`)
+  }
+}
+
+const deleteAllPrivacyRecords = async () => {
+  if (confirm('确定要永久删除所有隐私记录吗？此操作不可恢复！')) {
+    try {
+      await invoke('delete_all_privacy_records')
+      showMessage('所有隐私记录已删除')
+    } catch (error) {
+      console.error('删除隐私记录失败:', error)
+      showMessage(`删除失败: ${error}`)
+    }
+  }
+}
+
+// 数据备份相关方法
+const changeStoragePath = async () => {
+  try {
+    const newPath = await invoke('select_storage_path')
+    if (newPath) {
+      settings.dataStoragePath = newPath
+      await invoke('set_storage_path', { path: newPath })
+      showMessage('存储路径已更新')
+    }
+  } catch (error) {
+    console.error('更改存储路径失败:', error)
+    showMessage(`更改失败: ${error}`)
+  }
+}
+
+const toggleAutoBackup = async () => {
+  try {
+    await invoke('set_auto_backup', { enabled: settings.autoBackup })
+    showMessage(settings.autoBackup ? '已启用自动备份' : '已禁用自动备份')
+  } catch (error) {
+    console.error('设置自动备份失败:', error)
+    settings.autoBackup = !settings.autoBackup
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const updateBackupFrequency = async () => {
+  try {
+    await invoke('set_backup_frequency', { frequency: settings.backupFrequency })
+    showMessage(`备份频率已设置为 ${getBackupFrequencyName(settings.backupFrequency)}`)
+  } catch (error) {
+    console.error('设置备份频率失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const exportData = async () => {
+  try {
+    const exportPath = await invoke('export_user_data')
+    showMessage(`数据已导出到: ${exportPath}`)
+  } catch (error) {
+    console.error('导出数据失败:', error)
+    showMessage(`导出失败: ${error}`)
+  }
+}
+
+const importData = async () => {
+  try {
+    const result = await invoke('import_user_data')
+    if (result.success) {
+      showMessage('数据导入成功')
+    }
+  } catch (error) {
+    console.error('导入数据失败:', error)
+    showMessage(`导入失败: ${error}`)
+  }
+}
+
+const createBackup = async () => {
+  try {
+    const backupPath = await invoke('create_backup')
+    showMessage(`备份已创建: ${backupPath}`)
+  } catch (error) {
+    console.error('创建备份失败:', error)
+    showMessage(`备份失败: ${error}`)
+  }
+}
+
+// 辅助函数
+const getAIServiceName = (service) => {
+  const serviceMap = {
+    'openai': 'OpenAI',
+    'claude': 'Claude', 
+    'gemini': 'Gemini',
+    'deepseek': 'DeepSeek',
+    'custom': '自定义'
+  }
+  return serviceMap[service] || service
+}
+
+const getBackupFrequencyName = (frequency) => {
+  const frequencyMap = {
+    'daily': '每天',
+    'weekly': '每周',
+    'monthly': '每月'
+  }
+  return frequencyMap[frequency] || frequency
+}
 
 // 云端同步相关函数
 // 启用/禁用云端同步
@@ -915,6 +1744,36 @@ const toggleCloudSync = async () => {
     console.error('设置云端同步失败:', error)
     settings.cloudSync = !settings.cloudSync
     showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 格式化时间显示
+const formatTime = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+}
+
+// 手动同步
+const manualSync = async () => {
+  if (isSyncing.value) return;
+  
+  isSyncing.value = true;
+  try {
+    // 调用同步API
+    await invoke('force_cloud_sync');
+    lastSyncStatus.value = 'success';
+    lastSyncTime.value = Date.now();
+    
+    // 保存同步时间到本地存储
+    localStorage.setItem('lastSyncTime', lastSyncTime.value);
+    showMessage('同步成功');
+  } catch (error) {
+    lastSyncStatus.value = 'error';
+    console.error('同步失败:', error);
+    showMessage(`同步失败: ${error}`);
+  } finally {
+    isSyncing.value = false;
   }
 }
 
@@ -1349,6 +2208,112 @@ input:checked + .slider:before {
   color: #7f8c8d;
 }
 
+/* AI设置样式 */
+.ai-settings {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.checkbox-item input[type="checkbox"] {
+  margin: 0;
+}
+
+/* 备份设置样式 */
+.path-input-container {
+  width: 100%;
+  max-width: 400px;
+}
+
+.path-input-group {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+}
+
+.path-input {
+  flex: 1;
+  min-width: 200px;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border: 1px solid #e1e8ed;
+}
+
+.path-input:hover {
+  background: #e9ecef;
+  border-color: #3498db;
+}
+
+.path-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.path-hint {
+  margin-top: 4px;
+  color: #6c757d;
+  font-size: 12px;
+}
+
+/* 调整设置项布局 */
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 0;
+  border-bottom: 1px solid #f0f0f0;
+  gap: 20px; /* 添加间距 */
+}
+
+.setting-info {
+  flex: 1;
+  min-width: 200px;
+}
+
+.setting-control {
+  flex: 1;
+  min-width: 300px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+/* 确保备份操作项也正确显示 */
+.backup-actions .action-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  background: #f8f9fa;
+  gap: 20px;
+}
+
+.action-info {
+  flex: 1;
+}
+
+.action-item .btn {
+  flex-shrink: 0;
+}
+
 /* 云端设置样式 */
 .cloud-settings {
   margin-top: 16px;
@@ -1368,6 +2333,56 @@ input:checked + .slider:before {
   margin-bottom: 12px;
   font-size: 14px;
   color: #2c3e50;
+}
+
+.sync-status {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.status-label {
+  font-weight: 500;
+  color: #6c757d;
+  font-size: 14px;
+}
+
+.status-value {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.status-value.success {
+  color: #28a745;
+}
+
+.status-value.error {
+  color: #dc3545;
+}
+
+.status-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* 用户信息样式 */
