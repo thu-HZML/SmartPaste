@@ -176,7 +176,13 @@ fn main() {
             db::remove_item_from_folder,
             db::filter_data_by_folder,
             OCR::configure_ocr,
-            OCR::ocr_image
+            OCR::ocr_image,
+            config::get_config_json,
+            config::set_autostart,
+            config::set_tray_icon_visible,
+            config::set_minimize_to_tray,
+            config::set_auto_save,
+            config::set_retention_days,
         ])
         .setup(|app| {
             // 初始化数据库路径

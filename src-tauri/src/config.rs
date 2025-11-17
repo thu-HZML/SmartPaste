@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::Write,
-    path::{self, Path, PathBuf},
+    path::PathBuf,
     sync::{OnceLock, RwLock},
 };
 
@@ -218,9 +218,10 @@ pub fn init_config() -> String {
         .unwrap_or_else(|e| e)
 }
 
-/// 获取配置信息的 JSON 字符串表示
+/// 获取配置信息的 JSON 字符串表示。作为 Tauri Command 暴露给前端调用。
 /// # Returns
 /// String - 配置的 JSON 字符串。若未初始化则返回空字符串。
+#[tauri::command]
 pub fn get_config_json() -> String {
     if let Some(lock) = CONFIG.get() {
         let cfg = lock.read().unwrap();
@@ -248,6 +249,70 @@ pub fn save_config(new_config: Config) -> Result<(), String> {
 }
 
 // --------------- 配置信息修改函数 ---------------
+
+// --------------- 1. 通用设置 ---------------
+
+/// 设置开机自启动
+/// # Param
+/// enabled: bool - 是否启用开机自启动
+#[tauri::command]
+pub fn set_autostart(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.autostart = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置系统托盘图标可见性。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// visible: bool - 图标是否可见
+#[tauri::command]
+pub fn set_tray_icon_visible(visible: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.tray_icon_visible = visible;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置启动时最小化到托盘。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// enabled: bool - 是否启用启动时最小化到托盘
+#[tauri::command]
+pub fn set_minimize_to_tray(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.minimize_to_tray = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置自动保存剪贴板历史。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// enabled: bool - 是否启用自动保存剪贴板历史
+#[tauri::command]
+pub fn set_auto_save(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.auto_save = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置历史记录保留天数。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// days: u32 - 保留天数
+#[tauri::command]
+pub fn set_retention_days(days: u32) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.retention_days = days;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 2. 剪贴板参数 ---------------
 
 /// 设置数据存储路径
 /// # Param
