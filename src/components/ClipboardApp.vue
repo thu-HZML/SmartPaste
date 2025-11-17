@@ -262,6 +262,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -640,6 +641,20 @@ const showFolderContent = async (item) => {
   currentFolder.value = item
 }
 
+// 监控剪贴板
+const startMonitoring = async () => {
+  try {   
+    // 监听剪贴板变化事件
+    unlisten = await listen('clipboardUpdated', (event) => {
+      console.log('收到剪贴板变化事件:', event.payload)
+      getAllFolders()
+    })
+    console.log('剪贴板监控已启动')
+  } catch (error) {
+    console.error('启动剪贴板监控失败:', error)
+  }
+}
+
 // 生命周期
 onMounted(async () => {
   console.log('开始初始化...')
@@ -662,7 +677,7 @@ onMounted(async () => {
 
   // 获取收藏夹记录
   await getAllFolders()
-
+  await startMonitoring()
   console.log('数据设置完成:', history.value)
   console.log('数据长度:', history.value.length)
 
