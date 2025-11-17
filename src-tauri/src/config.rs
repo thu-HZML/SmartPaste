@@ -267,7 +267,7 @@ pub fn set_db_storage_path(path: PathBuf) -> String {
 
 // --------------- 1. 通用设置 ---------------
 
-/// 设置开机自启动
+/// 设置开机自启动。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用开机自启动
 #[tauri::command]
@@ -329,7 +329,7 @@ pub fn set_retention_days(days: u32) {
 
 // --------------- 2. 剪贴板参数 ---------------
 
-/// 设置最大历史记录数量
+/// 设置最大历史记录数量。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// max_items: u32 - 最大历史记录数量
 #[tauri::command]
@@ -341,7 +341,7 @@ pub fn set_max_history_items(max_items: u32) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置忽略短文本的最小字符数
+/// 设置忽略短文本的最小字符数。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// min_length: u32 - 小于该长度的文本将被忽略
 #[tauri::command]
@@ -353,7 +353,7 @@ pub fn set_ignore_short_text(min_length: u32) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置忽略大文件的大小 (MB)
+/// 设置忽略大文件的大小 (MB)。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// min_capacity: u32 - 大于等于该值的文件（MB）将被忽略
 #[tauri::command]
@@ -365,7 +365,7 @@ pub fn set_ignore_big_file(min_capacity: u32) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 添加一个忽略的应用（按应用名匹配）
+/// 添加一个忽略的应用（按应用名匹配）。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// app_name: String - 应用名
 #[tauri::command]
@@ -379,7 +379,7 @@ pub fn add_ignored_app(app_name: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 移除一个忽略的应用
+/// 移除一个忽略的应用。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// app_name: String - 应用名
 #[tauri::command]
@@ -391,7 +391,7 @@ pub fn remove_ignored_app(app_name: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 清空所有忽略的应用
+/// 清空所有忽略的应用。作为 Tauri Command 暴露给前端调用。
 #[tauri::command]
 pub fn clear_all_ignored_apps() {
     if let Some(lock) = CONFIG.get() {
@@ -401,7 +401,7 @@ pub fn clear_all_ignored_apps() {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置自动分类开关
+/// 设置自动分类开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用自动分类
 #[tauri::command]
@@ -413,7 +413,7 @@ pub fn set_auto_classify(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置 OCR 自动识别开关
+/// 设置 OCR 自动识别开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用 OCR 自动识别
 #[tauri::command]
@@ -425,7 +425,7 @@ pub fn set_ocr_auto_recognition(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置删除确认对话框开关
+/// 设置删除确认对话框开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否在删除时显示确认对话框
 #[tauri::command]
@@ -437,7 +437,7 @@ pub fn set_delete_confirmation(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置删除时是否保留已收藏的内容
+/// 设置删除时是否保留已收藏的内容。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否在删除时保留收藏内容
 #[tauri::command]
@@ -449,7 +449,7 @@ pub fn set_keep_favorites(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置自动排序开关
+/// 设置自动排序开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用自动排序
 #[tauri::command]
@@ -463,7 +463,7 @@ pub fn set_auto_sort(enabled: bool) {
 
 // --------------- 4. AI Agent 相关 ---------------
 
-/// 设置 AI 助手启用状态
+/// 设置 AI 助手启用状态。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用 AI 助手
 #[tauri::command]
@@ -475,7 +475,7 @@ pub fn set_ai_enabled(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置 AI 服务提供商（例如 "openai"）
+/// 设置 AI 服务提供商（例如 "openai"）。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// service: String - 服务提供商标识
 #[tauri::command]
@@ -491,7 +491,7 @@ pub fn set_ai_service(service: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置 AI API Key
+/// 设置 AI API Key。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// api_key: String - API Key
 #[tauri::command]
@@ -507,7 +507,7 @@ pub fn set_ai_api_key(api_key: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置 AI 自动打 Tag
+/// 设置 AI 自动打 Tag。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用自动打标签
 #[tauri::command]
@@ -519,7 +519,7 @@ pub fn set_ai_auto_tag(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置 AI 自动摘要
+/// 设置 AI 自动摘要。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用自动摘要
 #[tauri::command]
@@ -531,7 +531,7 @@ pub fn set_ai_auto_summary(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置 AI 翻译功能
+/// 设置 AI 翻译功能。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用翻译功能
 #[tauri::command]
@@ -543,7 +543,7 @@ pub fn set_ai_translation(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置 AI 联网搜索功能
+/// 设置 AI 联网搜索功能。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用联网搜索
 #[tauri::command]
@@ -557,7 +557,7 @@ pub fn set_ai_web_search(enabled: bool) {
 
 // --------------- 5. 安全与隐私 ---------------
 
-/// 设置敏感词过滤总开关
+/// 设置敏感词过滤总开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用敏感词过滤
 #[tauri::command]
@@ -569,7 +569,7 @@ pub fn set_sensitive_filter(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置密码过滤开关
+/// 设置密码过滤开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用密码过滤
 #[tauri::command]
@@ -581,7 +581,7 @@ pub fn set_filter_passwords(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置银行卡号过滤开关
+/// 设置银行卡号过滤开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用银行卡号过滤
 #[tauri::command]
@@ -593,7 +593,7 @@ pub fn set_filter_bank_cards(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置身份证号过滤开关
+/// 设置身份证号过滤开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用身份证号过滤
 #[tauri::command]
@@ -605,7 +605,7 @@ pub fn set_filter_id_cards(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置手机号过滤开关
+/// 设置手机号过滤开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用手机号过滤
 #[tauri::command]
@@ -617,7 +617,7 @@ pub fn set_filter_phone_numbers(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置隐私记录自动清理天数
+/// 设置隐私记录自动清理天数。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// days: u32 - 保留天数
 #[tauri::command]
@@ -629,7 +629,7 @@ pub fn set_privacy_retention_days(days: u32) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 获取所有被标记为隐私的记录 ID 列表（JSON 字符串）
+/// 获取所有被标记为隐私的记录 ID 列表（JSON 字符串）。作为 Tauri Command 暴露给前端调用。
 /// # Returns
 /// String - 隐私记录 ID 列表的 JSON 字符串表示
 #[tauri::command]
@@ -642,7 +642,7 @@ pub fn get_privacy_records() -> String {
     }
 }
 
-/// 删除所有隐私记录
+/// 删除所有隐私记录。作为 Tauri Command 暴露给前端调用。
 #[tauri::command]
 pub fn delete_all_privacy_records() {
     if let Some(lock) = CONFIG.get() {
@@ -680,7 +680,7 @@ pub fn set_storage_path(path: String) -> String {
     }
 }
 
-/// 设置自动备份开关
+/// 设置自动备份开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用自动备份
 #[tauri::command]
@@ -692,7 +692,7 @@ pub fn set_auto_backup(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置备份频率
+/// 设置备份频率。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// frequency: String - 备份频率（"daily"/"weekly"/"monthly"）
 #[tauri::command]
@@ -704,7 +704,7 @@ pub fn set_backup_frequency(frequency: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置最近一次备份文件路径
+/// 设置最近一次备份文件路径。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// path: String - 备份文件路径
 #[tauri::command]
@@ -717,7 +717,8 @@ pub fn set_last_backup_path(path: String) {
 }
 
 // --------------- 7. 云端同步 ---------------
-/// 设置云端同步启用状态
+
+/// 设置云端同步启用状态。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否启用云端同步
 #[tauri::command]
@@ -729,7 +730,7 @@ pub fn set_cloud_sync_enabled(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置同步频率
+/// 设置同步频率。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// frequency: String - 同步频率（例如 "realtime"/"5min"/"15min"/"1hour"）
 #[tauri::command]
@@ -741,7 +742,7 @@ pub fn set_sync_frequency(frequency: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置同步内容类型
+/// 设置同步内容类型。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// content_type: String - 同步内容类型（例如 "onlytxt"/"containphoto"/"containfile"）
 #[tauri::command]
@@ -753,7 +754,7 @@ pub fn set_sync_content_type(content_type: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置云端数据加密开关
+/// 设置云端数据加密开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否对云端数据进行加密
 #[tauri::command]
@@ -765,7 +766,7 @@ pub fn set_encrypt_cloud_data(enabled: bool) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置仅在 WiFi 下进行同步开关
+/// 设置仅在 WiFi 下进行同步开关。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// enabled: bool - 是否仅在 WiFi 下进行同步
 #[tauri::command]
@@ -778,7 +779,7 @@ pub fn set_sync_only_wifi(enabled: bool) {
 }
 
 // --------------- 8. 用户信息 ---------------
-/// 设置用户名
+/// 设置用户名。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// username: String - 用户名
 #[tauri::command]
@@ -794,7 +795,7 @@ pub fn set_username(username: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置邮箱
+/// 设置邮箱。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// email: String - 邮箱地址
 #[tauri::command]
@@ -806,7 +807,7 @@ pub fn set_email(email: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置用户简介
+/// 设置用户简介。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// bio: String - 用户简介
 #[tauri::command]
@@ -818,7 +819,7 @@ pub fn set_bio(bio: String) {
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
 
-/// 设置头像文件路径
+/// 设置头像文件路径。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// avatar_path: String - 头像文件路径
 #[tauri::command]
