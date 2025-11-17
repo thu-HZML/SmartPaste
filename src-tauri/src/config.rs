@@ -255,7 +255,7 @@ pub fn save_config(new_config: Config) -> Result<(), String> {
 /// path: PathBuf - 新的数据存储路径
 /// # Returns
 /// String - 设置结果信息
-pub fn set_storage_path(path: PathBuf) -> String {
+pub fn set_db_storage_path(path: PathBuf) -> String {
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
         cfg.storage_path = Some(path.to_string_lossy().to_string());
@@ -648,6 +648,188 @@ pub fn delete_all_privacy_records() {
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
         cfg.privacy_records.clear();
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 6. 数据备份 ---------------
+
+/// 设置数据存储路径，作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// String - 新的数据存储路径
+/// # Returns
+/// String - 设置结果信息
+#[tauri::command]
+pub fn set_storage_path(path: String) -> String {
+    if path.is_empty() {
+        // 清空存储路径
+        if let Some(lock) = CONFIG.get() {
+            let mut cfg = lock.write().unwrap();
+            cfg.storage_path = None;
+            drop(cfg);
+            return if save_config(lock.read().unwrap().clone()).is_ok() {
+                "storage path cleared".to_string()
+            } else {
+                "failed to save config".to_string()
+            };
+        }
+        "config not initialized".to_string()
+    } else {
+        // 转换 String → PathBuf 并调用内部函数
+        set_db_storage_path(PathBuf::from(path))
+    }
+}
+
+/// 设置自动备份开关
+/// # Param
+/// enabled: bool - 是否启用自动备份
+#[tauri::command]
+pub fn set_auto_backup(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.auto_backup = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置备份频率
+/// # Param
+/// frequency: String - 备份频率（"daily"/"weekly"/"monthly"）
+#[tauri::command]
+pub fn set_backup_frequency(frequency: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.backup_frequency = frequency;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置最近一次备份文件路径
+/// # Param
+/// path: String - 备份文件路径
+#[tauri::command]
+pub fn set_last_backup_path(path: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.last_backup_path = if path.is_empty() { None } else { Some(path) };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 7. 云端同步 ---------------
+/// 设置云端同步启用状态
+/// # Param
+/// enabled: bool - 是否启用云端同步
+#[tauri::command]
+pub fn set_cloud_sync_enabled(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.cloud_sync_enabled = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置同步频率
+/// # Param
+/// frequency: String - 同步频率（例如 "realtime"/"5min"/"15min"/"1hour"）
+#[tauri::command]
+pub fn set_sync_frequency(frequency: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.sync_frequency = frequency;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置同步内容类型
+/// # Param
+/// content_type: String - 同步内容类型（例如 "onlytxt"/"containphoto"/"containfile"）
+#[tauri::command]
+pub fn set_sync_content_type(content_type: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.sync_content_type = content_type;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置云端数据加密开关
+/// # Param
+/// enabled: bool - 是否对云端数据进行加密
+#[tauri::command]
+pub fn set_encrypt_cloud_data(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.encrypt_cloud_data = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置仅在 WiFi 下进行同步开关
+/// # Param
+/// enabled: bool - 是否仅在 WiFi 下进行同步
+#[tauri::command]
+pub fn set_sync_only_wifi(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.sync_only_wifi = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 8. 用户信息 ---------------
+/// 设置用户名
+/// # Param
+/// username: String - 用户名
+#[tauri::command]
+pub fn set_username(username: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.username = if username.is_empty() {
+            None
+        } else {
+            Some(username)
+        };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置邮箱
+/// # Param
+/// email: String - 邮箱地址
+#[tauri::command]
+pub fn set_email(email: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.email = if email.is_empty() { None } else { Some(email) };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置用户简介
+/// # Param
+/// bio: String - 用户简介
+#[tauri::command]
+pub fn set_bio(bio: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.bio = if bio.is_empty() { None } else { Some(bio) };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置头像文件路径
+/// # Param
+/// avatar_path: String - 头像文件路径
+#[tauri::command]
+pub fn set_avatar_path(avatar_path: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.avatar_path = if avatar_path.is_empty() {
+            None
+        } else {
+            Some(avatar_path)
+        };
     }
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }

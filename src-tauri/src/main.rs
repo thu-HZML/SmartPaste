@@ -209,6 +209,19 @@ fn main() {
             config::set_privacy_retention_days,
             config::get_privacy_records,
             config::delete_all_privacy_records,
+            config::set_storage_path,
+            config::set_auto_backup,
+            config::set_backup_frequency,
+            config::set_last_backup_path,
+            config::set_cloud_sync_enabled,
+            config::set_sync_frequency,
+            config::set_sync_content_type,
+            config::set_encrypt_cloud_data,
+            config::set_sync_only_wifi,
+            config::set_username,
+            config::set_email,
+            config::set_bio,
+            config::set_avatar_path,
         ])
         .setup(|app| {
             // 初始化数据库路径
@@ -228,7 +241,7 @@ fn main() {
             db::set_db_path(db_path.clone());
 
             // 以现有数据库路径，修改 Config 中的数据存储路径
-            let set_db_path_result = config::set_storage_path(db_path.clone());
+            let set_db_path_result = config::set_db_storage_path(db_path.clone());
             println!("设置数据库路径结果: {}", set_db_path_result);
 
             // 调试：读取并打印数据库中所有记录
