@@ -364,3 +364,52 @@ fn test_folder_functions() {
         serde_json::from_str(&res_b).expect("parse FolderB after delete");
     assert!(vec_b.is_empty());
 }
+
+#[test]
+fn test_filter_data_by_favorite() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 插入 5 个 item
+    let items = vec![
+        make_item("fav1", "text", "one"),
+        make_item("fav2", "text", "two"),
+        make_item("fav3", "image", "/img/1"),
+        make_item("fav4", "text", "four"),
+        make_item("fav5", "image", "/img/2"),
+    ];
+    for it in &items {
+        insert_received_data(it.clone()).expect("insert failed");
+    }
+
+    // 收藏 fav1 和 fav3
+    let r1 = set_favorite_status_by_id("fav1").expect("favorite fav1 failed");
+    assert_eq!(r1, "favorited");
+    let r2 = set_favorite_status_by_id("fav3").expect("favorite fav3 failed");
+    assert_eq!(r2, "favorited");
+
+    // filter true -> 应只包含 fav1 与 fav3
+    let res_true = filter_data_by_favorite(true).expect("filter favorite true failed");
+    let vec_true: Vec<ClipboardItem> = serde_json::from_str(&res_true).expect("parse fav true");
+    let ids_true: Vec<String> = vec_true.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_true.len(), 2);
+    assert!(ids_true.contains(&"fav1".to_string()));
+    assert!(ids_true.contains(&"fav3".to_string()));
+    // 不应包含未收藏项
+    for id in &["fav2", "fav4", "fav5"] {
+        assert!(!ids_true.contains(&id.to_string()));
+    }
+
+    // filter false -> 应包含剩余未收藏的 3 项
+    let res_false = filter_data_by_favorite(false).expect("filter favorite false failed");
+    let vec_false: Vec<ClipboardItem> = serde_json::from_str(&res_false).expect("parse fav false");
+    let ids_false: Vec<String> = vec_false.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_false.len(), 3);
+    for id in &["fav2", "fav4", "fav5"] {
+        assert!(ids_false.contains(&id.to_string()));
+    }
+    // 不应包含已收藏项
+    assert!(!ids_false.contains(&"fav1".to_string()));
+    assert!(!ids_false.contains(&"fav3".to_string()));
+}

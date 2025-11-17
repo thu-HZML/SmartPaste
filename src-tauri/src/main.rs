@@ -258,6 +258,7 @@ fn main() {
             db::delete_data_by_id,
             db::update_data_content_by_id,
             db::set_favorite_status_by_id,
+            db::filter_data_by_favorite,
             db::search_text_content,
             db::add_notes_by_id,
             db::filter_data_by_type,
