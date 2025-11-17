@@ -152,3 +152,8 @@ export async function closeAllClipboardWindows() {
     }
   }
 }
+
+// 将函数暴露给全局，方便 Tauri 调用
+if (typeof window !== 'undefined') {
+  window.toggleClipboardWindow = toggleClipboardWindow;
+}

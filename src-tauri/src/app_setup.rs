@@ -10,7 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{App, AppHandle, Manager, State, WebviewWindow};
+use tauri::{App, AppHandle, Manager, State, WebviewWindow,Emitter};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use uuid::Uuid;
 use tauri_plugin_global_shortcut::{
@@ -25,7 +25,14 @@ pub struct AppShortcutState {
 pub struct AppShortcutState2 {
     pub current_shortcut: Mutex<String>,
 }
-
+/// 构建并返回主快捷键配置文件的完整路径。
+/// 该文件名为 `shortcut_config.txt`，存储在应用的配置目录下。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于获取应用目录。
+/// # Returns
+/// PathBuf - 指向配置文件的路径对象。
+/// # Panics
+/// 如果无法获取应用配置目录，程序会 panic。
 fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
     let mut path = handle
         .path()
@@ -34,7 +41,14 @@ fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
     path.push("shortcut_config.txt");
     path
 }
-
+/// 构建并返回第二个界面快捷键配置文件的完整路径。
+/// 该文件名为 `shortcut_config2.txt`，存储在应用的配置目录下。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于获取应用目录。
+/// # Returns
+/// PathBuf - 指向配置文件的路径对象。
+/// # Panics
+/// 如果无法获取应用配置目录，程序会 panic。
 fn get_shortcut_config_path2(handle: &AppHandle) -> PathBuf {
     let mut path = handle
         .path()
@@ -43,29 +57,65 @@ fn get_shortcut_config_path2(handle: &AppHandle) -> PathBuf {
     path.push("shortcut_config2.txt");
     path
 }
-
+/// 从本地存储中加载主快捷键配置。
+/// 如果配置文件不存在或读取失败，将返回默认快捷键 "Alt+Shift+V"。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// # Returns
+/// String - 从文件中读取到的快捷键字符串，或默认值。
 fn load_shortcut_from_storage(handle: &AppHandle) -> String {
     fs::read_to_string(get_shortcut_config_path(handle))
         .unwrap_or_else(|_| "Alt+Shift+V".to_string())
 }
+/// 从本地存储中加载第二个界面的快捷键配置。
+/// 如果配置文件不存在或读取失败，将返回默认快捷键 "Alt+Shift+C"。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// # Returns
+/// String - 从文件中读取到的快捷键字符串，或默认值。
 fn load_shortcut_from_storage2(handle: &AppHandle) -> String {
     fs::read_to_string(get_shortcut_config_path2(handle))
         .unwrap_or_else(|_| "Alt+Shift+C".to_string())
 }
 
-
+/// 将主快捷键配置字符串保存到本地文件中。
+/// 如果保存失败，会向 stderr 打印一条错误信息。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// shortcut: &str - 需要保存的快捷键字符串。
+/// # Returns
+/// ()
 fn save_shortcut_to_storage(handle: &AppHandle, shortcut: &str) {
     if let Err(e) = fs::write(get_shortcut_config_path(handle), shortcut) {
         eprintln!("❌ 保存快捷键配置失败: {:?}", e);
     }
 }
+/// 将第二个界面的快捷键配置字符串保存到本地文件中。
+/// 如果保存失败，会向 stderr 打印一条错误信息。
+/// # Param
+/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
+/// shortcut: &str - 需要保存的快捷键字符串。
+/// # Returns
+/// ()
 fn save_shortcut_to_storage2(handle: &AppHandle, shortcut: &str) {
     if let Err(e) = fs::write(get_shortcut_config_path2(handle), shortcut) {
         eprintln!("❌ 保存第二个界面快捷键配置失败: {:?}", e);
     }
 }
-
-
+/// 动态更新并注册应用的主全局快捷键。作为 Tauri command 暴露给前端调用。
+///
+/// 该函数会执行以下操作：
+/// 1. 从状态中获取并注销当前已注册的快捷键。
+/// 2. 尝试注册用户提供的新快捷键。
+/// 3. 如果注册失败（例如快捷键已被占用），则会尝试恢复注册旧的快捷键，并返回错误。
+/// 4. 如果注册成功，则更新应用状态，并将新快捷键持久化到本地存储中。
+///
+/// # Param
+/// new_shortcut_str: String - 新的快捷键组合字符串，例如 "CmdOrCtrl+Shift+V"。
+/// handle: AppHandle - Tauri 的应用句柄，用于访问全局快捷键管理器。
+/// state: State<AppShortcutState> - 存储当前主快捷键的 Tauri 状态。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
 #[tauri::command]
 pub fn update_shortcut(
     new_shortcut_str: String,
@@ -106,7 +156,18 @@ pub fn update_shortcut(
 
     Ok(())
 }
-
+/// 动态更新并注册应用的第二个全局快捷键。作为 Tauri command 暴露给前端调用。
+///
+/// 功能与 `update_shortcut` 类似，但针对的是第二个独立的快捷键。
+/// 它会注销旧的、注册新的，并在失败时回滚。成功后会更新对应的状态 `AppShortcutState2`
+/// 并调用 `save_shortcut_to_storage2` 进行持久化。
+///
+/// # Param
+/// new_shortcut_str: String - 新的快捷键组合字符串。
+/// handle: AppHandle - Tauri 的应用句柄，用于访问全局快捷键管理器。
+/// state: State<AppShortcutState2> - 存储当前第二个快捷键的 Tauri 状态。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
 #[tauri::command]
 pub fn update_shortcut2(
     new_shortcut_str: String,
@@ -188,6 +249,7 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     println!("✅ 托盘图标创建成功");
     Ok(())
 }
+
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle_for_closure = handle.clone();
 
@@ -215,9 +277,16 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                 if let Ok(active_shortcut2) = Shortcut::from_str(&active_shortcut_str2) {
                     if shortcut == &active_shortcut2 && event.state() == PluginShortcutState::Pressed
                     {
-                        if let Some(window) = handle_for_closure.get_webview_window("second_window") {
-                            println!("✅ 第二个界面快捷键触发，执行窗口切换逻辑");
-                            toggle_window_visibility(&window);
+                        if let Some(window) = handle_for_closure.get_webview_window("main") {
+                            println!("🎯 执行前端 toggleClipboardWindow 函数");
+                            match window.eval(
+                                "if (typeof toggleClipboardWindow === 'function') { console.log('Rust: 调用剪贴板窗口切换'); toggleClipboardWindow(); } else { console.error('Rust: toggleClipboardWindow 未找到'); }"
+                            ) {
+                                Ok(_) => println!("✅ JavaScript 执行命令发送成功"),
+                                Err(e) => println!("❌ JavaScript 执行失败: {:?}", e),
+                            }
+                        } else {
+                            println!("❌ 主窗口未找到，无法执行前端函数");
                         }
                     }
                 }
@@ -279,6 +348,8 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         let mut last_image_bytes: Vec<u8> = Vec::new();
         let mut last_file_paths: Vec<PathBuf> = Vec::new();
 
+        let mut is_first_run = true;
+
         // 修正 #2: 确保这里也使用正确的 .path() 方法
         let app_dir = app_handle.path().app_data_dir().unwrap();
         let files_dir = app_dir.join("files");
@@ -294,6 +365,39 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                 *flag = false;
                 current
             };
+            // 如果是首次运行，初始化最后的内容但不保存到数据库
+            if is_first_run {
+                println!("首次启动，初始化剪贴板监控...");
+                
+                // 初始化文本内容
+                if let Ok(text) = app_handle.clipboard().read_text() {
+                    if !text.is_empty() {
+                        last_text = text;
+                        println!("初始化文本内容: {}", last_text);
+                    }
+                }
+                
+                // 初始化图片内容
+                if let Ok(image) = app_handle.clipboard().read_image() {
+                    let current_image_bytes = image.rgba().to_vec();
+                    if !current_image_bytes.is_empty() {
+                        last_image_bytes = current_image_bytes;
+                        println!("初始化图片内容");
+                    }
+                }
+                
+                // 初始化文件内容
+                if let Ok(paths) = clipboard_files::read() {
+                    if !paths.is_empty() {
+                        last_file_paths = paths;
+                        println!("初始化文件内容: {:?}", last_file_paths);
+                    }
+                }
+                
+                is_first_run = false;
+                thread::sleep(Duration::from_millis(1000)); // 等待一秒再开始正常监控
+                continue; // 跳过本次循环的其余部分
+            }
             // ... 内部逻辑无改动 ...
             if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() && text != last_text {
@@ -314,6 +418,21 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     };
                     
                     if !is_frontend_copy {
+                        // 手动复制：保存到数据库并通知前端
+                        if let Err(e) = db::insert_received_data(new_item) {
+                            eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
+                        } else {
+                            // 通知前端剪贴板已更新
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                if let Err(e) = window.emit("clipboard-updated", "") {
+                                    eprintln!("❌ 发送剪贴板更新事件失败: {:?}", e);
+                                } else {
+                                    println!("✅ 已通知前端剪贴板更新");
+                                }
+                            }
+                        }
+                    } else {
+                        // 前端复制：只保存到数据库，不通知前端
                         if let Err(e) = db::insert_received_data(new_item) {
                             eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
                         }
@@ -351,6 +470,21 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             timestamp: Utc::now().timestamp(),
                         };
                         if !is_frontend_copy {
+                            // 手动复制：保存到数据库并通知前端
+                            if let Err(e) = db::insert_received_data(new_item) {
+                                eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
+                            } else {
+                                // 通知前端剪贴板已更新
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    if let Err(e) = window.emit("clipboard-updated", "") {
+                                        eprintln!("❌ 发送剪贴板更新事件失败: {:?}", e);
+                                    } else {
+                                        println!("✅ 已通知前端剪贴板更新");
+                                    }
+                                }
+                            }
+                        } else {
+                            // 前端复制：只保存到数据库，不通知前端
                             if let Err(e) = db::insert_received_data(new_item) {
                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                             }
@@ -365,7 +499,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     last_file_paths = paths.clone();
                     last_text.clear();
                     last_image_bytes.clear();
-
+                    let mut has_new_files = false;
                     for path in paths {
                         if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                             let timestamp = Utc::now().timestamp_millis();
@@ -373,6 +507,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             let dest_path = files_dir.join(&new_file_name);
 
                             if fs::copy(&path, &dest_path).is_ok() {
+                                has_new_files = true;
                                 let new_item = ClipboardItem {
                                     id: Uuid::new_v4().to_string(),
                                     item_type: "file".to_string(),
@@ -382,11 +517,27 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                     notes: "".to_string(),
                                     timestamp: Utc::now().timestamp(),
                                 };
-                                if !is_frontend_copy {
+                                 if !is_frontend_copy {
+                                    // 手动复制：保存到数据库
+                                    if let Err(e) = db::insert_received_data(new_item) {
+                                        eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
+                                    }
+                                } else {
+                                    // 前端复制：只保存到数据库
                                     if let Err(e) = db::insert_received_data(new_item) {
                                         eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
                                     }
                                 }
+                            }
+                        }
+                    }
+                    // 对于文件复制，在所有文件处理完成后发送一次通知
+                    if !is_frontend_copy && has_new_files {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            if let Err(e) = window.emit("clipboard-updated", "") {
+                                eprintln!("❌ 发送剪贴板更新事件失败: {:?}", e);
+                            } else {
+                                println!("✅ 已通知前端剪贴板更新（文件）");
                             }
                         }
                     }
