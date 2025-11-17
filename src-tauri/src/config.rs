@@ -246,3 +246,20 @@ pub fn save_config(new_config: Config) -> Result<(), String> {
         Err("config not initialized".to_string())
     }
 }
+
+// --------------- 配置信息修改函数 ---------------
+
+/// 设置数据存储路径
+/// # Param
+/// path: PathBuf - 新的数据存储路径
+/// # Returns
+/// String - 设置结果信息
+pub fn set_storage_path(path: PathBuf) -> String {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.storage_path = Some(path.to_string_lossy().to_string());
+        "storage path updated".to_string()
+    } else {
+        "config not initialized".to_string()
+    }
+}

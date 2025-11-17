@@ -184,8 +184,20 @@ fn main() {
             if !app_dir.exists() {
                 std::fs::create_dir_all(&app_dir).expect("无法创建应用数据目录");
             }
+
+            // 初始化配置文件
+            let config_path = app_dir.join("config.json");
+            config::set_config_path(config_path.clone());
+            let init_result = config::init_config();
+            println!("配置初始化结果: {}", init_result);
+
+            // 设置数据库路径
             let db_path = app_dir.join("smartpaste.db");
-            db::set_db_path(db_path);
+            db::set_db_path(db_path.clone());
+
+            // 以现有数据库路径，修改 Config 中的数据存储路径
+            let set_db_path_result = config::set_storage_path(db_path.clone());
+            println!("设置数据库路径结果: {}", set_db_path_result);
 
             // 调试：读取并打印数据库中所有记录
             match db::get_all_data() {
