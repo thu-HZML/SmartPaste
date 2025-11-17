@@ -3,11 +3,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // 声明模块
-mod OCR;
 mod app_setup;
 mod clipboard;
 mod config;
 mod db;
+mod ocr;
 
 use arboard::Clipboard;
 use std::fs;
@@ -175,8 +175,8 @@ fn main() {
             db::add_item_to_folder,
             db::remove_item_from_folder,
             db::filter_data_by_folder,
-            OCR::configure_ocr,
-            OCR::ocr_image,
+            ocr::configure_ocr,
+            ocr::ocr_image,
             config::get_config_json,
             config::set_autostart,
             config::set_tray_icon_visible,
