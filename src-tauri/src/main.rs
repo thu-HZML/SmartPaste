@@ -6,6 +6,7 @@
 mod OCR;
 mod app_setup;
 mod clipboard;
+mod config;
 mod db;
 
 use arboard::Clipboard;
