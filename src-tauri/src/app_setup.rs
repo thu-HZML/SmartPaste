@@ -422,7 +422,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         if let Err(e) = db::insert_received_data(new_item) {
                             eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
                         } else {
-                            // 通知前端剪贴板已更新
+                            // 通知前端剪贴板已更新                          
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 if let Err(e) = window.emit("clipboard-updated", "") {
                                     eprintln!("❌ 发送剪贴板更新事件失败: {:?}", e);
@@ -471,7 +471,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         };
                         if !is_frontend_copy {
                             // 手动复制：保存到数据库并通知前端
-                            if let Err(e) = db::insert_received_data(new_item) {
+                            /*if let Err(e) = db::insert_received_data(new_item) {
                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                             } else {
                                 // 通知前端剪贴板已更新
@@ -482,7 +482,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                         println!("✅ 已通知前端剪贴板更新");
                                     }
                                 }
-                            }
+                            }*/
                         } else {
                             // 前端复制：只保存到数据库，不通知前端
                             if let Err(e) = db::insert_received_data(new_item) {
