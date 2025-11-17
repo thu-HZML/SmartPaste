@@ -350,6 +350,49 @@ pub fn unfavorite_data_by_id(id: &str) -> Result<usize, String> {
     Ok(rows_affected)
 }
 
+/// 按收藏状态筛选数据。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// is_favorite: bool - 是否筛选收藏的数据
+/// # Returns
+/// String - 包含筛选后数据记录的 JSON 字符串
+#[tauri::command]
+pub fn filter_data_by_favorite(is_favorite: bool) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let fav_value = if is_favorite { 1 } else { 0 };
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE is_favorite = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map(params![fav_value], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    clipboard_items_to_json(results)
+}
+
 /// 文本搜索。作为 Tauri command 暴露给前端调用。
 /// 根据传入的字符串，对所有属于 text 类的 content 字段进行模糊搜索，返回匹配的记录列表。
 /// # Param
