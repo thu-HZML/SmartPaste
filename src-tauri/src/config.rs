@@ -250,6 +250,21 @@ pub fn save_config(new_config: Config) -> Result<(), String> {
 
 // --------------- 配置信息修改函数 ---------------
 
+/// 设置数据存储路径
+/// # Param
+/// path: PathBuf - 新的数据存储路径
+/// # Returns
+/// String - 设置结果信息
+pub fn set_storage_path(path: PathBuf) -> String {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.storage_path = Some(path.to_string_lossy().to_string());
+        "storage path updated".to_string()
+    } else {
+        "config not initialized".to_string()
+    }
+}
+
 // --------------- 1. 通用设置 ---------------
 
 /// 设置开机自启动
@@ -314,17 +329,325 @@ pub fn set_retention_days(days: u32) {
 
 // --------------- 2. 剪贴板参数 ---------------
 
-/// 设置数据存储路径
+/// 设置最大历史记录数量
 /// # Param
-/// path: PathBuf - 新的数据存储路径
-/// # Returns
-/// String - 设置结果信息
-pub fn set_storage_path(path: PathBuf) -> String {
+/// max_items: u32 - 最大历史记录数量
+#[tauri::command]
+pub fn set_max_history_items(max_items: u32) {
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
-        cfg.storage_path = Some(path.to_string_lossy().to_string());
-        "storage path updated".to_string()
-    } else {
-        "config not initialized".to_string()
+        cfg.max_history_items = max_items;
     }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置忽略短文本的最小字符数
+/// # Param
+/// min_length: u32 - 小于该长度的文本将被忽略
+#[tauri::command]
+pub fn set_ignore_short_text(min_length: u32) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ignore_short_text_len = min_length;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置忽略大文件的大小 (MB)
+/// # Param
+/// min_capacity: u32 - 大于等于该值的文件（MB）将被忽略
+#[tauri::command]
+pub fn set_ignore_big_file(min_capacity: u32) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ignore_big_file_mb = min_capacity;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 添加一个忽略的应用（按应用名匹配）
+/// # Param
+/// app_name: String - 应用名
+#[tauri::command]
+pub fn add_ignored_app(app_name: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        if !cfg.ignored_apps.contains(&app_name) {
+            cfg.ignored_apps.push(app_name);
+        }
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 移除一个忽略的应用
+/// # Param
+/// app_name: String - 应用名
+#[tauri::command]
+pub fn remove_ignored_app(app_name: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ignored_apps.retain(|a| a != &app_name);
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 清空所有忽略的应用
+#[tauri::command]
+pub fn clear_all_ignored_apps() {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ignored_apps.clear();
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置自动分类开关
+/// # Param
+/// enabled: bool - 是否启用自动分类
+#[tauri::command]
+pub fn set_auto_classify(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.auto_classify = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 OCR 自动识别开关
+/// # Param
+/// enabled: bool - 是否启用 OCR 自动识别
+#[tauri::command]
+pub fn set_ocr_auto_recognition(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ocr_auto_recognition = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置删除确认对话框开关
+/// # Param
+/// enabled: bool - 是否在删除时显示确认对话框
+#[tauri::command]
+pub fn set_delete_confirmation(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.delete_confirmation = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置删除时是否保留已收藏的内容
+/// # Param
+/// enabled: bool - 是否在删除时保留收藏内容
+#[tauri::command]
+pub fn set_keep_favorites(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.keep_favorites_on_delete = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置自动排序开关
+/// # Param
+/// enabled: bool - 是否启用自动排序
+#[tauri::command]
+pub fn set_auto_sort(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.auto_sort = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 4. AI Agent 相关 ---------------
+
+/// 设置 AI 助手启用状态
+/// # Param
+/// enabled: bool - 是否启用 AI 助手
+#[tauri::command]
+pub fn set_ai_enabled(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ai_enabled = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 AI 服务提供商（例如 "openai"）
+/// # Param
+/// service: String - 服务提供商标识
+#[tauri::command]
+pub fn set_ai_service(service: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ai_service = if service.is_empty() {
+            None
+        } else {
+            Some(service)
+        };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 AI API Key
+/// # Param
+/// api_key: String - API Key
+#[tauri::command]
+pub fn set_ai_api_key(api_key: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ai_api_key = if api_key.is_empty() {
+            None
+        } else {
+            Some(api_key)
+        };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 AI 自动打 Tag
+/// # Param
+/// enabled: bool - 是否启用自动打标签
+#[tauri::command]
+pub fn set_ai_auto_tag(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ai_auto_tag = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 AI 自动摘要
+/// # Param
+/// enabled: bool - 是否启用自动摘要
+#[tauri::command]
+pub fn set_ai_auto_summary(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ai_auto_summary = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 AI 翻译功能
+/// # Param
+/// enabled: bool - 是否启用翻译功能
+#[tauri::command]
+pub fn set_ai_translation(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ai_translation = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 AI 联网搜索功能
+/// # Param
+/// enabled: bool - 是否启用联网搜索
+#[tauri::command]
+pub fn set_ai_web_search(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ai_web_search = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 5. 安全与隐私 ---------------
+
+/// 设置敏感词过滤总开关
+/// # Param
+/// enabled: bool - 是否启用敏感词过滤
+#[tauri::command]
+pub fn set_sensitive_filter(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.sensitive_filter = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置密码过滤开关
+/// # Param
+/// enabled: bool - 是否启用密码过滤
+#[tauri::command]
+pub fn set_filter_passwords(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.filter_passwords = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置银行卡号过滤开关
+/// # Param
+/// enabled: bool - 是否启用银行卡号过滤
+#[tauri::command]
+pub fn set_filter_bank_cards(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.filter_bank_cards = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置身份证号过滤开关
+/// # Param
+/// enabled: bool - 是否启用身份证号过滤
+#[tauri::command]
+pub fn set_filter_id_cards(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.filter_id_cards = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置手机号过滤开关
+/// # Param
+/// enabled: bool - 是否启用手机号过滤
+#[tauri::command]
+pub fn set_filter_phone_numbers(enabled: bool) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.filter_phone_numbers = enabled;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置隐私记录自动清理天数
+/// # Param
+/// days: u32 - 保留天数
+#[tauri::command]
+pub fn set_privacy_retention_days(days: u32) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.privacy_retention_days = days;
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 获取所有被标记为隐私的记录 ID 列表（JSON 字符串）
+/// # Returns
+/// String - 隐私记录 ID 列表的 JSON 字符串表示
+#[tauri::command]
+pub fn get_privacy_records() -> String {
+    if let Some(lock) = CONFIG.get() {
+        let cfg = lock.read().unwrap();
+        serde_json::to_string_pretty(&cfg.privacy_records).unwrap_or_default()
+    } else {
+        "".to_string()
+    }
+}
+
+/// 删除所有隐私记录
+#[tauri::command]
+pub fn delete_all_privacy_records() {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.privacy_records.clear();
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
