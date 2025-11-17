@@ -36,9 +36,6 @@
           <button class="icon-btn" @click="openSettings">         
             <Cog6ToothIcon class="icon-settings" />
           </button>
-          <button class="icon-btn" @click="refreshPage">           
-            <ArrowPathIcon class="icon-settings" />
-          </button>
           <button class="icon-btn" @click="deleteAllHistory">           
             <TrashIcon class="icon-settings" />
           </button>
@@ -58,7 +55,7 @@
         
         <div v-else class="history-list">
           <div 
-            v-for="(item, index) in filteredHistory" 
+            v-for="(item, index) in displayHistory" 
             :key="index" 
             class="history-item"
             tabindex="0"
@@ -68,7 +65,7 @@
             <div class="item-info">
               <div class="item-meta">
                 <span>{{ item.item_type }}</span>
-                <span>{{ item.content.length }}字符</span>
+                <span>{{ item.size }}字符</span>
                 <span>{{ formatTime(item.timestamp) }}</span>
               </div>
 
@@ -93,7 +90,7 @@
                   class="icon-btn-small" 
                   @click="editItem(item)"
                   title="编辑"
-                  :disabled="item.content.length > 500"
+                  :disabled="item.size > 500"
                 >
                   <ClipboardIcon class="icon-default" />
                 </button>
@@ -316,6 +313,15 @@ const history = ref([])
 const favoriteHistory = ref([])
 const filteredHistory = ref([])
 
+// 计算属性
+const displayHistory = computed(() => {
+  if (activeCategory.value === 'folder') {
+    return favoriteHistory.value
+  } else {
+    return filteredHistory.value
+  }
+})
+
 // 监听 searchQuery 变化
 watch(searchQuery, (newQuery) => {
   // 清除之前的定时器
@@ -385,15 +391,31 @@ const performClassify = async (currentCategory) => {
 
 // 收藏夹过滤
 const performFolder = async () => { 
-  try {
-    const result = await invoke('filter_data_by_folder', { 
-      folderName: currentFolder.value.name
-    })    
-    filteredHistory.value = JSON.parse(result)
-  } catch (err) {
-    console.error('分类失败:', err)
-  } finally {
-    searchLoading.value = false
+  console.log('开始筛选收藏夹')
+  if (currentFolder.value.name === '默认收藏夹') {
+    console.log('进入默认收藏夹')
+    try {
+      const result = await invoke('filter_data_by_favorite', { 
+        isFavorite: true
+      })    
+      favoriteHistory.value = JSON.parse(result)
+      console.log('收藏夹内容：',favoriteHistory)
+      console.log('历史内容内容：',filteredHistory)
+    } catch (err) {
+      console.error('默认收藏夹获取失败:', err)
+    }
+  }
+  else {
+    try {
+      const result = await invoke('filter_data_by_folder', { 
+        folderName: currentFolder.value.name
+      })    
+      filteredHistory.value = JSON.parse(result)
+    } catch (err) {
+      console.error('分类失败:', err)
+    } finally {
+      searchLoading.value = false
+    }
   }
 }
 
@@ -420,13 +442,6 @@ const togglePinnedView = () => {
 const openSettings = async () => {
   router.push('/preferences')
   showMessage('打开设置')
-}
-
-// 刷新页面
-const refreshPage = async () => {
-  getAllHistory()
-  getAllFolders()
-  showMessage('刷新成功')
 }
 
 // 添加到历史记录
@@ -580,6 +595,22 @@ const getAllFolders = async () => {
     const jsonString = await invoke('get_all_folders')
     favoriteHistory.value = JSON.parse(jsonString)
     console.log(favoriteHistory)
+
+    // 创建默认收藏夹
+    if (!favoriteHistory.value || favoriteHistory.value.length === 0) {
+      console.log('收藏夹为空，正在创建默认收藏夹...')
+      try {
+        await invoke('create_new_folder', { name: "默认收藏夹" })
+        console.log('默认收藏夹创建成功')
+        
+        // 重新获取收藏夹列表
+        const updatedJsonString = await invoke('get_all_folders')
+        favoriteHistory.value = JSON.parse(updatedJsonString)
+        console.log('更新后的收藏夹:', favoriteHistory.value)
+      } catch (createError) {
+        console.error('创建默认收藏夹失败:', createError)
+      }
+    }
   } catch (error) {
     console.error('get_all_folders调用失败:', error)
   }
@@ -635,24 +666,22 @@ const removeFolder = async (item) => {
   showMessage('已删除收藏夹')
 }
 
-// 删除收藏夹
+// 显示收藏夹内容
 const showFolderContent = async (item) => {
   activeCategory.value = 'folder'
   currentFolder.value = item
 }
 
-// 监控剪贴板
-const startMonitoring = async () => {
-  try {   
-    // 监听剪贴板变化事件
-    unlisten = await listen('clipboardUpdated', (event) => {
-      console.log('收到剪贴板变化事件:', event.payload)
-      getAllFolders()
-    })
-    console.log('剪贴板监控已启动')
-  } catch (error) {
-    console.error('启动剪贴板监控失败:', error)
-  }
+// 主窗口监听剪贴板事件
+const setupClipboardRelay = async () => {
+  const unlisten = await listen('clipboard-updated', async (event) => {
+    console.log('接受后端更新消息')
+    console.log('通过中转收到剪贴板事件:', event.payload)
+    await getAllHistory()
+    await getAllFolders()
+  })
+  
+  return unlisten
 }
 
 // 生命周期
@@ -677,12 +706,13 @@ onMounted(async () => {
 
   // 获取收藏夹记录
   await getAllFolders()
-  await startMonitoring()
   console.log('数据设置完成:', history.value)
   console.log('数据长度:', history.value.length)
 
   // OCR配置
   await invoke('configure_ocr', {})
+
+  await setupClipboardRelay()
 })
 </script>
 

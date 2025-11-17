@@ -1,7 +1,8 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
-import { toggleClipboardWindow, updateMainWindowPosition } from '../utils/actions.js'
+import { windowInstances, toggleClipboardWindow, updateMainWindowPosition } from '../utils/actions.js'
+import { listen, emit } from '@tauri-apps/api/event'
 
 const isHovering = ref(false)
 const hasClipboardWindow = ref(false)
@@ -11,8 +12,6 @@ const windowStartPos = ref({ x: 0, y: 0 })
 const currentWindow = getCurrentWindow();
 const scaleFactor = ref(1.486) // 根据调试信息计算的缩放比例
 const allowClickPet = ref(true)
-
-const emit = defineEmits(['show-menu', 'hide-menu'])
 
 // 点击防抖定时器
 let clickPetTimeout = null
@@ -79,7 +78,6 @@ const handlePointerMove = async (event) => {
 
   // 禁止点击 20ms
   allowClickPet.value = false
-  console.log('设置点击定时器')
   clickPetTimeout = setTimeout(async () => {
     allowClickPet.value = true
   }, 500)
@@ -94,13 +92,11 @@ const handlePointerUp = () => {
 // 鼠标进入桌宠区域
 const handlePointerEnter = (event) => {
   isHovering.value = true
-  console.log('鼠标进入，isHovering:', isHovering.value)
 }
 
 // 鼠标离开桌宠区域
 const handlePointerLeave = (event) => {
   isHovering.value = false
-  console.log('鼠标离开，isHovering:', isHovering.value)
 }
 
 // 左键切换剪贴板窗口
@@ -141,8 +137,6 @@ const handleContextMenu = (event) => {
     x: rect.right + 10,
     y: Math.max(10, rect.top)
   }
-
-  emit('show-menu', menuPosition)
 }
 
 // 清除全局监听
