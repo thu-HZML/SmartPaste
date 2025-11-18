@@ -45,7 +45,7 @@
 
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
-      <!-- "全部"、"图片"、"视频"、"文件"界面 -->
+      <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
       <div v-if="['all', 'image', 'video', 'file', 'folder'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
           <p v-if="searchQuery">未找到匹配的记录</p>
@@ -55,7 +55,7 @@
         
         <div v-else class="history-list">
           <div 
-            v-for="(item, index) in displayHistory" 
+            v-for="(item, index) in filteredHistory" 
             :key="index" 
             class="history-item"
             tabindex="0"
@@ -170,7 +170,7 @@
           </div>
           <!-- 普通收藏夹 -->
           <div 
-            v-for="(item, index) in favoriteHistory" 
+            v-for="(item, index) in folders" 
             :key="index" 
             class="folder-item"
             tabindex="0"
@@ -252,6 +252,40 @@
         </div>
       </div>
     </div>
+
+    <!-- 历史记录添加至收藏夹模态框 -->
+    <div v-if="showFoldersModal" class="modal">
+      <div class="modal-content">
+        <h3>添加到收藏夹</h3>
+        <div class="history-list">
+          <!-- 新建收藏夹 -->
+          <div class="folder-item" @click="showFolder()">
+            <div class="folder-content">
+              <FolderPlusIcon class="icon-folder" />
+              <span>{{ '新建收藏夹' }}</span>                        
+            </div>
+          </div>
+          <!-- 普通收藏夹 -->
+          <div 
+            v-for="(item, index) in folders" 
+            :key="index" 
+            class="folder-item-toast"
+            tabindex="0"
+            @click="selectFolder(item)"        
+          >
+            <div class="folder-content-toast">
+              <div class="custom-folder-icon" :class="{ 'selected': item.isSelected }"></div>
+              <span>{{ item.name }}</span>
+              <span>{{ 0 }}个内容</span>                      
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button @click="cancelAddToFolder" class="btn btn-secondary">取消</button>
+          <button @click="addToFolder" class="btn btn-primary">确认</button>
+        </div>
+      </div>    
+    </div>
   </div>
 </template>
 
@@ -287,6 +321,7 @@ const toastMessage = ref('')
 const showEditModal = ref(false)
 const showNoteModal = ref(false)
 const showFolderModal = ref(false)
+const showFoldersModal = ref(false)
 const editingText = ref('')
 const editingItem = ref(null)
 const notingText = ref('')
@@ -299,6 +334,9 @@ const test = ref('')
 // 防抖定时器
 let searchTimeout = null
 
+// 双击定时器
+let clickTimeout = null
+
 // 分类选项
 const categories = ref([
   { id: 'all', name: '全部' },
@@ -310,17 +348,20 @@ const categories = ref([
 
 // 历史记录数据结构
 const history = ref([])
-const favoriteHistory = ref([])
+const folders = ref([])
 const filteredHistory = ref([])
+const currentItem = ref([])
 
+/*
 // 计算属性
 const displayHistory = computed(() => {
   if (activeCategory.value === 'folder') {
-    return favoriteHistory.value
+    return folders.value
   } else {
     return filteredHistory.value
   }
 })
+*/
 
 // 监听 searchQuery 变化
 watch(searchQuery, (newQuery) => {
@@ -398,21 +439,22 @@ const performFolder = async () => {
       const result = await invoke('filter_data_by_favorite', { 
         isFavorite: true
       })    
-      favoriteHistory.value = JSON.parse(result)
-      console.log('收藏夹内容：',favoriteHistory)
+      filteredHistory.value = JSON.parse(result)
+      console.log('收藏夹内容：',folders)
       console.log('历史内容内容：',filteredHistory)
     } catch (err) {
       console.error('默认收藏夹获取失败:', err)
     }
   }
   else {
+    console.log('进入收藏夹：', currentFolder.value.name)
     try {
       const result = await invoke('filter_data_by_folder', { 
         folderName: currentFolder.value.name
       })    
       filteredHistory.value = JSON.parse(result)
     } catch (err) {
-      console.error('分类失败:', err)
+      console.error('获取收藏夹内容失败:', err)
     } finally {
       searchLoading.value = false
     }
@@ -467,24 +509,46 @@ const copyItem = async (item) => {
   try {
     if (item.item_type === 'text') {
       // 对于文本类型，使用原来的文本复制方法
-      await invoke('write_to_clipboard', { text: item.content });
-      showMessage('已复制文本');
+      await invoke('write_to_clipboard', { text: item.content })
+      showMessage('已复制文本')
     } else {
       // 对于文件和图片类型，使用新的文件复制方法
-      await invoke('write_file_to_clipboard', { filePath: item.content });
-      showMessage(`已复制文件: ${getFileName(item.content)}`);
+      await invoke('write_file_to_clipboard', { filePath: item.content })
+      showMessage(`已复制文件: ${getFileName(item.content)}`)
     }
   } catch (error) {
-    console.error('复制失败:', error);
-    showMessage(`复制失败: ${error}`);
+    console.error('复制失败:', error)
+    showMessage(`复制失败: ${error}`)
   }
 }
 
 // 切换收藏状态
 const toggleFavorite = async (item) => {
-  item.is_favorite = !item.is_favorite
-  await invoke('set_favorite_status_by_id', { id: item.id })
-  showMessage(item.is_favorite ? '已收藏' : '已取消收藏')
+  // 清除之前的单击定时器
+  if (clickTimeout) {
+    clearTimeout(clickTimeout)
+    // 如果已经有定时器存在，说明是双击
+    executeDoubleClick(item)
+    return;
+  }
+  
+  // 设置新的定时器
+  clickTimeout = setTimeout(async () => {
+    // 定时器触发，说明是单击
+    item.is_favorite = !item.is_favorite
+    await invoke('set_favorite_status_by_id', { id: item.id })
+    showMessage(item.is_favorite ? '已收藏' : '已取消收藏')
+    clickTimeout = null;
+  }, 150); // 150ms内再次点击视为双击
+}
+
+// 双击弹出收藏夹选择
+const executeDoubleClick = async (item) => {
+    showMessage('执行了双击操作')
+    showFoldersModal.value = true
+    currentItem.value = item
+    // 清除定时器
+    clickTimeout = null;
 }
 
 // 编辑项目
@@ -593,24 +657,29 @@ const getAllHistory = async () => {
 const getAllFolders = async () => {
   try {
     const jsonString = await invoke('get_all_folders')
-    favoriteHistory.value = JSON.parse(jsonString)
-    console.log(favoriteHistory)
+    folders.value = JSON.parse(jsonString)
+    console.log(folders)
 
     // 创建默认收藏夹
-    if (!favoriteHistory.value || favoriteHistory.value.length === 0) {
+    if (!folders.value || folders.value.length === 0) {
       console.log('收藏夹为空，正在创建默认收藏夹...')
       try {
-        await invoke('create_new_folder', { name: "默认收藏夹" })
+        await invoke('create_new_folder', { name: '默认收藏夹' })
         console.log('默认收藏夹创建成功')
         
         // 重新获取收藏夹列表
         const updatedJsonString = await invoke('get_all_folders')
-        favoriteHistory.value = JSON.parse(updatedJsonString)
-        console.log('更新后的收藏夹:', favoriteHistory.value)
+        folders.value = JSON.parse(updatedJsonString)
+        console.log('更新后的收藏夹:', folders.value)
       } catch (createError) {
         console.error('创建默认收藏夹失败:', createError)
       }
     }
+
+    folders.value = folders.value.map(item => ({
+      ...item,
+      isSelected: false
+    }))
   } catch (error) {
     console.error('get_all_folders调用失败:', error)
   }
@@ -659,9 +728,9 @@ const cancelFolder = () => {
 // 删除收藏夹
 const removeFolder = async (item) => {
   await invoke('delete_folder', { folderId: item.id })
-  const index = favoriteHistory.value.findIndex(i => i.id === item.id)
+  const index = folders.value.findIndex(i => i.id === item.id)
   if (index !== -1) {
-    favoriteHistory.value.splice(index, 1)
+    folders.value.splice(index, 1)
   }
   showMessage('已删除收藏夹')
 }
@@ -670,6 +739,49 @@ const removeFolder = async (item) => {
 const showFolderContent = async (item) => {
   activeCategory.value = 'folder'
   currentFolder.value = item
+}
+
+// 切换收藏夹选中状态
+const selectFolder = (item) => {
+  // 切换当前项的选中状态
+  item.isSelected = !item.isSelected
+}
+
+// 把历史记录添加到收藏夹中
+const addToFolder = async () => {
+  try {
+    const selectedFolders = folders.value.filter(item => item.isSelected)
+    
+    if (selectedFolders.length === 0) {
+      showMessage('请先选择收藏夹')
+      return
+    }
+    
+    // 并行处理所有选中的文件夹
+    const promises = selectedFolders.map(item => 
+      invoke('add_item_to_folder', { 
+        folderId: item.id,
+        itemId: currentItem.value.id
+      })
+    )   
+
+    await Promise.all(promises)
+    showMessage('已收藏进指定文件夹')
+    currentItem.value.is_favorite = true
+    await invoke('set_favorite_status_by_id', { id: currentItem.value.id })
+  } catch (err) {
+    console.error('创建文件夹失败', err)
+  }
+  cancelAddToFolder()
+}
+
+// 取消添加至收藏夹
+const cancelAddToFolder = () => {
+  showFoldersModal.value = false
+  folders.value = folders.value.map(item => ({
+    ...item,
+    isSelected: false
+  }))
 }
 
 // 主窗口监听剪贴板事件
@@ -799,6 +911,7 @@ body {
   padding: 8px 10px;
   background: #ffffff;
   -webkit-app-region: drag;
+  align-items: center;
 }
 
 .category-buttons {
@@ -1222,6 +1335,72 @@ body {
 .btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* 收藏夹样式 */
+.folder-item-toast {
+  border: none;
+  background: none;
+  padding: 0px 5px;
+  transition: all 0.2s ease;
+  position: relative;
+  max-width: 100%;
+  font-size: 20px;
+  color: #595959;
+}
+
+.folder-item-toast:hover {
+  color: #b7c8fe;
+}
+
+/* 自定义图标样式 */
+.custom-folder-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid #d9d9d9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+/* 对勾样式 */
+.custom-folder-icon::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 4px;
+  border-left: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  transform: rotate(-45deg);
+  transition: all 0.3s ease;
+}
+
+/* 悬停时图标效果 */
+.folder-item-toast:hover .custom-folder-icon {
+  border-color: #b7c8fe;
+}
+
+/* 选中状态 - 蓝色背景和白色对勾 */
+.custom-folder-icon.selected {
+  background-color: #3498db;
+  border-color: #3498db;
+}
+
+.custom-folder-icon.selected::after {
+  border-left-color: white;
+  border-bottom-color: white;
+}
+
+.folder-content-toast {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+  font-size: 15px;
 }
 
 /* 淡入淡出动画效果 */
