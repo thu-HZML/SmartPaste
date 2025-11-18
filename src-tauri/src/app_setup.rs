@@ -414,7 +414,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         size,
                         is_favorite: false,
                         notes: "".to_string(),
-                        timestamp: Utc::now().timestamp(),
+                        timestamp: Utc::now().timestamp_millis(),
                     };
                     
                     if !is_frontend_copy {
@@ -467,7 +467,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             size: fs::metadata(&dest_path).ok().map(|m| m.len()),
                             is_favorite: false,
                             notes: "".to_string(),
-                            timestamp: Utc::now().timestamp(),
+                            timestamp: Utc::now().timestamp_millis(),
                         };
                         if !is_frontend_copy {
                             // 手动复制：保存到数据库并通知前端
@@ -515,7 +515,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                     size: fs::metadata(&dest_path).ok().map(|m| m.len()),
                                     is_favorite: false,
                                     notes: "".to_string(),
-                                    timestamp: Utc::now().timestamp(),
+                                    timestamp: Utc::now().timestamp_millis(),
                                 };
                                  if !is_frontend_copy {
                                     // 手动复制：保存到数据库
