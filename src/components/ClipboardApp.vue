@@ -53,7 +53,7 @@
           <p class="hint">复制的内容将显示在这里</p>
         </div>
         
-        <div v-else class="history-list">
+        <div v-else class="history-list-reverse">
           <div 
             v-for="(item, index) in filteredHistory" 
             :key="index" 
@@ -71,6 +71,14 @@
 
               <!-- 右上方按钮组 -->
               <div class="item-actions-top">
+                <button 
+                  v-if="item.item_type === 'image'"
+                  class="icon-btn-small" 
+                  @click="copyItem(item)"
+                  title="复制"
+                >
+                  <Square2StackIcon class="icon-default" />
+                </button>
                 <button 
                   class="icon-btn-small" 
                   @click="toggleFavorite(item)"
@@ -165,7 +173,7 @@
           <div class="folder-item" @click="showFolder()">
             <div class="folder-content">
               <FolderPlusIcon class="icon-folder" />
-              <span>{{ '新建收藏夹' }}</span>                        
+              <span class="folder-name">{{ '新建收藏夹' }}</span>                        
             </div>
           </div>
           <!-- 普通收藏夹 -->
@@ -177,19 +185,19 @@
             @click="showFolderContent(item)"
           >
             <div class="folder-content">
-              <FolderPlusIcon class="icon-folder" />
-              <span>{{ item.name }}</span>
-              <span>{{ 0 }}个内容</span> 
+              <FolderIcon class="icon-folder" />
+              <span class="folder-name" :title="item.name">{{ item.name }}</span>
+              <span class="content-count">{{ 0 }}</span> 
               <button 
                 class="icon-btn-small" 
-                @click="noteItem(item)"
+                @click.stop="noteItem(item)"
                 title="重命名"
               >
                 <PencilSquareIcon class="icon-default" />
               </button>
               <button 
                 class="icon-btn-small" 
-                @click="removeFolder(item)"
+                @click.stop="removeFolder(item)"
                 title="删除"
               >
                 <TrashIcon class="icon-default" />
@@ -257,29 +265,35 @@
     <div v-if="showFoldersModal" class="modal">
       <div class="modal-content">
         <h3>添加到收藏夹</h3>
-        <div class="history-list">
-          <!-- 新建收藏夹 -->
-          <div class="folder-item" @click="showFolder()">
-            <div class="folder-content">
-              <FolderPlusIcon class="icon-folder" />
-              <span>{{ '新建收藏夹' }}</span>                        
+        <div class="folders-container">
+          <div class="history-list">      
+            <!-- 普通收藏夹 -->
+            <div 
+              v-for="(item, index) in folders" 
+              :key="index" 
+              class="folder-item-toast"
+              tabindex="0"
+              @click="selectFolder(item)"        
+            >
+              <div class="folder-content-toast">
+                <div class="custom-folder-icon" :class="{ 'selected': item.isSelected }"></div>
+                <span class="folder-name" :title="item.name">{{ item.name }}</span>
+                <span class="content-count">{{ 0 }}个内容</span>                      
+              </div>
             </div>
-          </div>
-          <!-- 普通收藏夹 -->
-          <div 
-            v-for="(item, index) in folders" 
-            :key="index" 
-            class="folder-item-toast"
-            tabindex="0"
-            @click="selectFolder(item)"        
-          >
-            <div class="folder-content-toast">
-              <div class="custom-folder-icon" :class="{ 'selected': item.isSelected }"></div>
-              <span>{{ item.name }}</span>
-              <span>{{ 0 }}个内容</span>                      
-            </div>
-          </div>
-        </div>
+
+            <!-- 新建收藏夹 -->
+            <div class="search-bar">           
+              <input 
+                type="text" 
+                v-model="folderQuery"
+                placeholder="新建收藏夹：请输入名称" 
+                class="toast-input"
+              >
+              <button @click="addFolderToast" class="btn-create">创建</button>
+            </div>  
+          </div>       
+        </div>       
         <div class="modal-actions">
           <button @click="cancelAddToFolder" class="btn btn-secondary">取消</button>
           <button @click="addToFolder" class="btn btn-primary">确认</button>
@@ -305,7 +319,8 @@ import {
   ClipboardDocumentListIcon,
   TrashIcon,
   Square2StackIcon,
-  FolderPlusIcon
+  FolderPlusIcon,
+  FolderIcon
  } from '@heroicons/vue/24/outline'
 import { 
   StarIcon as StarIconSolid
@@ -329,6 +344,8 @@ const notingItem = ref(null)
 const folderNotingText = ref('')
 const currentFolder = ref(null)
 const searchLoading = ref(false)
+const currentItem = ref(null)
+const folderQuery = ref('')
 const test = ref('')
 
 // 防抖定时器
@@ -347,10 +364,9 @@ const categories = ref([
 ])
 
 // 历史记录数据结构
-const history = ref([])
 const folders = ref([])
 const filteredHistory = ref([])
-const currentItem = ref([])
+
 
 /*
 // 计算属性
@@ -370,7 +386,7 @@ watch(searchQuery, (newQuery) => {
   
   // 空查询立即返回
   if (newQuery.trim() === '') {
-    filteredHistory.value = history.value
+    getAllHistory()
     searchLoading.value = false
     return
   }
@@ -392,7 +408,7 @@ watch(activeCategory, async (currentCategory) => {
   }
   else if (currentCategory.trim() === 'all'){
     searchLoading.value = true
-    filteredHistory.value = history.value
+    getAllHistory()
   }
   else if (currentCategory.trim() === 'folder') {
     await performFolder()
@@ -486,24 +502,6 @@ const openSettings = async () => {
   showMessage('打开设置')
 }
 
-// 添加到历史记录
-const addToHistory = (text) => {
-  if (!text.trim()) return
-  
-  const newItem = {
-    content: text.trim(),
-    timestamp: new Date().getTime(),
-    is_favorite: false,
-    item_type: 'text'
-  }
-  
-  history.value.unshift(newItem)
-  // 限制历史记录数量
-  if (history.value.length > 100) {
-    history.value.pop()
-  }
-}
-
 // 复制历史内容
 const copyItem = async (item) => {
   try {
@@ -525,7 +523,7 @@ const copyItem = async (item) => {
 // 切换收藏状态
 const toggleFavorite = async (item) => {
   // 清除之前的单击定时器
-  if (clickTimeout) {
+  if (clickTimeout || activeCategory.value === 'folder') {
     clearTimeout(clickTimeout)
     // 如果已经有定时器存在，说明是双击
     executeDoubleClick(item)
@@ -639,21 +637,22 @@ const formatTime = (timestamp) => {
   return date.toLocaleDateString()
 }
 
+// 获取所有历史记录
 const getAllHistory = async () => {
   try {
     const jsonString = await invoke('get_all_data')
-    history.value = JSON.parse(jsonString)
+    filteredHistory.value = JSON.parse(jsonString)
     // 为现有数组中的每个对象添加 is_focus 字段
-    history.value = history.value.map(item => ({
+    filteredHistory.value = filteredHistory.value.map(item => ({
       ...item,
       is_focus: false
     }))
-    filteredHistory.value = history.value
   } catch (error) {
     console.error('调用失败:', error)
   }
 }
 
+// 获取所有收藏夹
 const getAllFolders = async () => {
   try {
     const jsonString = await invoke('get_all_folders')
@@ -712,6 +711,7 @@ const showFolder = () => {
 const addFolder = async () => {
   try {
     await invoke('create_new_folder', { name: folderNotingText.value.trim() })
+    getAllFolders()
   } catch (err) {
     console.error('创建文件夹失败', err)
   }
@@ -733,6 +733,24 @@ const removeFolder = async (item) => {
     folders.value.splice(index, 1)
   }
   showMessage('已删除收藏夹')
+}
+
+// 模态框创建收藏夹
+const addFolderToast = async () => {
+  try {
+    // 空查询立即返回
+    if (folderQuery.value === '') {
+      showMessage('收藏夹名称不能为空！')
+      return
+    }
+
+    await invoke('create_new_folder', { name: folderQuery.value })
+    getAllFolders()
+    folderQuery.value = ''
+  } catch (err) {
+    console.error('创建文件夹失败', err)
+  }
+  showMessage('新收藏夹已创建')
 }
 
 // 显示收藏夹内容
@@ -801,7 +819,7 @@ onMounted(async () => {
   console.log('开始初始化...')
   
   // 设置示例数据
-  history.value = [
+  filteredHistory.value = [
     {
       id: '0123456',
       item_type: 'text',        
@@ -818,8 +836,7 @@ onMounted(async () => {
 
   // 获取收藏夹记录
   await getAllFolders()
-  console.log('数据设置完成:', history.value)
-  console.log('数据长度:', history.value.length)
+  console.log('数据长度:', filteredHistory.value.length)
 
   // OCR配置
   await invoke('configure_ocr', {})
@@ -872,6 +889,8 @@ body {
 }
 
 .search-bar {
+  display: flex;
+  flex-direction: row;
   position: relative;
   margin: 0 auto;
   -webkit-app-region: no-drag;
@@ -1007,11 +1026,6 @@ body {
   color: #595959;
 }
 
-.icon-folder:hover {
-  position: relative;
-  color: #3282f6;
-}
-
 /* 主内容区样式 */
 .app-main {
   padding: 8px 10px;
@@ -1038,7 +1052,15 @@ body {
   color: #bdc3c7;
 }
 
-/* 历史记录列表样式 */
+/* 历史记录列表样式（倒序） */
+.history-list-reverse {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 12px;
+  max-width: 100%;
+}
+
+/* 历史记录列表样式（正序） */
 .history-list {
   display: flex;
   flex-direction: column;
@@ -1207,10 +1229,17 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   margin-bottom: 10px;
   min-height: 83px;
   max-height: 83px;
+}
+
+.folder-content:hover,
+.folder-content:hover .icon-folder,
+.folder-content:hover .folder-name,
+.folder-content:hover .content-count {
+  color: #3282f6;
 }
 
 /* 提示框样式 */
@@ -1224,7 +1253,7 @@ body {
   padding: 12px 24px;
   border-radius: 8px;
   font-size: 14px;
-  z-index: 1000;
+  z-index: 10000;
   animation: slideUp 0.3s ease;
 }
 
@@ -1337,6 +1366,25 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
+.btn-create {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #416afe;
+  background: #e4edfd;
+}
+
+/* 收藏夹容器 - 限制高度并添加滚动 */
+.folders-container {
+  max-height: 300px; /* 设置最大高度 */
+  overflow-y: auto; /* 添加垂直滚动 */
+  overflow-x: hidden;
+  margin-bottom: 16px; /* 与下方元素间距 */
+}
+
 /* 收藏夹样式 */
 .folder-item-toast {
   border: none;
@@ -1364,6 +1412,7 @@ body {
   justify-content: center;
   position: relative;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 }
 
 /* 对勾样式 */
@@ -1401,6 +1450,40 @@ body {
   gap: 16px;
   margin-bottom: 10px;
   font-size: 15px;
+}
+
+.folder-name {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.content-count {
+  color: #8c8c8c;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 输入框样式 */
+.toast-input {
+  width: 80%;
+  padding: 6px 10px 6px 23px;
+  border: 1px solid #e1e8ed;
+  border-radius: 2px;
+  font-size: 16px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.toast-input:hover {
+  border-color: #b7c8fe;
+}
+
+.toast-input:focus {
+  border-color: #3282f6;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
 }
 
 /* 淡入淡出动画效果 */
