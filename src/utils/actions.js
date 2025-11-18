@@ -31,7 +31,7 @@ export async function createClipboardWindow(options = {}) {
     const { x = 100, y = 100, width = 400, height = 600 } = options
     
     const webview = new WebviewWindow(windowId, {
-      url: '/clipboardapp',
+      url: '/menu',
       title: '剪贴板',
       width,
       height,
