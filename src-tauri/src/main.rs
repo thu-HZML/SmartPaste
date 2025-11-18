@@ -9,7 +9,9 @@ mod config;
 mod db;
 mod ocr;
 
-use app_setup::{ClipboardSourceState,update_shortcut,update_shortcut2, AppShortcutState, AppShortcutState2};
+use app_setup::{
+    update_shortcut, update_shortcut2, AppShortcutState, AppShortcutState2, ClipboardSourceState,
+};
 use arboard::Clipboard;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,7 +34,7 @@ fn test_function() -> String {
 #[tauri::command]
 async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
     let autolaunch = app.autolaunch();
-    
+
     if enable {
         autolaunch
             .enable()
@@ -42,7 +44,7 @@ async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String
             .disable()
             .map_err(|e| format!("禁用开机自启失败: {}", e))?;
     }
-    
+
     Ok(())
 }
 
@@ -54,25 +56,24 @@ async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String
 #[tauri::command]
 async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
     let autolaunch = app.autolaunch();
-    
+
     autolaunch
         .is_enabled()
         .map_err(|e| format!("检查自启状态失败: {}", e))
 }
 
-
 #[tauri::command]
 fn write_to_clipboard(
-    text: String, 
+    text: String,
     app_handle: tauri::AppHandle,
-    state: State<'_,ClipboardSourceState>
+    state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
     // 设置标志，表示这是前端触发的复制
     *state.is_frontend_copy.lock().unwrap() = true;
-    
+
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(text).map_err(|e| e.to_string())?;
-    
+
     Ok(())
 }
 /// 将指定的文本写入系统剪贴板。作为 Tauri command 暴露给前端调用。
@@ -87,7 +88,7 @@ fn write_to_clipboard(
 async fn write_file_to_clipboard(
     app_handle: tauri::AppHandle,
     file_path: String,
-    state: State<'_,ClipboardSourceState>
+    state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
     // 设置标志，表示这是前端触发的复制
     *state.is_frontend_copy.lock().unwrap() = true;
@@ -110,7 +111,6 @@ async fn write_file_to_clipboard(
     // 根据不同平台调用相应的文件复制方法
     copy_file_to_clipboard(absolute_path)
 }
-
 
 /// 跨平台地将文件复制到系统剪贴板。作为 Tauri command 暴露给前端调用。
 /// 此函数会根据编译的目标操作系统（Windows, macOS, Linux）调用相应的底层实现。
@@ -236,7 +236,9 @@ fn main() {
         })
         .manage(AppShortcutState2 {
             current_shortcut: Mutex::new(String::new()),
-        }).manage(ClipboardSourceState { // 新增的状态
+        })
+        .manage(ClipboardSourceState {
+            // 新增的状态
             is_frontend_copy: Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![
@@ -246,7 +248,7 @@ fn main() {
             copy_file_to_clipboard,
             update_shortcut,
             update_shortcut2,
-            get_current_shortcut, 
+            get_current_shortcut,
             get_current_shortcut2,
             set_autostart,
             is_autostart_enabled,
@@ -273,7 +275,7 @@ fn main() {
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
-            config::set_autostart,
+            config::set_config_autostart,
             config::set_tray_icon_visible,
             config::set_minimize_to_tray,
             config::set_auto_save,
@@ -318,7 +320,7 @@ fn main() {
             config::set_bio,
             config::set_avatar_path,
         ])
-        .setup(move|app| {
+        .setup(move |app| {
             // 初始化数据库路径
             let app_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
             if !app_dir.exists() {
@@ -332,13 +334,41 @@ fn main() {
             println!("配置初始化结果: {}", init_result);
 
             // 设置数据库路径
-            let db_path = app_dir.join("smartpaste.db");
-            db::set_db_path(db_path.clone());
+            let mut db_path = app_dir.join("smartpaste.db");
+            // db::set_db_path(db_path.clone());
+
+            // 获取配置文件中的存储路径设置
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                // 如果配置中没有存储路径，则使用默认的 app_dir
+                if cfg.storage_path.is_none() {
+                    drop(cfg); // 释放读锁
+                    config::set_storage_path(app_dir.to_string_lossy().to_string());
+                }
+                // 否则，使用配置中的存储路径
+                else if let Some(ref path_str) = cfg.storage_path {
+                    let custom_path = PathBuf::from(path_str);
+                    if custom_path.exists() && custom_path.is_dir() {
+                        drop(cfg); // 释放读锁
+                        config::set_storage_path(custom_path.to_string_lossy().to_string());
+                        db_path = custom_path;
+                    } else {
+                        eprintln!(
+                            "⚠️ 配置的存储路径无效，使用默认路径: {}",
+                            app_dir.to_string_lossy()
+                        );
+                        drop(cfg); // 释放读锁
+                        config::set_storage_path(app_dir.to_string_lossy().to_string());
+                    }
+                }
+            }
 
             // 以现有数据库路径，修改 Config 中的数据存储路径
-            let set_db_path_result = config::set_db_storage_path(db_path.clone());
-            println!("设置数据库路径结果: {}", set_db_path_result);
+            // let set_db_path_result = config::set_db_storage_path(db_path.clone());
 
+            // 设置数据库路径并打印结果
+            println!("设置数据库路径结果: {}", db_path.to_string_lossy());
+            db::set_db_path(db_path.clone());
             // 调试：读取并打印数据库中所有记录
             /*
             match db::get_all_data() {
@@ -362,10 +392,10 @@ fn main() {
             // 初始隐藏主窗口，避免启动时闪烁
             if let Some(window) = app.get_webview_window("main") {
                 window.hide()?;
-            }           
+            }
 
             // 设置主窗口为透明 + 穿透
-            if let Some(window) = app.get_webview_window("main") {               
+            if let Some(window) = app.get_webview_window("main") {
                 window.show()?;
             }
 
@@ -377,8 +407,6 @@ fn main() {
         eprintln!("❌ 启动 Tauri 应用失败: {:?}", e);
     }
 }
-
-
 
 // 辅助函数：切换窗口显示/隐藏
 fn toggle_window_visibility(window: &tauri::WebviewWindow) {

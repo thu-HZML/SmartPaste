@@ -170,7 +170,7 @@ impl Default for Config {
 }
 
 static CONFIG_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
-static CONFIG: OnceLock<RwLock<Config>> = OnceLock::new();
+pub static CONFIG: OnceLock<RwLock<Config>> = OnceLock::new();
 
 /// 设置配置 JSON 文件路径
 /// # Param
@@ -271,7 +271,7 @@ pub fn set_db_storage_path(path: PathBuf) -> String {
 /// # Param
 /// enabled: bool - 是否启用开机自启动
 #[tauri::command]
-pub fn set_autostart(enabled: bool) {
+pub fn set_config_autostart(enabled: bool) {
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
         cfg.autostart = enabled;
