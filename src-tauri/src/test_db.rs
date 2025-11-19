@@ -305,13 +305,25 @@ fn test_folder_functions() {
     let folder_a = create_new_folder("FolderA").expect("create folder A");
     let folder_b = create_new_folder("FolderB").expect("create folder B");
 
-    // 测试获取所有收藏夹
+    // 测试获取所有收藏夹（初始 num_items 应为 0）
     let all_folders_json = get_all_folders().expect("get all folders failed");
     let all_folders: Vec<FolderItem> =
         serde_json::from_str(&all_folders_json).expect("parse all folders");
     let folder_names: Vec<String> = all_folders.iter().map(|f| f.name.clone()).collect();
     assert!(folder_names.contains(&"FolderA".to_string()));
     assert!(folder_names.contains(&"FolderB".to_string()));
+
+    // 初始数量检查
+    let fa = all_folders
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("folder_a missing");
+    let fb = all_folders
+        .iter()
+        .find(|f| f.id == folder_b)
+        .expect("folder_b missing");
+    assert_eq!(fa.num_items, 0);
+    assert_eq!(fb.num_items, 0);
 
     // 向 FolderA 添加 5 个 item，向 FolderB 添加 2 个
     for id in &["f-1", "f-2", "f-3", "f-4", "f-5"] {
@@ -324,6 +336,24 @@ fn test_folder_functions() {
     // 重复添加同一项（应被 IGNORE，不会出现重复）
     add_item_to_folder(&folder_a, "f-1").expect("duplicate add failed");
 
+    // 额外：把 f-2 也加入 FolderB，测试单个 item 属于多个收藏夹的情况
+    add_item_to_folder(&folder_b, "f-2").expect("add f-2 to FolderB failed");
+
+    // 验证 num_items 值（FolderA 应为 5，FolderB 应为 3）
+    let all_folders_json = get_all_folders().expect("get all folders after add failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders after add");
+    let fa = all_folders
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("folder_a missing after add");
+    let fb = all_folders
+        .iter()
+        .find(|f| f.id == folder_b)
+        .expect("folder_b missing after add");
+    assert_eq!(fa.num_items, 5, "FolderA should have 5 items");
+    assert_eq!(fb.num_items, 3, "FolderB should have 3 items");
+
     // 验证 FolderA 的内容（应包含 f-1..f-5，不包含 f-6/f-7）
     let res_a = filter_data_by_folder("FolderA").expect("filter FolderA failed");
     let vec_a: Vec<ClipboardItem> = serde_json::from_str(&res_a).expect("parse FolderA");
@@ -335,8 +365,42 @@ fn test_folder_functions() {
     assert!(!ids_a.contains(&"f-6".to_string()));
     assert!(!ids_a.contains(&"f-7".to_string()));
 
-    // 从 FolderA 移除 f-3 并验证
+    // 测试 get_folders_by_item_id：f-2 应该属于 FolderA 和 FolderB，且返回的 FolderItem.num_items 要正确
+    let folders_for_f2_json = get_folders_by_item_id("f-2").expect("get_folders_by_item_id failed");
+    let folders_for_f2: Vec<FolderItem> =
+        serde_json::from_str(&folders_for_f2_json).expect("parse folders for f-2");
+    let folder_ids: Vec<String> = folders_for_f2.iter().map(|f| f.id.clone()).collect();
+    assert!(folder_ids.contains(&folder_a));
+    assert!(folder_ids.contains(&folder_b));
+    let fa_entry = folders_for_f2
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("folder_a missing in f-2 list");
+    let fb_entry = folders_for_f2
+        .iter()
+        .find(|f| f.id == folder_b)
+        .expect("folder_b missing in f-2 list");
+    assert_eq!(
+        fa_entry.num_items, 5,
+        "FolderA.num_items should be 5 in get_folders_by_item_id"
+    );
+    assert_eq!(
+        fb_entry.num_items, 3,
+        "FolderB.num_items should be 3 in get_folders_by_item_id"
+    );
+
+    // 从 FolderA 移除 f-3 并验证数量和内容
     remove_item_from_folder(&folder_a, "f-3").expect("remove from FolderA failed");
+
+    let all_folders_json = get_all_folders().expect("get all folders after remove failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders after remove");
+    let fa = all_folders
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("folder_a missing after remove");
+    assert_eq!(fa.num_items, 4, "FolderA should have 4 items after removal");
+
     let res_after_remove = filter_data_by_folder("FolderA").expect("filter after remove failed");
     let vec_after_remove: Vec<ClipboardItem> =
         serde_json::from_str(&res_after_remove).expect("parse after remove");
@@ -344,9 +408,45 @@ fn test_folder_functions() {
     assert_eq!(ids_after_remove.len(), 4);
     assert!(!ids_after_remove.contains(&"f-3".to_string()));
 
-    // 重命名 FolderA 并通过新名称查询
+    // 再次测试 get_folders_by_item_id，确保移除操作不会影响其它文件夹的计数（f-2 仍在 FolderA 和 FolderB）
+    let folders_for_f2_json =
+        get_folders_by_item_id("f-2").expect("get_folders_by_item_id after remove failed");
+    let folders_for_f2: Vec<FolderItem> =
+        serde_json::from_str(&folders_for_f2_json).expect("parse folders for f-2 after remove");
+    let fa_entry = folders_for_f2
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("folder_a missing in f-2 list after remove");
+    let fb_entry = folders_for_f2
+        .iter()
+        .find(|f| f.id == folder_b)
+        .expect("folder_b missing in f-2 list after remove");
+    assert_eq!(
+        fa_entry.num_items, 4,
+        "FolderA.num_items should be 4 after removal"
+    );
+    assert_eq!(
+        fb_entry.num_items, 3,
+        "FolderB.num_items should remain 3 after removal of unrelated item"
+    );
+
+    // 重命名 FolderA 并通过新名称查询，数量应保持不变
     let renamed = rename_folder(&folder_a, "FolderA_Renamed").expect("rename failed");
     assert_eq!(renamed, "renamed");
+
+    let all_folders_json = get_all_folders().expect("get all folders after rename failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders after rename");
+    let fa = all_folders
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("folder_a missing after rename");
+    assert_eq!(fa.name, "FolderA_Renamed");
+    assert_eq!(
+        fa.num_items, 4,
+        "FolderA should still have 4 items after rename"
+    );
+
     let res_renamed = filter_data_by_folder("FolderA_Renamed").expect("filter renamed failed");
     let vec_renamed: Vec<ClipboardItem> =
         serde_json::from_str(&res_renamed).expect("parse renamed");
@@ -356,13 +456,21 @@ fn test_folder_functions() {
         assert!(ids_renamed.contains(&id.to_string()));
     }
 
-    // 删除 FolderB 并确认通过名称查询为空
+    // 删除 FolderB 并确认通过名称查询为空，且在所有收藏夹列表中不存在
     let deleted = delete_folder(&folder_b).expect("delete FolderB failed");
     assert_eq!(deleted, "deleted");
     let res_b = filter_data_by_folder("FolderB").expect("filter FolderB after delete failed");
     let vec_b: Vec<ClipboardItem> =
         serde_json::from_str(&res_b).expect("parse FolderB after delete");
     assert!(vec_b.is_empty());
+
+    let all_folders_json = get_all_folders().expect("get all folders after delete folder_b failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders after delete folder_b");
+    assert!(
+        all_folders.iter().find(|f| f.id == folder_b).is_none(),
+        "FolderB should be removed from folders list"
+    );
 }
 
 #[test]

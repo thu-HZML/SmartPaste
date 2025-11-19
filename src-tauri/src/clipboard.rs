@@ -21,6 +21,7 @@ pub struct ClipboardItem {
 pub struct FolderItem {
     pub id: String,
     pub name: String,
+    pub num_items: u32,
 }
 
 /// 将 FolderItem 转换为 JSON 字符串。
