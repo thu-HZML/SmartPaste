@@ -72,12 +72,12 @@
               <!-- 右上方按钮组 -->
               <div class="item-actions-top">
                 <button 
-                  v-if="item.item_type === 'image'"
+                  v-if="item.item_type === 'text'"
                   class="icon-btn-small" 
-                  @click="copyItem(item)"
-                  title="复制"
+                  @click="showOCR(item)"
+                  title="图片转文字"
                 >
-                  <Square2StackIcon class="icon-default" />
+                  <span class="content-OCR">{{ 'OCR' }}</span>
                 </button>
                 <button 
                   class="icon-btn-small" 
@@ -380,13 +380,23 @@ const displayHistory = computed(() => {
 */
 
 // 监听 searchQuery 变化
-watch(searchQuery, (newQuery) => {
+watch(searchQuery, async(newQuery) => {
+  await handleSearch(newQuery)
+})
+
+// 监听 activeCategory 变化
+watch(activeCategory, async (currentCategory) => {
+  await handleCategoryChange(currentCategory)
+})
+
+// 搜索逻辑
+const handleSearch = async (query) => {
   // 清除之前的定时器
   clearTimeout(searchTimeout)
   
   // 空查询立即返回
-  if (newQuery.trim() === '') {
-    getAllHistory()
+  if (query.trim() === '') {
+    await getAllHistory()
     searchLoading.value = false
     return
   }
@@ -395,27 +405,26 @@ watch(searchQuery, (newQuery) => {
   
   // 设置新的定时器（300ms 防抖）
   searchTimeout = setTimeout(async () => {
-    await performSearch(newQuery)
+    await performSearch(query)
   }, 300)
-})
+}
 
-// 监听 activeCategory 变化
-watch(activeCategory, async (currentCategory) => {
-  if (['image', 'video', 'file'].includes(currentCategory)) {
+// 分类逻辑
+const handleCategoryChange = async (category) => {
+  if (['image', 'video', 'file'].includes(category)) {
     searchLoading.value = true
-    await performClassify(currentCategory)
+    await performClassify(category)
     return
   }
-  else if (currentCategory.trim() === 'all'){
+  else if (category.trim() === 'all'){
     searchLoading.value = true
-    getAllHistory()
+    await getAllHistory()
   }
-  else if (currentCategory.trim() === 'folder') {
+  else if (category.trim() === 'folder') {
     await performFolder()
     return
   }
-
-})
+}
 
 // 搜索过滤
 const performSearch = async (query) => { 
@@ -807,8 +816,9 @@ const setupClipboardRelay = async () => {
   const unlisten = await listen('clipboard-updated', async (event) => {
     console.log('接受后端更新消息')
     console.log('通过中转收到剪贴板事件:', event.payload)
-    await getAllHistory()
-    await getAllFolders()
+    // 刷新历史记录
+    handleSearch(searchQuery.value)
+    handleCategoryChange(activeCategory.value)
   })
   
   return unlisten
@@ -999,7 +1009,7 @@ body {
   width: 1rem;
   height: 1rem;
   position: relative;
-  top: 3px; 
+  top: 1px; 
   color: #595959;
 }
 
@@ -1007,7 +1017,7 @@ body {
   width: 1rem;
   height: 1rem;
   position: relative;
-  top: 3px; 
+  top: 1px; 
   color: #3282f6;
 }
 
@@ -1015,7 +1025,7 @@ body {
   width: 1rem;
   height: 1rem; 
   position: relative;
-  top: 3px; 
+  top: 1px; 
   color: #f1c40f;
 }
 
@@ -1024,6 +1034,20 @@ body {
   height: 4rem;
   position: relative; 
   color: #595959;
+}
+
+/* OCR标签 */
+.content-OCR {
+  border: 1px solid #3282f6;
+  border-radius: 3px;
+  padding: 1px;
+  color: #595959;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.content-OCR:hover {
+  color: #3282f6;
 }
 
 /* 主内容区样式 */
