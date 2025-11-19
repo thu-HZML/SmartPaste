@@ -72,7 +72,7 @@
               <!-- 右上方按钮组 -->
               <div class="item-actions-top">
                 <button 
-                  v-if="item.item_type === 'text'"
+                  v-if="item.item_type === 'image'"
                   class="icon-btn-small" 
                   @click="showOCR(item)"
                   title="图片转文字"
@@ -245,6 +245,22 @@
       </div>
     </div>
 
+    <!-- OCR模态框 -->
+    <div v-if="showOcrModal" class="modal">
+      <div class="modal-content">
+        <h3>图片转文字内容</h3>
+        <textarea 
+          v-model="ocrText" 
+          class="edit-textarea"
+          placeholder="请输入内容..."
+        ></textarea>
+        <div class="modal-actions">
+          <button @click="cancelOCR" class="btn btn-secondary">取消</button>
+          <button @click="copyOCR" class="btn btn-primary">复制</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 新建收藏夹模态框 -->
     <div v-if="showFolderModal" class="modal">
       <div class="modal-content">
@@ -337,10 +353,12 @@ const showEditModal = ref(false)
 const showNoteModal = ref(false)
 const showFolderModal = ref(false)
 const showFoldersModal = ref(false)
+const showOcrModal = ref(false)
 const editingText = ref('')
 const editingItem = ref(null)
 const notingText = ref('')
 const notingItem = ref(null)
+const ocrText = ref('')
 const folderNotingText = ref('')
 const currentFolder = ref(null)
 const searchLoading = ref(false)
@@ -615,6 +633,30 @@ const cancelNote = () => {
   showNoteModal.value = false
   notingItem.value = null
   notingText.value = ''
+}
+
+// 显示OCR内容
+const showOCR = async (item) => {
+  const ocrString = await invoke('ocr_image', { filePath: item.content })
+  console.log(ocrString)
+  ocrText.value = JSON.parse(ocrString)[0].text
+  showOcrModal.value = true
+}
+
+// 复制OCR内容
+const copyOCR = async () => {
+  if (!ocrText.value || ocrText.value.trim() === '') {
+    showMessage('内容不能为空')
+  } else {
+    showMessage('已复制OCR内容')
+  }
+  cancelOCR()
+}
+
+// 关闭OCR弹窗
+const cancelOCR = () => {
+  showOcrModal.value = false
+  ocrText.value = ''
 }
 
 // 删除历史记录
