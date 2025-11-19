@@ -1159,6 +1159,7 @@ body {
   display: -webkit-box;
   line-clamp: 4;          /* 限制显示行数 */
   -webkit-line-clamp: 4;      /* 限制显示行数 */
+  white-space: pre-wrap;  /* 保留连续空格和换行 */
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
