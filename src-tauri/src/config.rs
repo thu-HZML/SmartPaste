@@ -20,6 +20,12 @@ pub struct Config {
     pub auto_save: bool,
     /// 历史记录保留天数（天）
     pub retention_days: u32,
+    /// 主界面快捷键
+    #[serde(default = "default_shortcut")] 
+    pub global_shortcut: String,
+    /// 第二界面快捷键
+    #[serde(default = "default_shortcut_2")]
+    pub global_shortcut_2: String,
 
     // --- 剪贴板参数 ---
     /// 最大历史记录数量
@@ -105,7 +111,9 @@ pub struct Config {
     /// 头像文件路径
     pub avatar_path: Option<String>,
 }
-
+// 辅助函数，防止旧 config.json 缺少字段导致解析失败
+fn default_shortcut() -> String { "Alt+Shift+V".to_string() }
+fn default_shortcut_2() -> String { "Alt+Shift+C".to_string() }
 /// 为 Config 实现 Default trait，提供默认配置值。
 impl Default for Config {
     /// 返回 Config 的默认实例。
@@ -117,7 +125,8 @@ impl Default for Config {
             minimize_to_tray: false, // 启动最小化：否
             auto_save: true,         // 自动保存历史：是
             retention_days: 30,      // 历史保留天数：30天
-
+            global_shortcut: default_shortcut(),
+            global_shortcut_2: default_shortcut_2(),
             // 剪贴板
             max_history_items: 500,         // 最大历史记录数：500条
             ignore_short_text_len: 3,       // 忽略短文本长度：3字符
@@ -264,7 +273,49 @@ pub fn set_db_storage_path(path: PathBuf) -> String {
         "config not initialized".to_string()
     }
 }
+/// 设置主快捷键 (修复了死锁问题)
+pub fn set_global_shortcut_internal(shortcut: String) {
+    // 第一步：先获取写锁，更新内存中的配置
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.global_shortcut = shortcut;
+    } 
+    // 写锁在这里自动释放
 
+    // 第二步：先获取读锁拿到配置副本，然后释放读锁
+    let cfg_clone = if let Some(lock) = CONFIG.get() {
+        lock.read().unwrap().clone()
+    } else {
+        return;
+    }; 
+    // 读锁在这里自动释放
+
+    // 第三步：调用 save_config (它内部会再次获取写锁，但现在是安全的)
+    if let Err(e) = save_config(cfg_clone) {
+        eprintln!("❌ 保存配置文件失败: {}", e);
+    }
+}
+
+/// 设置第二快捷键 (修复了死锁问题)
+pub fn set_global_shortcut_2_internal(shortcut: String) {
+    // 第一步：更新内存
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.global_shortcut_2 = shortcut;
+    }
+
+    // 第二步：获取副本
+    let cfg_clone = if let Some(lock) = CONFIG.get() {
+        lock.read().unwrap().clone()
+    } else {
+        return;
+    };
+
+    // 第三步：保存
+    if let Err(e) = save_config(cfg_clone) {
+        eprintln!("❌ 保存配置文件失败: {}", e);
+    }
+}
 // --------------- 1. 通用设置 ---------------
 
 /// 设置开机自启动。作为 Tauri Command 暴露给前端调用。

@@ -1,10 +1,11 @@
 use crate::clipboard::ClipboardItem;
 use crate::db;
+use crate::config::{self, CONFIG};
 use chrono::Utc;
 use image::ColorType;
 use std::fs;
 use std::path::PathBuf;
-use std::str::FromStr; // 修正：导入 FromStr trait 以使用 .parse()
+use std::str::FromStr; 
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -25,82 +26,36 @@ pub struct AppShortcutState {
 pub struct AppShortcutState2 {
     pub current_shortcut: Mutex<String>,
 }
-/// 构建并返回主快捷键配置文件的完整路径。
-/// 该文件名为 `shortcut_config.txt`，存储在应用的配置目录下。
-/// # Param
-/// handle: &AppHandle - Tauri 的应用句柄，用于获取应用目录。
-/// # Returns
-/// PathBuf - 指向配置文件的路径对象。
-/// # Panics
-/// 如果无法获取应用配置目录，程序会 panic。
-fn get_shortcut_config_path(handle: &AppHandle) -> PathBuf {
-    let mut path = handle
-        .path()
-        .app_config_dir()
-        .expect("无法获取应用配置目录");
-    path.push("shortcut_config.txt");
-    path
-}
-/// 构建并返回第二个界面快捷键配置文件的完整路径。
-/// 该文件名为 `shortcut_config2.txt`，存储在应用的配置目录下。
-/// # Param
-/// handle: &AppHandle - Tauri 的应用句柄，用于获取应用目录。
-/// # Returns
-/// PathBuf - 指向配置文件的路径对象。
-/// # Panics
-/// 如果无法获取应用配置目录，程序会 panic。
-fn get_shortcut_config_path2(handle: &AppHandle) -> PathBuf {
-    let mut path = handle
-        .path()
-        .app_config_dir()
-        .expect("无法获取应用配置目录");
-    path.push("shortcut_config2.txt");
-    path
-}
-/// 从本地存储中加载主快捷键配置。
-/// 如果配置文件不存在或读取失败，将返回默认快捷键 "Alt+Shift+V"。
-/// # Param
-/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
-/// # Returns
-/// String - 从文件中读取到的快捷键字符串，或默认值。
-fn load_shortcut_from_storage(handle: &AppHandle) -> String {
-    fs::read_to_string(get_shortcut_config_path(handle))
-        .unwrap_or_else(|_| "Alt+Shift+V".to_string())
-}
-/// 从本地存储中加载第二个界面的快捷键配置。
-/// 如果配置文件不存在或读取失败，将返回默认快捷键 "Alt+Shift+C"。
-/// # Param
-/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
-/// # Returns
-/// String - 从文件中读取到的快捷键字符串，或默认值。
-fn load_shortcut_from_storage2(handle: &AppHandle) -> String {
-    fs::read_to_string(get_shortcut_config_path2(handle))
-        .unwrap_or_else(|_| "Alt+Shift+C".to_string())
+
+/// 从 Config 中加载主快捷键配置
+/// 不再需要 handle 参数来找路径，但为了保持函数签名兼容性或方便后续修改，可以留着或去掉
+fn load_shortcut_from_storage(_handle: &AppHandle) -> String {
+    if let Some(lock) = CONFIG.get() {
+        let cfg = lock.read().unwrap();
+        cfg.global_shortcut.clone()
+    } else {
+        "Alt+Shift+V".to_string()
+    }
 }
 
-/// 将主快捷键配置字符串保存到本地文件中。
-/// 如果保存失败，会向 stderr 打印一条错误信息。
-/// # Param
-/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
-/// shortcut: &str - 需要保存的快捷键字符串。
-/// # Returns
-/// ()
-fn save_shortcut_to_storage(handle: &AppHandle, shortcut: &str) {
-    if let Err(e) = fs::write(get_shortcut_config_path(handle), shortcut) {
-        eprintln!("❌ 保存快捷键配置失败: {:?}", e);
+/// 从 Config 中加载第二个界面的快捷键配置
+fn load_shortcut_from_storage2(_handle: &AppHandle) -> String {
+    if let Some(lock) = CONFIG.get() {
+        let cfg = lock.read().unwrap();
+        cfg.global_shortcut_2.clone()
+    } else {
+        "Alt+Shift+C".to_string()
     }
 }
-/// 将第二个界面的快捷键配置字符串保存到本地文件中。
-/// 如果保存失败，会向 stderr 打印一条错误信息。
-/// # Param
-/// handle: &AppHandle - Tauri 的应用句柄，用于定位配置文件。
-/// shortcut: &str - 需要保存的快捷键字符串。
-/// # Returns
-/// ()
-fn save_shortcut_to_storage2(handle: &AppHandle, shortcut: &str) {
-    if let Err(e) = fs::write(get_shortcut_config_path2(handle), shortcut) {
-        eprintln!("❌ 保存第二个界面快捷键配置失败: {:?}", e);
-    }
+
+/// 将主快捷键保存到 Config
+fn save_shortcut_to_storage(_handle: &AppHandle, shortcut: &str) {
+    config::set_global_shortcut_internal(shortcut.to_string());
+}
+
+/// 将第二个快捷键保存到 Config
+fn save_shortcut_to_storage2(_handle: &AppHandle, shortcut: &str) {
+    config::set_global_shortcut_2_internal(shortcut.to_string());
 }
 /// 动态更新并注册应用的主全局快捷键。作为 Tauri command 暴露给前端调用。
 ///
@@ -651,7 +606,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                 timestamp: Utc::now().timestamp_millis(),
                             };
                             
-                            if let Err(e) = db::insert_received_data(new_item) {
+                            if let Err(e) = db::insert_received_db_data(new_item) {
                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                             } else {
                                 // 通知前端
@@ -709,7 +664,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                     };
 
             
-                                    if let Err(e) = db::insert_received_data(new_item) {
+                                    if let Err(e) = db::insert_received_db_data(new_item) {
                                         eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
                                     }
                                 }
@@ -746,7 +701,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             timestamp: Utc::now().timestamp_millis(),
                         };
                         
-                        if let Err(e) = db::insert_received_data(new_item) {
+                        if let Err(e) = db::insert_received_db_data(new_item) {
                             eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
                         } else {
                             if let Some(window) = app_handle.get_webview_window("main") {
