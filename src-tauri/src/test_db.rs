@@ -63,7 +63,7 @@ fn test_insert_get_delete() {
 
     let item = make_item("ut-1", "text", "hello insert");
     // insert
-    let insert_json = insert_received_data(item.clone()).expect("insert failed");
+    let insert_json = insert_received_db_data(item.clone()).expect("insert failed");
     let inserted: ClipboardItem = serde_json::from_str(&insert_json).expect("parse inserted");
     assert_eq!(inserted.id, item.id);
     assert_eq!(inserted.content, item.content);
@@ -95,7 +95,7 @@ fn test_get_latest_data() {
     assert_eq!(initial, "null");
 
     let item = make_item("latest-1", "text", "latest content");
-    insert_received_data(item.clone()).expect("insert latest failed");
+    insert_received_db_data(item.clone()).expect("insert latest failed");
 
     let latest_json = get_latest_data().expect("get latest after insert failed");
     let latest: ClipboardItem = serde_json::from_str(&latest_json).expect("parse latest");
@@ -112,8 +112,8 @@ fn test_get_all_data() {
     let a = make_item("all-1", "text", "one");
     let b = make_item("all-2", "image", "/tmp/img.png");
 
-    insert_received_data(a.clone()).unwrap();
-    insert_received_data(b.clone()).unwrap();
+    insert_received_db_data(a.clone()).unwrap();
+    insert_received_db_data(b.clone()).unwrap();
 
     let all_json = get_all_data().expect("get_all failed");
     let vec: Vec<ClipboardItem> = serde_json::from_str(&all_json).expect("parse array");
@@ -128,7 +128,7 @@ fn update_data() {
     set_test_db_path();
     clear_db_file();
     let item = make_item("update-1", "text", "original content");
-    insert_received_data(item.clone()).expect("insert for update");
+    insert_received_db_data(item.clone()).expect("insert for update");
 
     // update content: 函数返回更新后的记录 JSON，解析后断言 content 字段
     let new_content = "updated content";
@@ -156,10 +156,10 @@ fn test_delete_data() {
     let c = make_item("del-3", "text", "three");
     let d = make_item("del-4", "text", "four");
 
-    insert_received_data(a.clone()).expect("insert a");
-    insert_received_data(b.clone()).expect("insert b");
-    insert_received_data(c.clone()).expect("insert c");
-    insert_received_data(d.clone()).expect("insert d");
+    insert_received_db_data(a.clone()).expect("insert a");
+    insert_received_db_data(b.clone()).expect("insert b");
+    insert_received_db_data(c.clone()).expect("insert c");
+    insert_received_db_data(d.clone()).expect("insert d");
 
     // 按 id 删除 del-1
     let rows = delete_data_by_id(&a.id).expect("delete by id failed");
@@ -207,7 +207,7 @@ fn test_set_favorite_status_by_id() {
     clear_db_file();
 
     let item = make_item("fav-1", "text", "to be favorited");
-    insert_received_data(item.clone()).expect("insert for favorite");
+    insert_received_db_data(item.clone()).expect("insert for favorite");
 
     // initially not favorite
     let fetched_json = get_data_by_id(&item.id).expect("get for favorite");
@@ -243,9 +243,9 @@ fn test_search_text_content() {
     let item2 = make_item("search-2", "text", "goodbye world");
     let item3 = make_item("search-3", "image", "/tmp/img.png");
 
-    insert_received_data(item1.clone()).unwrap();
-    insert_received_data(item2.clone()).unwrap();
-    insert_received_data(item3.clone()).unwrap();
+    insert_received_db_data(item1.clone()).unwrap();
+    insert_received_db_data(item2.clone()).unwrap();
+    insert_received_db_data(item3.clone()).unwrap();
 
     let results_json = search_text_content("world").expect("search failed");
     let results: Vec<ClipboardItem> =
@@ -267,9 +267,9 @@ fn test_filter_data_by_type() {
     let item2 = make_item("filter-2", "image", "/tmp/img.png");
     let item3 = make_item("filter-3", "text", "more text");
 
-    insert_received_data(item1.clone()).unwrap();
-    insert_received_data(item2.clone()).unwrap();
-    insert_received_data(item3.clone()).unwrap();
+    insert_received_db_data(item1.clone()).unwrap();
+    insert_received_db_data(item2.clone()).unwrap();
+    insert_received_db_data(item3.clone()).unwrap();
 
     let results_json = filter_data_by_type("text").expect("filter failed");
     let results: Vec<ClipboardItem> =
@@ -298,7 +298,7 @@ fn test_folder_functions() {
         make_item("f-7", "image", "/tmp/img3"),
     ];
     for it in &items {
-        insert_received_data(it.clone()).expect("insert failed");
+        insert_received_db_data(it.clone()).expect("insert failed");
     }
 
     // 新建两个收藏夹
@@ -488,7 +488,7 @@ fn test_filter_data_by_favorite() {
         make_item("fav5", "image", "/img/2"),
     ];
     for it in &items {
-        insert_received_data(it.clone()).expect("insert failed");
+        insert_received_db_data(it.clone()).expect("insert failed");
     }
 
     // 收藏 fav1 和 fav3

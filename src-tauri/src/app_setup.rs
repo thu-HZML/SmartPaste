@@ -651,7 +651,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                 timestamp: Utc::now().timestamp_millis(),
                             };
                             
-                            if let Err(e) = db::insert_received_data(new_item) {
+                            if let Err(e) = db::insert_received_db_data(new_item) {
                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                             } else {
                                 // 通知前端
@@ -709,7 +709,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                     };
 
             
-                                    if let Err(e) = db::insert_received_data(new_item) {
+                                    if let Err(e) = db::insert_received_db_data(new_item) {
                                         eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
                                     }
                                 }
@@ -746,7 +746,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             timestamp: Utc::now().timestamp_millis(),
                         };
                         
-                        if let Err(e) = db::insert_received_data(new_item) {
+                        if let Err(e) = db::insert_received_db_data(new_item) {
                             eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
                         } else {
                             if let Some(window) = app_handle.get_webview_window("main") {
