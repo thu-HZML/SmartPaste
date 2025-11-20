@@ -99,7 +99,6 @@
                   class="icon-btn-small" 
                   @click="editItem(item)"
                   title="编辑"
-                  :disabled="item.size > 500"
                 >
                   <ClipboardIcon class="icon-default" />
                 </button>
@@ -143,11 +142,11 @@
 
                     <!-- 显示文件 -->
                     <div v-else-if="item.item_type === 'file'" class="file-container">
-                      <div class="file-icon">
-                        <!-- 可以根据文件类型显示不同的图标 -->
-                        <span v-if="isDocumentFile(item.content)" class="icon">📄</span>
-                        <span v-else class="icon">📎</span>
-                      </div>
+                      <img 
+                        :src="item.iconData"
+                        class="file-icon"
+                        @error="handleIconError"
+                      />
                       <div class="file-info">
                         <div class="file-name">{{ getFileName(item.content) }}</div>
                       </div>
@@ -399,7 +398,7 @@ const categories = ref([
 // 历史记录数据结构
 const folders = ref([])
 const filteredHistory = ref([])
-
+const iconCache = ref({}) // 用于缓存已加载的图标
 
 /*
 // 计算属性
@@ -636,9 +635,12 @@ const cancelDeleteAll = () => {
 
 // 编辑项目
 const editItem = (item) => {
+  loadIcon(item.content)
+  /*
   editingItem.value = item
   editingText.value = item.content
   showEditModal.value = true
+  */
 }
 
 // 保存编辑
@@ -777,8 +779,12 @@ const getAllHistory = async () => {
     // 为现有数组中的每个对象添加 is_focus 字段
     filteredHistory.value = filteredHistory.value.map(item => ({
       ...item,
-      is_focus: false
+      is_focus: false,
+      iconData: null // 初始化为null
     }))
+
+    // 为文件类型的项目加载图标
+    await loadIconsForFiles()
   } catch (error) {
     console.error('调用失败:', error)
   }
@@ -949,6 +955,43 @@ const setupClipboardRelay = async () => {
   })
   
   return unlisten
+}
+
+// 新增：为文件类型的项目加载图标
+const loadIconsForFiles = async () => {
+  const fileItems = filteredHistory.value.filter(item => item.item_type === 'file')
+  
+  for (const item of fileItems) {
+    try {
+      // 如果缓存中已有，直接使用
+      if (iconCache.value[item.content]) {
+        item.iconData = iconCache.value[item.content]
+      } else {
+        const iconBase64 = await loadIcon(item.content)
+        if (iconBase64) {
+          item.iconData = iconBase64
+          iconCache.value[item.content] = iconBase64 // 缓存图标
+        }
+      }
+    } catch (error) {
+      console.error('加载图标失败:', error)
+      item.iconData = null
+    }
+  }
+}
+
+// 修改 loadIcon 函数，确保返回正确的数据
+const loadIcon = async (filePath) => {
+  if (!filePath) return null
+  
+  try {
+    const iconBase64 = await invoke('get_file_icon', { path: filePath });
+    console.log("获取图标成功:", filePath);
+    return iconBase64;
+  } catch (error) {
+    console.error("获取图标失败:", error, filePath);
+    return null;
+  }
 }
 
 // 生命周期
