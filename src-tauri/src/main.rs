@@ -100,16 +100,26 @@ async fn write_file_to_clipboard(
     }
 
     // 检查是否是文件（不是目录）
-    if !path.is_file() {
-        return Err("路径指向的不是文件".to_string());
-    }
+    // if !path.is_file() {
+    //     return Err("路径指向的不是文件".to_string());
+    // }
 
     // 获取文件的绝对路径
     let absolute_path =
         fs::canonicalize(path).map_err(|e| format!("无法获取文件绝对路径: {}", e))?;
+    
+    let mut final_path_str = absolute_path.to_string_lossy().to_string();
 
+    #[cfg(target_os = "windows")]
+    {
+        // 去除 Rust canonicalize 产生的 \\?\ 前缀
+        const VERBATIM_PREFIX: &str = r"\\?\";
+        if final_path_str.starts_with(VERBATIM_PREFIX) {
+            final_path_str = final_path_str[VERBATIM_PREFIX.len()..].to_string();
+        }
+    }
     // 根据不同平台调用相应的文件复制方法
-    copy_file_to_clipboard(absolute_path)
+    copy_file_to_clipboard(PathBuf::from(final_path_str))
 }
 
 /// 跨平台地将文件复制到系统剪贴板。作为 Tauri command 暴露给前端调用。
@@ -140,17 +150,20 @@ fn copy_file_to_clipboard(file_path: PathBuf) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn copy_file_to_clipboard_windows(file_path: &str) -> Result<(), String> {
-    use std::io::Write;
     use std::process::Command;
-    use tempfile::NamedTempFile;
 
     let ps_script = format!(
-        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetFileDropList(@('{}'))",
-        file_path.replace("'", "''")
+        "$sc = New-Object System.Collections.Specialized.StringCollection; $sc.Add('{}'); Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetFileDropList($sc);",
+        file_path.replace("'", "''") // 转义 PowerShell 中的单引号
     );
 
+    // 使用 -NoProfile 加快启动速度，-WindowStyle Hidden 隐藏窗口闪烁
     let output = Command::new("powershell")
-        .args(&["-Command", &ps_script])
+        .args(&[
+            "-NoProfile", 
+            "-WindowStyle", "Hidden", 
+            "-Command", &ps_script
+        ])
         .output()
         .map_err(|e| e.to_string())?;
 
@@ -158,7 +171,9 @@ fn copy_file_to_clipboard_windows(file_path: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    Err("复制文件到剪贴板失败".to_string())
+    // 如果失败，读取 stderr 获取详细错误信息（方便调试）
+    let err_msg = String::from_utf8_lossy(&output.stderr);
+    Err(format!("复制文件到剪贴板失败: {}", err_msg))
 }
 
 #[cfg(target_os = "macos")]

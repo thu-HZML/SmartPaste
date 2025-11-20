@@ -407,7 +407,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         let mut has_new_files = false;
                         const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
-                          for path in paths {
+                        for path in paths {
                             // 1. 判断类型：如果是目录则为 "folder"，否则按扩展名判断
                             let item_type = if path.is_dir() {
                                 "folder".to_string()
@@ -431,34 +431,37 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
                                 // 2. 根据是文件夹还是文件执行不同的复制操作
                                 let copy_result = if path.is_dir() {
-                                    copy_dir_all(&path, &dest_path).map(|_| 0u64) // 文件夹复制成功返回 0 (或者你可以计算文件夹大小)
+                                    copy_dir_all(&path, &dest_path)
                                 } else {
                                     fs::copy(&path, &dest_path)
                                 };
 
-                                if copy_result.is_ok() {
-                                    has_new_files = true;
-                                    
-                                    // 计算大小 (如果是文件夹，这里简单获取元数据大小，不做递归计算以避免卡顿)
-                                    let size = fs::metadata(&dest_path).ok().map(|m| m.len());
+                                match copy_result {
+                                    Ok(bytes_copied) => {
+                                        has_new_files = true;
+                                        
+                                        // ✅ 直接使用复制时计算出的大小
+                                        let size = Some(bytes_copied);
 
-                                    let new_item = ClipboardItem {
-                                        id: Uuid::new_v4().to_string(),
-                                        item_type: item_type, // "folder", "file", 或 "image"
-                                        content: dest_path.to_str().unwrap().to_string(), // 存储本地文件夹路径
-                                        size: size,
-                                        is_favorite: false,
-                                        notes: "".to_string(),
-                                        timestamp: Utc::now().timestamp_millis(),
-                                    };
+                                        let new_item = ClipboardItem {
+                                            id: Uuid::new_v4().to_string(),
+                                            item_type: item_type,
+                                            content: dest_path.to_str().unwrap().to_string(),
+                                            size: size,
+                                            is_favorite: false,
+                                            notes: "".to_string(),
+                                            timestamp: Utc::now().timestamp_millis(),
+                                        };
 
-                                    if let Err(e) = db::insert_received_db_data(new_item) {
-                                        eprintln!("❌ 保存数据到数据库失败: {:?}", e);
+                                        if let Err(e) = db::insert_received_db_data(new_item) {
+                                            eprintln!("❌ 保存数据到数据库失败: {:?}", e);
+                                        }
+                                    },
+                                    Err(e) => {
+                                        eprintln!("❌ 复制 {:?} 失败: {}", path, e);
                                     }
-                                } else {
-                                    eprintln!("❌ 复制 {:?} 失败", path);
                                 }
-                            }
+                            } 
                         }
 
                         if has_new_files {
@@ -524,17 +527,21 @@ fn toggle_window_visibility(window: &WebviewWindow) {
     }
 }
 
-/// 递归复制文件夹
-fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+/// 递归复制文件夹，并返回复制的总字节数
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<u64> {
     fs::create_dir_all(&dst)?;
+    let mut total_size: u64 = 0;
+    
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
         if ty.is_dir() {
-            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            // 递归调用，加上子文件夹的大小
+            total_size += copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
         } else {
-            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            // fs::copy 返回的是复制的字节数 (u64)
+            total_size += fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
         }
     }
-    Ok(())
+    Ok(total_size)
 }
