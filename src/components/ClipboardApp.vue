@@ -36,7 +36,7 @@
           <button class="icon-btn" @click="openSettings">         
             <Cog6ToothIcon class="icon-settings" />
           </button>
-          <button class="icon-btn" @click="deleteAllHistory">           
+          <button class="icon-btn" @click="showDeleteAll">           
             <TrashIcon class="icon-settings" />
           </button>
         </div>
@@ -65,7 +65,8 @@
             <div class="item-info">
               <div class="item-meta">
                 <span>{{ item.item_type }}</span>
-                <span>{{ item.size }}字符</span>
+                <span v-if = "item.item_type === 'text'">{{ item.size }}字符</span>
+                <span v-else>{{ formatFileSize(item.size) }}</span>
                 <span>{{ formatTime(item.timestamp) }}</span>
               </div>
 
@@ -187,7 +188,7 @@
             <div class="folder-content">
               <FolderIcon class="icon-folder" />
               <span class="folder-name" :title="item.name">{{ item.name }}</span>
-              <span class="content-count">{{ 0 }}</span> 
+              <span class="content-count">{{ item.num_items }}</span> 
               <button 
                 class="icon-btn-small" 
                 @click.stop="noteItem(item)"
@@ -211,6 +212,17 @@
     <!-- 操作提示 -->
     <div v-if="showToast" class="toast">
       {{ toastMessage }}
+    </div>
+
+    <!-- 删除提醒模态框 -->
+    <div v-if="showDeleteModal" class="modal">
+      <div class="modal-content">
+        <h3>确定要清空所有未收藏的历史记录吗？此操作不可撤销！</h3>
+        <div class="modal-actions-center">
+          <button @click="cancelDeleteAll" class="btn btn-secondary">取消</button>
+          <button @click="deleteAllHistory" class="btn btn-least">删除</button>
+        </div>
+      </div>
     </div>
 
     <!-- 编辑模态框 -->
@@ -294,7 +306,7 @@
               <div class="folder-content-toast">
                 <div class="custom-folder-icon" :class="{ 'selected': item.isSelected }"></div>
                 <span class="folder-name" :title="item.name">{{ item.name }}</span>
-                <span class="content-count">{{ 0 }}个内容</span>                      
+                <span class="content-count">{{ item.numItems }}个内容</span>                      
               </div>
             </div>
 
@@ -354,6 +366,7 @@ const showNoteModal = ref(false)
 const showFolderModal = ref(false)
 const showFoldersModal = ref(false)
 const showOcrModal = ref(false)
+const showDeleteModal = ref(false)
 const editingText = ref('')
 const editingItem = ref(null)
 const notingText = ref('')
@@ -438,6 +451,10 @@ const handleCategoryChange = async (category) => {
     searchLoading.value = true
     await getAllHistory()
   }
+  else if (category.trim() === 'favorite'){
+    searchLoading.value = true
+    await getAllFolders()
+  }
   else if (category.trim() === 'folder') {
     await performFolder()
     return
@@ -483,8 +500,7 @@ const performFolder = async () => {
         isFavorite: true
       })    
       filteredHistory.value = JSON.parse(result)
-      console.log('收藏夹内容：',folders)
-      console.log('历史内容内容：',filteredHistory)
+      console.log('收藏夹数量:', folders.value[0].num_items)
     } catch (err) {
       console.error('默认收藏夹获取失败:', err)
     }
@@ -574,6 +590,46 @@ const executeDoubleClick = async (item) => {
     currentItem.value = item
     // 清除定时器
     clickTimeout = null;
+
+    // 选中所有已有该记录的收藏夹
+    try {
+      const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
+      const foldersJson = JSON.parse(foldersString)
+      console.log(foldersJson)
+      folders.value = folders.value.map(folder => {
+        // 检查当前文件夹是否在foldersJson中（即包含该项目）
+        const isContained = foldersJson.some(f => f.id === folder.id)
+        return {
+          ...folder,
+          isSelected: isContained
+        }
+      })
+    } catch(err) {
+      console.error('获取收藏夹失败:', err)
+    }
+}
+
+// 弹出"确认删除"提示框
+const showDeleteAll = () => {
+  showDeleteModal.value = true
+}
+
+// 删除所有历史记录
+const deleteAllHistory = async () => {
+  try {
+    await invoke('delete_unfavorited_data')
+    showMessage('已清除所有未收藏记录')
+    handleSearch(searchQuery.value)
+    handleCategoryChange(activeCategory.value)
+  } catch(err) {
+    console.error('清除历史记录失败:', err)
+  }
+  cancelDeleteAll()
+}
+
+// "确认删除"提示框消失
+const cancelDeleteAll = () => {
+  showDeleteModal.value = false
 }
 
 // 编辑项目
@@ -648,6 +704,8 @@ const copyOCR = async () => {
   if (!ocrText.value || ocrText.value.trim() === '') {
     showMessage('内容不能为空')
   } else {
+    // const string = 
+    // await invoke('insert_received_data', { filePath: item.content })
     showMessage('已复制OCR内容')
   }
   cancelOCR()
@@ -688,6 +746,27 @@ const formatTime = (timestamp) => {
   return date.toLocaleDateString()
 }
 
+// 格式化文件大小
+const formatFileSize = (bytes) => {
+  if (bytes === 0 || !bytes) return '0 B'
+  
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const base = 1024
+  
+  // 处理边界情况
+  if (bytes < base) {
+    return `${bytes} B`
+  }
+  
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(base)), units.length - 1)
+  const size = (bytes / Math.pow(base, exponent)).toFixed(1)
+  
+  // 移除 .0 后缀
+  const cleanSize = size.endsWith('.0') ? size.slice(0, -2) : size
+  
+  return `${cleanSize} ${units[exponent]}`
+}
+
 // 获取所有历史记录
 const getAllHistory = async () => {
   try {
@@ -708,7 +787,6 @@ const getAllFolders = async () => {
   try {
     const jsonString = await invoke('get_all_folders')
     folders.value = JSON.parse(jsonString)
-    console.log(folders)
 
     // 创建默认收藏夹
     if (!folders.value || folders.value.length === 0) {
@@ -1077,8 +1155,8 @@ body {
 }
 
 .icon-folder {
-  width: 4rem;
-  height: 4rem;
+  width: 2rem;
+  height: 2rem;
   position: relative; 
   color: #595959;
 }
@@ -1135,7 +1213,7 @@ body {
 .history-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   max-width: 100%;
 }
 
@@ -1284,7 +1362,7 @@ body {
 .folder-item {
   background: white;
   border: 1px solid #e1e8ed;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 2px 5px;
   transition: all 0.2s ease;
   position: relative;
@@ -1308,8 +1386,7 @@ body {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  min-height: 83px;
-  max-height: 83px;
+  height: 40px;
 }
 
 .folder-content:hover,
@@ -1418,6 +1495,12 @@ body {
   justify-content: flex-end;
 }
 
+.modal-actions-center {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
 .btn {
   padding: 10px 16px;
   border: none;
@@ -1435,6 +1518,11 @@ body {
 
 .btn-secondary {
   background: #95a5a6;
+  color: white;
+}
+
+.btn-least {
+  background: #d24d15;
   color: white;
 }
 
