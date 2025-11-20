@@ -5,6 +5,7 @@ use chrono::Utc;
 use image::ColorType;
 use std::fs;
 use std::path::PathBuf;
+use std::path::Path; 
 use std::str::FromStr; 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -296,233 +297,6 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-/// 启动后台线程以监控剪贴板
-// pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
-//     thread::spawn(move || {
-//         let mut last_text = String::new();
-//         let mut last_image_bytes: Vec<u8> = Vec::new();
-//         let mut last_file_paths: Vec<PathBuf> = Vec::new();
-
-//         let mut is_first_run = true;
-
-//         // 修正 #2: 确保这里也使用正确的 .path() 方法
-//         let app_dir = app_handle.path().app_data_dir().unwrap();
-//         let files_dir = app_dir.join("files");
-//         fs::create_dir_all(&files_dir).unwrap();
-
-//         loop {
-//             // 获取当前是否是前端复制状态
-//             let is_frontend_copy = {
-//                 let state = app_handle.state::<ClipboardSourceState>();
-//                 let mut flag = state.is_frontend_copy.lock().unwrap();
-//                 let current = *flag;
-//                 // 重置标志，以便下次检测
-//                 *flag = false;
-//                 current
-//             };
-//             // 如果是首次运行，初始化最后的内容但不保存到数据库
-//             if is_first_run {
-//                 println!("首次启动，初始化剪贴板监控...");
-                
-//                 // 初始化文本内容
-//                 if let Ok(text) = app_handle.clipboard().read_text() {
-//                     if !text.is_empty() {
-//                         last_text = text;
-//                         println!("初始化文本内容: {}", last_text);
-//                     }
-//                 }
-                
-//                 // 初始化图片内容
-//                 if let Ok(image) = app_handle.clipboard().read_image() {
-//                     let current_image_bytes = image.rgba().to_vec();
-//                     if !current_image_bytes.is_empty() {
-//                         last_image_bytes = current_image_bytes;
-//                         println!("初始化图片内容");
-//                     }
-//                 }
-                
-//                 // 初始化文件内容
-//                 if let Ok(paths) = clipboard_files::read() {
-//                     if !paths.is_empty() {
-//                         last_file_paths = paths;
-//                         println!("初始化文件内容: {:?}", last_file_paths);
-//                     }
-//                 }
-                
-//                 is_first_run = false;
-//                 thread::sleep(Duration::from_millis(1000)); // 等待一秒再开始正常监控
-//                 continue; // 跳过本次循环的其余部分
-//             }
-//             if let Ok(image) = app_handle.clipboard().read_image() {
-//                 let current_image_bytes = image.rgba().to_vec();
-//                 if !current_image_bytes.is_empty() && current_image_bytes != last_image_bytes {
-//                     println!("检测到新的图片内容");
-//                     last_image_bytes = current_image_bytes.clone();
-//                     last_text.clear();
-//                     last_file_paths.clear();
-
-//                     let image_id = Uuid::new_v4().to_string();
-//                     let dest_path = files_dir.join(format!("{}.png", image_id));
-
-//                     if image::save_buffer(
-//                         &dest_path,
-//                         &image.rgba(),
-//                         image.width(),
-//                         image.height(),
-//                         ColorType::Rgba8,
-//                     )
-//                     .is_ok()
-//                     {
-//                         let new_item = ClipboardItem {
-//                             id: image_id,
-//                             item_type: "image".to_string(),
-//                             content: dest_path.to_str().unwrap().to_string(),
-//                             size: fs::metadata(&dest_path).ok().map(|m| m.len()),
-//                             is_favorite: false,
-//                             notes: "".to_string(),
-//                             timestamp: Utc::now().timestamp_millis(),
-//                         };
-//                         if !is_frontend_copy {
-//                             // 手动复制：保存到数据库并通知前端
-//                             if let Err(e) = db::insert_received_data(new_item) {
-//                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
-//                             } else {
-//                                 // 通知前端剪贴板已更新
-//                                 if let Some(window) = app_handle.get_webview_window("main") {
-//                                     if let Err(e) = window.emit("clipboard-updated", "") {
-//                                         eprintln!("❌ 发送剪贴板更新事件失败: {:?}", e);
-//                                     } else {
-//                                         println!("✅ 已通知前端剪贴板更新");
-//                                     }
-//                                 }
-//                             }
-//                         } else {
-//                             // 前端复制：只保存到数据库，不通知前端
-//                             if let Err(e) = db::insert_received_data(new_item) {
-//                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
-//                             }
-//                         }
-//                     }
-//                 }
-//             } else if let Ok(paths) = clipboard_files::read() {
-//                 if !paths.is_empty() && paths != last_file_paths {
-//                     println!("检测到新的文件复制: {:?}", paths);
-//                     last_file_paths = paths.clone();
-//                     last_text.clear();
-//                     last_image_bytes.clear();
-                    
-//                     let mut has_new_files = false;
-
-//                     const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
-
-//                     for path in paths {
-//                         // --- 改进点: 根据文件扩展名动态判断类型 ---
-//                         let item_type = path.extension()
-//                             .and_then(|ext| ext.to_str())
-//                             .map(|ext_str| {
-//                                 if IMAGE_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
-//                                     "image".to_string()
-//                                 } else {
-//                                     "file".to_string()
-//                                 }
-//                             })
-//                             .unwrap_or_else(|| "file".to_string()); // 如果没有扩展名，则默认为 "file"
-
-
-//                         if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-//                             let timestamp = Utc::now().timestamp_millis();
-//                             let new_file_name = format!("{}-{}", timestamp, file_name);
-//                             let dest_path = files_dir.join(&new_file_name);
-
-//                             if fs::copy(&path, &dest_path).is_ok() {
-//                                 has_new_files = true;
-//                                 println!("✅ 文件 {:?} 已复制, 类型识别为: {}", file_name, item_type);
-
-//                                 let new_item = ClipboardItem {
-//                                     id: Uuid::new_v4().to_string(),
-//                                     item_type: item_type, // <--- 使用我们动态判断出的类型
-//                                     content: dest_path.to_str().unwrap().to_string(),
-//                                     size: fs::metadata(&dest_path).ok().map(|m| m.len()),
-//                                     is_favorite: false,
-//                                     notes: "".to_string(),
-//                                     timestamp: Utc::now().timestamp_millis(),
-//                                 };
-
-//                                 if !is_frontend_copy {
-//                                     // 手动复制：保存到数据库
-//                                     if let Err(e) = db::insert_received_data(new_item) {
-//                                         eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
-//                                     }
-//                                 } else {
-//                                     // 前端复制：只保存到数据库
-//                                     if let Err(e) = db::insert_received_data(new_item) {
-//                                         eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
-//                                     }
-//                                 }
-//                             } else {
-//                                 eprintln!("❌ 复制文件 {:?} 失败", path);
-//                             }
-//                         }
-//                     }
-
-//                     // 对于文件复制，在所有文件处理完成后发送一次通知
-//                     if !is_frontend_copy && has_new_files {
-//                         if let Some(window) = app_handle.get_webview_window("main") {
-//                             if let Err(e) = window.emit("clipboard-updated", "") {
-//                                 eprintln!("❌ 发送剪贴板更新事件失败: {:?}", e);
-//                             } else {
-//                                 println!("✅ 已通知前端剪贴板更新（文件）");
-//                             }
-//                         }
-//                     }
-                    
-//                 }
-//             }else if let Ok(text) = app_handle.clipboard().read_text() {
-//                 if !text.is_empty() && text != last_text {
-//                     println!("检测到新的文本内容: {}", text);
-//                     last_text = text.clone();
-//                     last_image_bytes.clear();
-//                     last_file_paths.clear();
-
-//                     let size = Some(text.chars().count() as u64);
-//                     let new_item = ClipboardItem {
-//                         id: Uuid::new_v4().to_string(),
-//                         item_type: "text".to_string(),
-//                         content: text,
-//                         size,
-//                         is_favorite: false,
-//                         notes: "".to_string(),
-//                         timestamp: Utc::now().timestamp_millis(),
-//                     };
-                    
-//                     if !is_frontend_copy {
-//                         // 手动复制：保存到数据库并通知前端
-//                         if let Err(e) = db::insert_received_data(new_item) {
-//                             eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
-//                         } else {
-//                             // 通知前端剪贴板已更新                          
-//                             if let Some(window) = app_handle.get_webview_window("main") {
-//                                 if let Err(e) = window.emit("clipboard-updated", "") {
-//                                     eprintln!("❌ 发送剪贴板更新事件失败: {:?}", e);
-//                                 } else {
-//                                     println!("✅ 已通知前端剪贴板更新");
-//                                 }
-//                             }
-//                         }
-//                     } else {
-//                         // 前端复制：只保存到数据库，不通知前端
-//                         if let Err(e) = db::insert_received_data(new_item) {
-//                             eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
-//                         }
-//                     }
-//                 }
-//             }
-
-//             thread::sleep(Duration::from_millis(100));
-//         }
-//     });
-// }
-
 
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
@@ -633,40 +407,56 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         let mut has_new_files = false;
                         const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
-                        for path in paths {
-                             let item_type = path.extension()
-                                .and_then(|ext| ext.to_str())
-                                .map(|ext_str| {
-                                    if IMAGE_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
-                                        "image".to_string()
-                                    } else {
-                                        "file".to_string()
-                                    }
-                                })
-                                .unwrap_or_else(|| "file".to_string());
+                          for path in paths {
+                            // 1. 判断类型：如果是目录则为 "folder"，否则按扩展名判断
+                            let item_type = if path.is_dir() {
+                                "folder".to_string()
+                            } else {
+                                path.extension()
+                                    .and_then(|ext| ext.to_str())
+                                    .map(|ext_str| {
+                                        if IMAGE_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                                            "image".to_string()
+                                        } else {
+                                            "file".to_string()
+                                        }
+                                    })
+                                    .unwrap_or_else(|| "file".to_string())
+                            };
 
-                            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                             if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                                 let timestamp = Utc::now().timestamp_millis();
                                 let new_file_name = format!("{}-{}", timestamp, file_name);
                                 let dest_path = files_dir.join(&new_file_name);
 
-                                // 执行文件拷贝
-                                if fs::copy(&path, &dest_path).is_ok() {
+                                // 2. 根据是文件夹还是文件执行不同的复制操作
+                                let copy_result = if path.is_dir() {
+                                    copy_dir_all(&path, &dest_path).map(|_| 0u64) // 文件夹复制成功返回 0 (或者你可以计算文件夹大小)
+                                } else {
+                                    fs::copy(&path, &dest_path)
+                                };
+
+                                if copy_result.is_ok() {
                                     has_new_files = true;
+                                    
+                                    // 计算大小 (如果是文件夹，这里简单获取元数据大小，不做递归计算以避免卡顿)
+                                    let size = fs::metadata(&dest_path).ok().map(|m| m.len());
+
                                     let new_item = ClipboardItem {
                                         id: Uuid::new_v4().to_string(),
-                                        item_type: item_type,
-                                        content: dest_path.to_str().unwrap().to_string(),
-                                        size: fs::metadata(&dest_path).ok().map(|m| m.len()),
+                                        item_type: item_type, // "folder", "file", 或 "image"
+                                        content: dest_path.to_str().unwrap().to_string(), // 存储本地文件夹路径
+                                        size: size,
                                         is_favorite: false,
                                         notes: "".to_string(),
                                         timestamp: Utc::now().timestamp_millis(),
                                     };
 
-            
                                     if let Err(e) = db::insert_received_db_data(new_item) {
-                                        eprintln!("❌ 保存文件数据到数据库失败: {:?}", e);
+                                        eprintln!("❌ 保存数据到数据库失败: {:?}", e);
                                     }
+                                } else {
+                                    eprintln!("❌ 复制 {:?} 失败", path);
                                 }
                             }
                         }
@@ -732,4 +522,19 @@ fn toggle_window_visibility(window: &WebviewWindow) {
             }
         }
     }
+}
+
+/// 递归复制文件夹
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }

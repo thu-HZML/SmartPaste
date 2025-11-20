@@ -267,23 +267,30 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     );
 
     if let Ok((item_type, content)) = query_result {
-        // 检查类型，如果是图片或文件，则删除物理文件
-        if item_type == "image" || item_type == "file" {
-            let file_path = Path::new(&content);
-            
-            // 检查文件是否存在，存在则删除
-            if file_path.exists() {
-                if let Err(e) = fs::remove_file(file_path) {
-                    // 注意：这里只打印错误，不要返回 Err。
-                    // 因为即使文件删除失败（比如文件被占用或已丢失），
-                    // 我们仍然希望从数据库中把这条“坏记录”删掉，否则用户界面上永远删不掉它。
-                    eprintln!("⚠️ 删除本地文件失败 (ID: {}): {:?} - {}", id, file_path, e);
+        let path = Path::new(&content);
+
+        // 检查路径是否存在
+        if path.exists() {
+            // ✅ 情况 A: 如果是文件夹类型 (或者物理路径确实是个文件夹)
+            if item_type == "folder" || path.is_dir() {
+                // 使用 remove_dir_all 递归删除文件夹及其内容
+                if let Err(e) = fs::remove_dir_all(path) {
+                    eprintln!("⚠️ 删除本地文件夹失败 (ID: {}): {:?} - {}", id, path, e);
                 } else {
-                    println!("🗑️ 已删除关联的本地文件: {:?}", file_path);
+                    println!("🗑️ 已删除关联的本地文件夹: {:?}", path);
                 }
-            } else {
-                println!("ℹ️ 本地文件不存在，跳过文件删除: {:?}", file_path);
+            } 
+            // ✅ 情况 B: 如果是图片或普通文件
+            else if item_type == "image" || item_type == "file" || path.is_file() {
+                // 使用 remove_file 删除单个文件
+                if let Err(e) = fs::remove_file(path) {
+                    eprintln!("⚠️ 删除本地文件失败 (ID: {}): {:?} - {}", id, path, e);
+                } else {
+                    println!("🗑️ 已删除关联的本地文件: {:?}", path);
+                }
             }
+        } else {
+            println!("ℹ️ 本地路径不存在，跳过物理删除: {:?}", path);
         }
     }
 
