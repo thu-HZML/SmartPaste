@@ -76,13 +76,12 @@ pub fn init_db(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
+/// 将接收到的数据插入数据库。
 /// Param:
 /// data: ClipboardItem - 要插入的数据项
 /// Returns:
 /// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
-#[tauri::command]
-pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
+pub fn insert_received_db_data(data: ClipboardItem) -> Result<String, String> {
     // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
     // 更稳妥的做法是在运行时从 `tauri::api::path::app_dir` 或 `app.path_resolver()` 获取应用本地数据目录。
     let db_path = get_db_path();
@@ -106,6 +105,17 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     crate::clipboard::set_last_inserted(data.clone());
 
     clipboard_item_to_json(data)
+}
+
+/// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
+/// Param:
+/// data: String - 包含要插入数据的 JSON 字符串
+/// Returns:
+/// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
+#[tauri::command]
+pub fn insert_received_data(data: String) -> Result<String, String> {
+    let clipboard_item: ClipboardItem = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    insert_received_db_data(clipboard_item)
 }
 
 /// 获取上一条数据。作为 Tauri command 暴露给前端调用。
