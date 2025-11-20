@@ -336,6 +336,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -355,6 +356,7 @@ import {
 } from '@heroicons/vue/24/solid'
 
 const router = useRouter()
+const currentWindow = getCurrentWindow();
 
 // 响应式数据
 const searchQuery = ref('')
@@ -975,8 +977,16 @@ onMounted(async () => {
 
   // OCR配置
   await invoke('configure_ocr', {})
-
+  
+  // 开启后端监听
   await setupClipboardRelay()
+
+  // 初始化窗口大小
+  try {
+    await currentWindow.setSize(new LogicalSize(400, 600));
+  } catch (error) {
+    console.error('设置窗口大小失败:', error)
+  }
 })
 </script>
 

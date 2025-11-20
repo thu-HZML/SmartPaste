@@ -772,6 +772,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { 
   Cog6ToothIcon,
   TvIcon,
@@ -784,6 +785,7 @@ import {
  } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
+const currentWindow = getCurrentWindow();
 
 // 响应式数据
 const activeNav = ref('general')
@@ -958,6 +960,13 @@ onMounted(async () => {
   }
   await checkAutostartStatus()
   await loadCurrentShortcuts()
+
+  // 初始化窗口大小
+  try {
+    await currentWindow.setSize(new LogicalSize(800, 580));
+  } catch (error) {
+    console.error('设置窗口大小失败:', error)
+  }
 })
 
 // 通用设置相关函数
