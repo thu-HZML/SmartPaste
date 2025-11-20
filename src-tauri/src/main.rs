@@ -351,7 +351,7 @@ fn main() {
                     if custom_path.exists() && custom_path.is_dir() {
                         drop(cfg); // 释放读锁
                         config::set_storage_path(custom_path.to_string_lossy().to_string());
-                        db_path = custom_path;
+                        db_path = custom_path.join("smartpaste.db"); 
                     } else {
                         eprintln!(
                             "⚠️ 配置的存储路径无效，使用默认路径: {}",
