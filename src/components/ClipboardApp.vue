@@ -738,7 +738,12 @@ const getAllFolders = async () => {
 // 从路径中提取文件名
 const getFileName = (path) => {
   if (!path) return '未知文件'
-  return path.split(/[\\/]/).pop() || '未知文件'
+
+  // 提取文件名
+  const fileName = path.split(/[\\/]/).pop() || '未知文件'
+  
+  // 使用正则表达式移除时间戳前缀（数字+连字符）
+  return fileName.replace(/^\d+-/, '') || '未知文件'
 }
 
 // 图片加载错误处理
@@ -1219,14 +1224,19 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
+  width: 100%;
+  max-height: 150px;
+  overflow: hidden;
 }
 
 .preview-image {
   max-width: 100%;
-  max-height: 100%;
+  max-height: 65px;
+  width: auto;
+  height: auto;
   border-radius: 4px;
-  object-fit: contain;
+  object-fit: contain; /* 保持比例，完整显示图片 */
 }
 
 .image-filename {
