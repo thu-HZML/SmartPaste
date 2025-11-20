@@ -237,6 +237,81 @@ fn get_current_shortcut(state: tauri::State<AppShortcutState>) -> String {
 fn get_current_shortcut2(state: tauri::State<AppShortcutState2>) -> String {
     state.current_shortcut.lock().unwrap().clone()
 }
+/// 获取文件的系统图标（Base64 格式，不包含文件夹）
+#[tauri::command]
+async fn get_file_icon(path: String) -> Result<String, String> {
+    let p = Path::new(&path);
+
+    // 1. 检查路径是否存在
+    if !p.exists() {
+        return Err(format!("路径不存在: {}", path));
+    }
+
+    // 2. 排除文件夹 (根据你的要求)
+    if p.is_dir() {
+        return Err("不支持获取文件夹图标".to_string());
+    }
+
+    // 3. 仅在 Windows 下执行提取逻辑
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        #[cfg(target_os = "windows")]
+        use std::os::windows::process::CommandExt;
+
+        // PowerShell 脚本：
+        // 1. 加载 System.Drawing
+        // 2. 使用 ExtractAssociatedIcon 提取图标
+        // 3. 转换为 Bitmap -> 内存流 -> PNG 格式 -> Base64 字符串
+        let ps_script = format!(
+            r#"
+            Add-Type -AssemblyName System.Drawing
+            $path = '{}'
+            try {{
+                $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
+                if ($icon -ne $null) {{
+                    $ms = New-Object System.IO.MemoryStream
+                    $icon.ToBitmap().Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+                    $base64 = [Convert]::ToBase64String($ms.ToArray())
+                    Write-Output $base64
+                    $ms.Dispose()
+                    $icon.Dispose()
+                }}
+            }} catch {{
+                Write-Error $_
+            }}
+            "#,
+            path.replace("'", "''") // 转义单引号
+        );
+
+        // const CREATE_NO_WINDOW: u32 = 0x08000000; // 如果你想完全隐藏控制台窗口
+        let output = Command::new("powershell")
+            .args(&["-NoProfile", "-Command", &ps_script])
+            // .creation_flags(CREATE_NO_WINDOW) // 可选：防止闪烁，但在 Tauri 2.0 插件中通常不需要
+            .output()
+            .map_err(|e| format!("执行 PowerShell 失败: {}", e))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("提取图标失败: {}", err));
+        }
+
+        let base64_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        
+        if base64_str.is_empty() {
+            return Err("提取的图标数据为空".to_string());
+        }
+
+        // 返回前端可直接用于 <img src="..."> 的格式
+        Ok(format!("data:image/png;base64,{}", base64_str))
+    }
+
+    // 4. macOS/Linux 的占位符（如果后续需要支持，需使用其他方法）
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("当前系统暂不支持图标提取".to_string())
+    }
+}
 fn main() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::Builder::new().build())
@@ -267,6 +342,7 @@ fn main() {
             get_current_shortcut2,
             set_autostart,
             is_autostart_enabled,
+            get_file_icon, 
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
