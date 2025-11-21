@@ -108,6 +108,25 @@ pub fn insert_received_db_data(data: ClipboardItem) -> Result<String, String> {
     clipboard_item_to_json(data)
 }
 
+/// 将接收到的文本数据插入数据库。作为 Tauri command 暴露给前端调用。
+/// Param:
+/// text: &str - 要插入的文本数据
+/// Returns:
+/// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
+#[tauri::command]
+pub fn insert_received_text_data(text: &str) -> Result<String, String> {
+    let clipboard_item = ClipboardItem {
+        id: Uuid::new_v4().to_string(),
+        item_type: "text".to_string(),
+        content: text.to_string(),
+        size: Some(text.len() as u64),
+        is_favorite: false,
+        notes: "".to_string(),
+        timestamp: chrono::Utc::now().timestamp_millis(),
+    };
+    insert_received_db_data(clipboard_item)
+}
+
 /// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
 /// Param:
 /// data: String - 包含要插入数据的 JSON 字符串

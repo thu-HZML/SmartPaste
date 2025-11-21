@@ -345,6 +345,7 @@ fn main() {
             set_autostart,
             is_autostart_enabled,
             get_file_icon,
+            db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
