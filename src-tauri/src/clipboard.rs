@@ -33,14 +33,14 @@ pub struct FolderItem {
     pub num_items: u32,
 }
 
-/// 将 FolderItem 转换为 JSON 字符串。
-/// # Param
-/// item: FolderItem - 要转换的收藏夹项
-/// # Returns
-/// String - 转换后的 JSON 字符串
-pub fn folder_item_to_json(item: FolderItem) -> Result<String, String> {
-    serde_json::to_string(&item).map_err(|e| e.to_string())
-}
+// 将 FolderItem 转换为 JSON 字符串。
+// # Param
+// item: FolderItem - 要转换的收藏夹项
+// # Returns
+// String - 转换后的 JSON 字符串
+// pub fn folder_item_to_json(item: FolderItem) -> Result<String, String> {
+//     serde_json::to_string(&item).map_err(|e| e.to_string())
+// }
 
 /// 将 FolderItem 列表转换为 JSON 字符串。
 /// # Param

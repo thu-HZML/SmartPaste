@@ -5,7 +5,7 @@ use uuid::Uuid;
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
-use crate::clipboard::folder_item_to_json;
+// use crate::clipboard::folder_item_to_json;
 use crate::clipboard::folder_items_to_json;
 use crate::clipboard::clipboard_item_to_json;
 use crate::clipboard::clipboard_items_to_json;
@@ -589,6 +589,8 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
     clipboard_items_to_json(results)
 }
 
+// ----------------------- 收藏夹相关操作 ------------------------
+
 /// 新建收藏夹。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// name: &str - 收藏夹名称
@@ -819,6 +821,72 @@ pub fn get_folders_by_item_id(item_id: &str) -> Result<String, String> {
     }
 
     folder_items_to_json(results)
+}
+
+// ----------------------- 扩展数据相关操作 ------------------------
+
+/// 插入 OCR 文本数据。
+/// # Param
+/// item_id: &str - 数据项 ID
+/// ocr_text: &str - OCR 识别的文本内容
+/// # Returns
+/// String - 信息。若插入成功返回 "ocr inserted"，否则返回错误信息
+pub fn insert_ocr_text(item_id: &str, ocr_text: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO extended_data (item_id, ocr_text) VALUES (?1, ?2)",
+        params![item_id, ocr_text],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("ocr inserted".to_string())
+}
+
+/// 按 OCR 文本搜索数据项。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// query: &str - 搜索关键词
+/// # Returns
+/// String - 包含匹配数据记录的 JSON 字符串
+#[tauri::command]
+pub fn search_data_by_ocr_text(query: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let like_pattern = format!("%{}%", query);
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT d.id, d.item_type, d.content, d.size, d.is_favorite, d.notes, d.timestamp
+             FROM data d
+             JOIN extended_data ed ON d.id = ed.item_id
+             WHERE ed.ocr_text LIKE ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map(params![like_pattern], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    clipboard_items_to_json(results)
 }
 
 /// # 单元测试
