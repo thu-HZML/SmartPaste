@@ -49,7 +49,7 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleMinimizeToTray">
+                <input type="checkbox" v-model="settings.showMinimizeTrayIcon" @change="toggleMinimizeToTray">
                 <span class="slider"></span>
               </label>
             </div>
@@ -823,6 +823,7 @@ const navItems = ref([
 const settings = reactive({
   autoStart: true,
   showTrayIcon: true,
+  showMinimizeTrayIcon:true,
   autoSave: true,
   retentionDays: '30',
   maxHistoryItems: 100,

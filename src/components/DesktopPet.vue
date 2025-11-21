@@ -1,10 +1,11 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
-import { toggleClipboardWindow, updateMainWindowPosition } from '../utils/actions.js'
+import { toggleClipboardWindow, updateMainWindowPosition, toggleMenuWindow, initWindowEvents } from '../utils/actions.js'
 
 const isHovering = ref(false)
 const hasClipboardWindow = ref(false)
+const hasMenuWindow = ref(false) // 新增：菜单窗口状态
 const isDragging = ref(false)
 const dragStartPos = ref({ x: 0, y: 0 })
 const windowStartPos = ref({ x: 0, y: 0 })
@@ -19,7 +20,7 @@ let clickPetTimeout = null
 
 onMounted(async () => {
   console.log('[DesktopPet] mounted')
-
+  initWindowEvents()
   try {
     await currentWindow.setSize(new LogicalSize(120, 120));
     await currentWindow.setPosition(new LogicalPosition(1600, 800))
@@ -65,7 +66,6 @@ const handlePointerMove = async (event) => {
   const deltaX = event.screenX - dragStartPos.value.x
   const deltaY = event.screenY - dragStartPos.value.y
   
-  
   // 更新窗口位置
   const newX = windowStartPos.value.x + deltaX
   const newY = windowStartPos.value.y + deltaY
@@ -103,34 +103,34 @@ const handlePointerLeave = (event) => {
   console.log('鼠标离开，isHovering:', isHovering.value)
 }
 
-// 左键切换剪贴板窗口
+// 左键切换菜单窗口（修改这里）
 const handleLeftClick = async (event) => {
   if (!allowClickPet.value) {
     console.log('点击被禁止')
     return
   }
 
-  console.log('🖱️ 桌宠被点击，切换剪贴板窗口')
+  console.log('🖱️ 桌宠被点击，切换菜单窗口')
 
   setTimeout(() => {
     handlePointerUp()
   }, 10)
 
   try {
-    const result = await toggleClipboardWindow()
-    hasClipboardWindow.value = !hasClipboardWindow.value
+    const result = await toggleMenuWindow()
+    hasMenuWindow.value = !hasMenuWindow.value
     
-    if (hasClipboardWindow.value) {
-      console.log('📋 剪贴板窗口已打开')
+    if (hasMenuWindow.value) {
+      console.log('📋 菜单窗口已打开')
     } else {
-      console.log('📋 剪贴板窗口已关闭')
+      console.log('📋 菜单窗口已关闭')
     }
   } catch (error) {
-    console.error('切换剪贴板窗口失败:', error)
+    console.error('切换菜单窗口失败:', error)
   }
 }
 
-// 右键显示菜单
+// 右键显示菜单（可选：可以改为其他功能，或者保留）
 const handleContextMenu = (event) => {
   event.preventDefault()
   event.stopPropagation()
@@ -169,7 +169,7 @@ const cleanupEventListeners = () => {
         src="/pet.png"
         alt="Desktop Pet"
         draggable="false"
-        :class="['pet-image', { 'hover': isHovering, 'has-window': hasClipboardWindow }]"
+        :class="['pet-image', { 'hover': isHovering, 'has-window': hasMenuWindow }]"
       />
     </div>
   </div>

@@ -1,11 +1,27 @@
 // src/utils/actions.js
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { emit, listen } from '@tauri-apps/api/event'
 
 // 存储所有窗口实例
 const windowInstances = new Map()
 
 // 全局状态存储主窗口位置
 let mainWindowPosition = { x: 100, y: 100, width: 200, height: 200 }
+
+// 初始化事件监听
+export function initWindowEvents() {
+  // 监听创建剪贴板窗口的请求
+  listen('create-clipboard-window', (event) => {
+    console.log('收到创建剪贴板窗口请求')
+    createClipboardWindow()
+  })
+
+  // 监听创建菜单窗口的请求
+  listen('create-menu-window', (event) => {
+    console.log('收到创建菜单窗口请求')
+    createMenuWindow()
+  })
+}
 
 /**
  * 更新主窗口位置（在主窗口组件中调用）
@@ -21,6 +37,98 @@ export function updateMainWindowPosition(position, size) {
 }
 
 /**
+ * 创建菜单窗口
+ * @param {Object} options 窗口配置
+ */
+export async function createMenuWindow(options = {}) {
+  const windowId = `menu_${Date.now()}`
+  
+  try {
+    const { x = 100, y = 100, width = 400, height = 600 } = options
+    
+    const webview = new WebviewWindow(windowId, {
+      url: '/menu', // 使用你的菜单路由
+      title: '主菜单',
+      width,
+      height,
+      x,
+      y,
+      resizable: false, // 菜单通常不需要调整大小
+      minimizable: true,
+      maximizable: false,
+      decorations: false, // 无边框
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hiddenTitle: true,
+      focus: true // 获取焦点
+    })
+    
+    webview.once('tauri://created', () => {
+      console.log('菜单窗口创建成功:', windowId)
+      windowInstances.set(windowId, webview)
+    })
+    
+    webview.once('tauri://error', (e) => {
+      console.error('菜单窗口创建失败:', e)
+    })
+    
+    // 监听窗口关闭
+    webview.listen('tauri://destroyed', () => {
+      console.log('菜单窗口已关闭:', windowId)
+      windowInstances.delete(windowId)
+    })
+    
+    return webview
+  } catch (error) {
+    console.error('创建菜单窗口错误:', error)
+  }
+}
+
+/**
+ * 获取或切换菜单窗口
+ */
+export async function toggleMenuWindow() {
+  // 查找已存在的菜单窗口
+  const menuWindows = Array.from(windowInstances.entries())
+    .filter(([key]) => key.startsWith('menu_'))
+  
+  if (menuWindows.length > 0) {
+    // 如果存在菜单窗口，关闭它们
+    for (const [windowId, window] of menuWindows) {
+      try {
+        await window.close()
+        windowInstances.delete(windowId)
+      } catch (error) {
+        console.error('关闭菜单窗口失败:', error)
+      }
+    }
+    return null
+  } else {
+    // 如果不存在，创建新窗口
+    try {
+      // 使用全局存储的主窗口位置
+      const { x, y, width, height } = mainWindowPosition
+      
+      // 计算新窗口位置（在桌宠右侧）
+      const newX = x + width + 10
+      const newY = y
+      
+      console.log('使用主窗口位置创建菜单窗口:', { newX, newY })
+      
+      return await createMenuWindow({
+        x: newX,
+        y: newY,
+        width: 400, // 菜单窗口宽度
+        height: 600 // 菜单窗口高度
+      })
+    } catch (error) {
+      console.error('使用主窗口位置创建菜单窗口错误:', error)
+      return await createMenuWindow() // 创建默认位置的窗口
+    }
+  }
+}
+
+/**
  * 创建剪贴板窗口
  * @param {Object} options 窗口配置
  */
@@ -31,7 +139,7 @@ export async function createClipboardWindow(options = {}) {
     const { x = 100, y = 100, width = 400, height = 600 } = options
     
     const webview = new WebviewWindow(windowId, {
-      url: '/menu',
+      url: '/clipboardapp',
       title: '剪贴板',
       width,
       height,
@@ -112,6 +220,18 @@ export async function toggleClipboardWindow() {
 }
 
 /**
+ * 通过事件请求创建剪贴板窗口（用于非主窗口）
+ */
+export async function requestCreateClipboardWindow() {
+  try {
+    await emit('create-clipboard-window')
+    console.log('已发送创建剪贴板窗口请求')
+  } catch (error) {
+    console.error('发送创建剪贴板窗口请求失败:', error)
+  }
+}
+
+/**
  * 获取所有窗口信息
  */
 export function getAllWindows() {
@@ -153,7 +273,29 @@ export async function closeAllClipboardWindows() {
   }
 }
 
+/**
+ * 关闭所有菜单窗口
+ */
+export async function closeAllMenuWindows() {
+  const menuWindows = Array.from(windowInstances.entries())
+    .filter(([key]) => key.startsWith('menu_'))
+  
+  for (const [windowId, window] of menuWindows) {
+    try {
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭菜单窗口失败:', error)
+    }
+  }
+}
+
+// 初始化事件系统
+initWindowEvents()
+
 // 将函数暴露给全局，方便 Tauri 调用
 if (typeof window !== 'undefined') {
   window.toggleClipboardWindow = toggleClipboardWindow;
+  window.toggleMenuWindow = toggleMenuWindow;
+  window.requestCreateClipboardWindow = requestCreateClipboardWindow;
 }
