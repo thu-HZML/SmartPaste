@@ -1,6 +1,5 @@
 // src/utils/actions.js
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { emit, listen } from '@tauri-apps/api/event'
 
 // 存储所有窗口实例
 const windowInstances = new Map()
@@ -8,23 +7,8 @@ const windowInstances = new Map()
 // 全局状态存储主窗口位置
 let mainWindowPosition = { x: 100, y: 100, width: 200, height: 200 }
 
-// 初始化事件监听
-export function initWindowEvents() {
-  // 监听创建剪贴板窗口的请求
-  listen('create-clipboard-window', (event) => {
-    console.log('收到创建剪贴板窗口请求')
-    createClipboardWindow()
-  })
-
-  // 监听创建菜单窗口的请求
-  listen('create-menu-window', (event) => {
-    console.log('收到创建菜单窗口请求')
-    createMenuWindow()
-  })
-}
-
 /**
- * 更新主窗口位置（在主窗口组件中调用）
+ * 更新主窗口位置
  */
 export function updateMainWindowPosition(position, size) {
   mainWindowPosition = {
@@ -180,8 +164,10 @@ export async function createClipboardWindow(options = {}) {
  */
 export async function toggleClipboardWindow() {
   // 查找已存在的剪贴板窗口
+  console.log('🔍 查找已存在的剪贴板窗口...')
   const clipboardWindows = Array.from(windowInstances.entries())
     .filter(([key]) => key.startsWith('clipboard_'))
+  console.log(`📊 找到 ${clipboardWindows.length} 个剪贴板窗口`)
   
   if (clipboardWindows.length > 0) {
     // 如果存在剪贴板窗口，关闭它们
@@ -216,18 +202,6 @@ export async function toggleClipboardWindow() {
       console.error('创建剪贴板窗口错误:', error)
       return await createClipboardWindow() // 创建默认位置的窗口
     }
-  }
-}
-
-/**
- * 通过事件请求创建剪贴板窗口（用于非主窗口）
- */
-export async function requestCreateClipboardWindow() {
-  try {
-    await emit('create-clipboard-window')
-    console.log('已发送创建剪贴板窗口请求')
-  } catch (error) {
-    console.error('发送创建剪贴板窗口请求失败:', error)
   }
 }
 
@@ -290,12 +264,9 @@ export async function closeAllMenuWindows() {
   }
 }
 
-// 初始化事件系统
-initWindowEvents()
 
 // 将函数暴露给全局，方便 Tauri 调用
 if (typeof window !== 'undefined') {
   window.toggleClipboardWindow = toggleClipboardWindow;
   window.toggleMenuWindow = toggleMenuWindow;
-  window.requestCreateClipboardWindow = requestCreateClipboardWindow;
 }

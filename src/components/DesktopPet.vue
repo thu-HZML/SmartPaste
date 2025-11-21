@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
-import { toggleClipboardWindow, updateMainWindowPosition, toggleMenuWindow, initWindowEvents } from '../utils/actions.js'
+import { toggleClipboardWindow, updateMainWindowPosition, toggleMenuWindow} from '../utils/actions.js'
 
 const isHovering = ref(false)
 const hasClipboardWindow = ref(false)
@@ -20,7 +20,6 @@ let clickPetTimeout = null
 
 onMounted(async () => {
   console.log('[DesktopPet] mounted')
-  initWindowEvents()
   try {
     await currentWindow.setSize(new LogicalSize(120, 120));
     await currentWindow.setPosition(new LogicalPosition(1600, 800))

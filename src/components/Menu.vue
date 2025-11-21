@@ -70,7 +70,7 @@
 
 <script setup>
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { closeAllMenuWindows, requestCreateClipboardWindow } from '../utils/actions.js'
+import { toggleClipboardWindow } from '../utils/actions.js'
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -86,19 +86,14 @@ import {
 const currentWindow = getCurrentWindow()
 
 const openHistory = async () => {
-  console.log('打开历史记录 - 跳转到剪贴板页面')
+  console.log('打开历史记录 - 调用 toggleClipboardWindow')
   try {
-    // 关闭所有菜单窗口
-    await closeAllMenuWindows()
-    
-    // 通过事件请求主窗口创建剪贴板窗口
-    await requestCreateClipboardWindow()
-    
+    await toggleClipboardWindow()
+    console.log('📋 剪贴板窗口已切换')
   } catch (error) {
-    console.error('打开剪贴板窗口失败:', error)
+    console.error('切换剪贴板窗口失败:', error)
   }
 }
-
 
 const openFavorites = () => {
   console.log('打开收藏夹')
