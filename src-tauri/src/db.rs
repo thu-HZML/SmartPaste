@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result, Result as SqlResult};
+use rusqlite::{params, Connection, Result, Result as SqlResult, OptionalExtension};
 use std::fs;
 use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
@@ -845,6 +845,30 @@ pub fn insert_ocr_text(item_id: &str, ocr_text: &str) -> Result<String, String> 
     Ok("ocr inserted".to_string())
 }
 
+/// 返回对应数据项的 OCR 文本。
+/// # Param
+/// item_id: &str - 数据项 ID
+/// # Returns
+/// String - 包含 OCR 文本的字符串，若无则返回空字符串
+pub fn get_ocr_text_by_item_id(item_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT ocr_text FROM extended_data WHERE item_id = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let ocr_text: Option<String> = stmt
+        .query_row(params![item_id], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    Ok(ocr_text.unwrap_or_default())
+}
+
 /// 按 OCR 文本搜索数据项。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// query: &str - 搜索关键词
@@ -887,6 +911,52 @@ pub fn search_data_by_ocr_text(query: &str) -> Result<String, String> {
     }
 
     clipboard_items_to_json(results)
+}
+
+/// 插入 icon_data 数据。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// item_id: &str - 数据项 ID
+/// icon_data: &str - 图标数据（Base64 编码字符串）
+/// # Returns
+/// String - 信息。若插入成功返回 "icon_data inserted"，否则返回错误信息
+#[tauri::command]
+pub fn insert_icon_data(item_id: &str, icon_data: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO extended_data (item_id, icon_data) VALUES (?1, ?2)",
+        params![item_id, icon_data],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok("icon_data inserted".to_string())
+}
+
+/// 根据 item ID 获取 icon_data 数据。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// item_id: &str - 数据项 ID
+/// # Returns
+/// String - 包含 icon_data 的字符串，若无则返回空字符串
+#[tauri::command]
+pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT icon_data FROM extended_data WHERE item_id = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let icon_data: Option<String> = stmt
+        .query_row(params![item_id], |row| row.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    Ok(icon_data.unwrap_or_default())
 }
 
 /// # 单元测试

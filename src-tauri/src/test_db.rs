@@ -537,9 +537,21 @@ fn test_search_data_by_ocr_text() {
     insert_received_db_data(b.clone()).expect("insert b");
     insert_received_db_data(c.clone()).expect("insert c");
 
-    // 插入 OCR 文本：a 包含 "今天 你 好"，b 包含 "今天天气很好"
+    // 插入 OCR 文本：a 包含 "． 今天 你 好"，b 包含 "今天天气很好"
     insert_ocr_text(&a.id, "． 今天 你 好").expect("insert ocr for a");
     insert_ocr_text(&b.id, "今天天气很好").expect("insert ocr for b");
+
+    // 额外校验：直接通过 get_ocr_text_by_item_id 读取并比对
+    let got_a = get_ocr_text_by_item_id(&a.id).expect("get ocr for a failed");
+    assert_eq!(got_a, "． 今天 你 好");
+    let got_b = get_ocr_text_by_item_id(&b.id).expect("get ocr for b failed");
+    assert_eq!(got_b, "今天天气很好");
+    // c 应该无 OCR 文本
+    let got_c = get_ocr_text_by_item_id(&c.id).expect("get ocr for c failed");
+    assert_eq!(
+        got_c, "",
+        "text item without OCR should return empty string"
+    );
 
     // 搜索只匹配 "天气" -> 仅应返回 b
     let res_json = search_data_by_ocr_text("天气").expect("search ocr failed");
@@ -564,4 +576,26 @@ fn test_search_data_by_ocr_text() {
     let res_json3 = search_data_by_ocr_text("不存在的关键词").expect("search unknown failed");
     let vec3: Vec<ClipboardItem> = serde_json::from_str(&res_json3).expect("parse results 3");
     assert!(vec3.is_empty(), "expected no results for unknown keyword");
+}
+
+#[test]
+fn test_insert_get_icon_data() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    let item = make_item("icon-1", "file", "/tmp/somefile.bin");
+    insert_received_db_data(item.clone()).expect("insert item for icon");
+
+    // 插入 icon_data（这里用简单 base64 字符串作为示例）
+    let sample_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAUA";
+    insert_icon_data(&item.id, sample_b64).expect("insert_icon_data failed");
+
+    // 通过 get_icon_data_by_item_id 读取并断言一致
+    let got_icon = get_icon_data_by_item_id(&item.id).expect("get_icon_data_by_item_id failed");
+    assert_eq!(got_icon, sample_b64);
+
+    // 对不存在的 id 应返回空字符串
+    let got_none = get_icon_data_by_item_id("non-existent-id").expect("get icon none failed");
+    assert_eq!(got_none, "");
 }
