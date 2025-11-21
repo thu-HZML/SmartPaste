@@ -369,11 +369,12 @@ pub fn set_favorite_status_by_id(id: &str) -> Result<String, String> {
     }
 }
 
-/// 根据 ID 收藏数据。
+/// 根据 ID 收藏数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// id: &str - 要收藏数据的 ID
 /// # Returns
 /// usize - 受影响的行数
+#[tauri::command]
 pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -386,11 +387,12 @@ pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
     Ok(rows_affected)
 }
 
-/// 根据 ID 取消收藏数据。
+/// 根据 ID 取消收藏数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// id: &str - 要取消收藏数据的 ID
 /// # Returns
 /// usize - 受影响的行数
+#[tauri::command]
 pub fn unfavorite_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;

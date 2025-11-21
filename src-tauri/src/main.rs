@@ -107,7 +107,7 @@ async fn write_file_to_clipboard(
     // 获取文件的绝对路径
     let absolute_path =
         fs::canonicalize(path).map_err(|e| format!("无法获取文件绝对路径: {}", e))?;
-    
+
     let mut final_path_str = absolute_path.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]
@@ -160,9 +160,11 @@ fn copy_file_to_clipboard_windows(file_path: &str) -> Result<(), String> {
     // 使用 -NoProfile 加快启动速度，-WindowStyle Hidden 隐藏窗口闪烁
     let output = Command::new("powershell")
         .args(&[
-            "-NoProfile", 
-            "-WindowStyle", "Hidden", 
-            "-Command", &ps_script
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &ps_script,
         ])
         .output()
         .map_err(|e| e.to_string())?;
@@ -255,9 +257,9 @@ async fn get_file_icon(path: String) -> Result<String, String> {
     // 3. 仅在 Windows 下执行提取逻辑
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
         #[cfg(target_os = "windows")]
         use std::os::windows::process::CommandExt;
+        use std::process::Command;
 
         // PowerShell 脚本：
         // 1. 加载 System.Drawing
@@ -297,7 +299,7 @@ async fn get_file_icon(path: String) -> Result<String, String> {
         }
 
         let base64_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        
+
         if base64_str.is_empty() {
             return Err("提取的图标数据为空".to_string());
         }
@@ -342,7 +344,7 @@ fn main() {
             get_current_shortcut2,
             set_autostart,
             is_autostart_enabled,
-            get_file_icon, 
+            get_file_icon,
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
@@ -353,6 +355,8 @@ fn main() {
             db::delete_data_by_id,
             db::update_data_content_by_id,
             db::set_favorite_status_by_id,
+            db::favorite_data_by_id,
+            db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
             db::search_text_content,
             db::add_notes_by_id,
@@ -444,7 +448,7 @@ fn main() {
                     if custom_path.exists() && custom_path.is_dir() {
                         drop(cfg); // 释放读锁
                         config::set_storage_path(custom_path.to_string_lossy().to_string());
-                        db_path = custom_path.join("smartpaste.db"); 
+                        db_path = custom_path.join("smartpaste.db");
                     } else {
                         eprintln!(
                             "⚠️ 配置的存储路径无效，使用默认路径: {}",
