@@ -489,8 +489,43 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                             timestamp: Utc::now().timestamp_millis(),
                                         };
 
+                                        // 先保存 id 与路径副本，new_item 会被 move 到 insert_received_db_data
+                                        let item_id_for_icon = new_item.id.clone();
+                                        let dest_path_for_icon = new_item.content.clone();
+
                                         if let Err(e) = db::insert_received_db_data(new_item) {
                                             eprintln!("❌ 保存数据到数据库失败: {:?}", e);
+                                        } else {
+                                            // 异步提取系统图标并存入 extended_data.icon_data（仅保存 base64 部分）
+                                            tauri::async_runtime::spawn(async move {
+                                                match crate::get_file_icon(
+                                                    dest_path_for_icon.clone(),
+                                                )
+                                                .await
+                                                {
+                                                    Ok(data_uri) => {
+                                                        // data:image/png;base64,XXXXX -> 取逗号后的 base64
+                                                        let base64 = match data_uri.find(',') {
+                                                            Some(idx) => {
+                                                                data_uri[idx + 1..].to_string()
+                                                            }
+                                                            None => data_uri,
+                                                        };
+                                                        if let Err(err) = db::insert_icon_data(
+                                                            &item_id_for_icon,
+                                                            &base64,
+                                                        ) {
+                                                            eprintln!(
+                                                                "❌ insert_icon_data 失败: {:?}",
+                                                                err
+                                                            );
+                                                        }
+                                                    }
+                                                    Err(err) => {
+                                                        eprintln!("⚠️ get_file_icon 失败: {}", err);
+                                                    }
+                                                }
+                                            });
                                         }
                                     }
                                     Err(e) => {
