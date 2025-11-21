@@ -521,3 +521,47 @@ fn test_filter_data_by_favorite() {
     assert!(!ids_false.contains(&"fav1".to_string()));
     assert!(!ids_false.contains(&"fav3".to_string()));
 }
+
+#[test]
+fn test_search_data_by_ocr_text() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 准备三个 item：两个 image（会插入 OCR），一个 text（不应被 OCR 搜索命中）
+    let a = make_item("ocr-1", "image", "/tmp/img1.png");
+    let b = make_item("ocr-2", "image", "/tmp/img2.png");
+    let c = make_item("ocr-3", "text", "plain text not ocr");
+
+    insert_received_db_data(a.clone()).expect("insert a");
+    insert_received_db_data(b.clone()).expect("insert b");
+    insert_received_db_data(c.clone()).expect("insert c");
+
+    // 插入 OCR 文本：a 包含 "今天 你 好"，b 包含 "今天天气很好"
+    insert_ocr_text(&a.id, "． 今天 你 好").expect("insert ocr for a");
+    insert_ocr_text(&b.id, "今天天气很好").expect("insert ocr for b");
+
+    // 搜索只匹配 "天气" -> 仅应返回 b
+    let res_json = search_data_by_ocr_text("天气").expect("search ocr failed");
+    let vec: Vec<ClipboardItem> = serde_json::from_str(&res_json).expect("parse results");
+    let ids: Vec<String> = vec.iter().map(|it| it.id.clone()).collect();
+    assert!(ids.contains(&b.id), "expected b to be matched by '天气'");
+    assert!(!ids.contains(&a.id), "a should not match '天气'");
+    assert!(
+        !ids.contains(&c.id),
+        "text item c should not be matched (no extended ocr)"
+    );
+
+    // 搜索匹配 "今天" -> 应返回 a 和 b（模糊匹配）
+    let res_json2 = search_data_by_ocr_text("今天").expect("search ocr failed for 今天");
+    let vec2: Vec<ClipboardItem> = serde_json::from_str(&res_json2).expect("parse results 2");
+    let ids2: Vec<String> = vec2.iter().map(|it| it.id.clone()).collect();
+    assert!(ids2.contains(&a.id), "expected a to be matched by '今天'");
+    assert!(ids2.contains(&b.id), "expected b to be matched by '今天'");
+    assert!(!ids2.contains(&c.id), "text item c should not be matched");
+
+    // 搜索一个不存在的词，应该返回空数组
+    let res_json3 = search_data_by_ocr_text("不存在的关键词").expect("search unknown failed");
+    let vec3: Vec<ClipboardItem> = serde_json::from_str(&res_json3).expect("parse results 3");
+    assert!(vec3.is_empty(), "expected no results for unknown keyword");
+}
