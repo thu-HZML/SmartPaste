@@ -7,13 +7,22 @@ use std::sync::{OnceLock, RwLock};
 /// 剪贴板数据项结构体
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ClipboardItem {
+    /// 唯一标识符，为 UUID
     pub id: String,
-    pub item_type: String, // 数据类型：text/image/file
-    pub content: String,   // 对text类型，存储文本内容；对其他类型，存储文件路径
-    pub size: Option<u64>, // 文件大小。对text类型，为文本长度（字符数）；对file/image类型，为文件字节大小
+    /// 数据类型：text/image/file
+    pub item_type: String,
+    /// 数据内容：对text类型，存储文本内容；对其他类型，存储文件路径
+    pub content: String,
+    /// 文件大小（字节数），对text类型，为文本长度（字符数）；对file/image类型，为文件字节大小
+    pub size: Option<u64>,
+    /// 是否为默认收藏夹项
     pub is_favorite: bool,
+    /// 备注信息
     pub notes: String,
+    /// 时间戳，表示创建或最后修改时间（Unix时间戳，毫秒）
     pub timestamp: i64,
+    // OCR 识别结果，仅对 image 类型有效
+    // pub ocr_text: Option<String>,
 }
 
 /// 收藏夹结构体

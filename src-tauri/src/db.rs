@@ -74,6 +74,16 @@ pub fn init_db(path: &Path) -> Result<()> {
         [],
     )?;
 
+    // 扩展数据表，存储非元数据的其他信息
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS extended_data (
+            item_id TEXT PRIMARY KEY NOT NULL,
+            ocr_text TEXT,
+            icon_data TEXT,
+            FOREIGN KEY (item_id) REFERENCES data(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
     Ok(())
 }
 
