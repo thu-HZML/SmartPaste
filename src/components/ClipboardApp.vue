@@ -329,11 +329,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
+import { toggleClipboardWindow } from '../utils/actions.js'
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -1078,10 +1079,36 @@ const loadIcon = async (filePath) => {
   }
 }
 
+// 使用 Tauri 的窗口事件监听器
+const setupWindowListeners = async () => { 
+  // 监听窗口失去焦点事件
+  await currentWindow.onFocusChanged(async ({ payload: focused }) => {
+    if (!focused) {        
+      console.log('窗口失去焦点，准备关闭')
+      currentWindow.close()
+    }
+    else {
+      console.log('窗口获得焦点')
+    }
+  })
+}
+
 // 生命周期
 onMounted(async () => {
   console.log('开始初始化...')
+
+  // OCR配置
+  await invoke('configure_ocr', {})
   
+  // 开启后端监听
+  await setupClipboardRelay()
+  
+  // 设置窗口事件监听器
+  await setupWindowListeners()
+  
+  // 设置窗口聚焦
+  currentWindow.setFocus()
+
   // 设置示例数据
   filteredHistory.value = [
     {
@@ -1102,12 +1129,6 @@ onMounted(async () => {
   await getAllFolders()
   console.log('数据长度:', filteredHistory.value.length)
 
-  // OCR配置
-  await invoke('configure_ocr', {})
-  
-  // 开启后端监听
-  await setupClipboardRelay()
-
   // 初始化窗口大小
   try {
     await currentWindow.setSize(new LogicalSize(400, 600));
@@ -1115,6 +1136,7 @@ onMounted(async () => {
     console.error('设置窗口大小失败:', error)
   }
 })
+
 </script>
 
 <style scoped>
