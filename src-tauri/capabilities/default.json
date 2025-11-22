@@ -24,6 +24,7 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "core:event:allow-emit",
-    "core:event:allow-listen"
+    "core:event:allow-listen",
+    "core:window:allow-set-focus"
   ]
 }
