@@ -147,9 +147,7 @@
                         class="file-icon"
                         @error="handleIconError"
                       />
-                      <div class="file-info">
-                        <div class="file-name">{{ getFileName(item.content) }}</div>
-                      </div>
+                      <div class="file-name">{{ getFileName(item.content) }}</div>
                     </div>
 
                     <!-- 未知类型 -->
@@ -649,12 +647,9 @@ const cancelDeleteAll = () => {
 
 // 编辑项目
 const editItem = (item) => {
-  loadIcon(item.content)
-  /*
   editingItem.value = item
   editingText.value = item.content
   showEditModal.value = true
-  */
 }
 
 // 保存编辑
@@ -1416,7 +1411,6 @@ body {
 /* 剪贴文本样式 */
 .item-content {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 10px;
@@ -1437,6 +1431,7 @@ body {
   color: #1f1f1f;
   min-height: 83px;
   max-height: 83px;
+  align-items: center;
 }
 
 /* 剪贴图片预览样式 */
@@ -1469,35 +1464,29 @@ body {
 .file-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background-color: #f9f9f9;
+  gap: 8px;
+  overflow: hidden;
+  height: 80px;
 }
 
 .file-icon {
-  font-size: 24px;
-}
-
-.file-info {
-  flex: 1;
-  min-width: 0; /* 允许文本截断 */
+  max-height: 50px;
 }
 
 .file-name {
-  font-weight: 500;
-  white-space: nowrap;
+  display: -webkit-box;
+  line-clamp: 2;          /* 限制显示行数 */
+  -webkit-line-clamp: 2;      /* 限制显示行数 */
+  white-space: pre-wrap;  /* 保留连续空格和换行 */
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.file-path {
-  font-size: 12px;
-  color: #888;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+  color: #1f1f1f;
+  max-height: 42px;
 }
 
 /* 收藏夹样式 */
