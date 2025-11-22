@@ -398,6 +398,7 @@ const categories = ref([
 // 历史记录数据结构
 const folders = ref([])
 const filteredHistory = ref([])
+const initialSelectedFolders = ref([]) // 存储当前记录被收藏进的收藏夹
 const iconCache = ref({}) // 用于缓存已加载的图标
 
 /*
@@ -454,6 +455,7 @@ const handleCategoryChange = async (category) => {
   }
   else if (category.trim() === 'favorite'){
     searchLoading.value = true
+    console.log('默认收藏夹内容个数：', folders.value[0].num_items)
     await getAllFolders()
   }
   else if (category.trim() === 'folder') {
@@ -596,15 +598,27 @@ const executeDoubleClick = async (item) => {
     try {
       const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
       const foldersJson = JSON.parse(foldersString)
-      console.log(foldersJson)
+
+      // 保存初始选中状态
+      initialSelectedFolders.value = foldersJson.map(f => f.id)
+
       folders.value = folders.value.map(folder => {
         // 检查当前文件夹是否在foldersJson中（即包含该项目）
         const isContained = foldersJson.some(f => f.id === folder.id)
+
         return {
           ...folder,
           isSelected: isContained
         }
       })
+      
+      // 如果项目已被收藏但不在任何收藏夹中，确保默认收藏夹被选中
+      if (item.is_favorite) {
+        const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+        if (defaultFolder && !defaultFolder.isSelected) {
+          defaultFolder.isSelected = true
+        }
+      }
     } catch(err) {
       console.error('获取收藏夹失败:', err)
     }
@@ -708,9 +722,15 @@ const copyOCR = async () => {
   if (!ocrText.value || ocrText.value.trim() === '') {
     showMessage('内容不能为空')
   } else {
-    // const string = 
-    // await invoke('insert_received_data', { filePath: item.content })
+    // 添加到数据库
+    await invoke('insert_received_text_data', { text: ocrText.value })
+    // 复制该内容
+    await invoke('write_to_clipboard', { text: ocrText.value })
     showMessage('已复制OCR内容')
+
+    // 刷新界面
+    handleSearch(searchQuery.value)
+    handleCategoryChange(activeCategory.value)
   }
   cancelOCR()
 }
@@ -723,16 +743,38 @@ const cancelOCR = () => {
 
 // 删除历史记录
 const removeItem = async (item) => {
-  /* 图片OCR
-  const result = await invoke('ocr_image', { filePath: history.value[index].content })
-  console.log(result)
-  */ 
-  await invoke('delete_data_by_id', { id: item.id })
-  const index = filteredHistory.value.findIndex(i => i.id === item.id)
-  if (index !== -1) {
-    filteredHistory.value.splice(index, 1)
+  try {
+    // 如果记录被收藏，先从所有收藏夹中移除
+    if (item.is_favorite) {
+      // 获取包含该记录的所有收藏夹
+      const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
+      const foldersContainingItem = JSON.parse(foldersString)
+      
+      // 从每个收藏夹中移除该记录
+      const removePromises = foldersContainingItem.map(folder => 
+        invoke('remove_item_from_folder', {
+          folderId: folder.id,
+          itemId: item.id
+        })
+      )
+      
+      await Promise.all(removePromises)
+    }
+    
+    // 删除历史记录本身
+    await invoke('delete_data_by_id', { id: item.id })
+    
+    // 从前端列表中移除
+    const index = filteredHistory.value.findIndex(i => i.id === item.id)
+    if (index !== -1) {
+      filteredHistory.value.splice(index, 1)
+    }
+    
+    showMessage('已删除记录')
+  } catch (error) {
+    console.error('删除记录失败:', error)
+    showMessage('删除记录失败')
   }
-  showMessage('已删除记录')
 }
 
 // 格式化时间
@@ -903,32 +945,73 @@ const showFolderContent = async (item) => {
 
 // 切换收藏夹选中状态
 const selectFolder = (item) => {
-  // 切换当前项的选中状态
-  item.isSelected = !item.isSelected
+  // 如果是默认收藏夹
+  if (item.name === '默认收藏夹') {
+    // 如果取消选中默认收藏夹，则取消所有其他收藏夹
+    if (item.isSelected) {
+      // 取消选中默认收藏夹
+      item.isSelected = false
+      // 取消所有其他收藏夹的选中
+      folders.value.forEach(folder => {
+        if (folder.name !== '默认收藏夹') {
+          folder.isSelected = false
+        }
+      })
+    } else {
+      // 选中默认收藏夹
+      item.isSelected = true
+    }
+  } else {
+    // 非默认收藏夹
+    // 切换当前项的选中状态
+    item.isSelected = !item.isSelected
+    
+    // 如果选中了任何非默认收藏夹，确保默认收藏夹也被选中
+    if (item.isSelected) {
+      const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+      if (defaultFolder && !defaultFolder.isSelected) {
+        defaultFolder.isSelected = true
+      }
+    }
+  }
 }
 
 // 把历史记录添加到收藏夹中
 const addToFolder = async () => {
   try {
-    const selectedFolders = folders.value.filter(item => item.isSelected)
-    
-    if (selectedFolders.length === 0) {
-      showMessage('请先选择收藏夹')
-      return
-    }
+    const selectedFolders = folders.value.filter(item => 
+      item.isSelected && item.name !== '默认收藏夹'
+    )
+    const previouslySelectedFolders = folders.value.filter(item => 
+      initialSelectedFolders.value.includes(item.id) && !item.isSelected
+    )
     
     // 并行处理所有选中的文件夹
-    const promises = selectedFolders.map(item => 
+    const addPromises = selectedFolders.map(item => 
       invoke('add_item_to_folder', { 
         folderId: item.id,
         itemId: currentItem.value.id
       })
     )   
+    
+    // 从之前选中但现在未选中的收藏夹中移除
+    const removePromises = previouslySelectedFolders.map(item =>
+      invoke('remove_item_from_folder', {
+        folderId: item.id,
+        itemId: currentItem.value.id
+      })
+    )
 
-    await Promise.all(promises)
+    await Promise.all([...addPromises, ...removePromises])
     showMessage('已收藏进指定文件夹')
-    currentItem.value.is_favorite = true
-    await invoke('set_favorite_status_by_id', { id: currentItem.value.id })
+
+    if (folders.value[0].isSelected) {
+      currentItem.value.is_favorite = true
+      await invoke('favorite_data_by_id', { id: currentItem.value.id })
+    } else {
+      currentItem.value.is_favorite = false
+      await invoke('unfavorite_data_by_id', { id: currentItem.value.id })
+    }
   } catch (err) {
     console.error('创建文件夹失败', err)
   }
@@ -942,6 +1025,8 @@ const cancelAddToFolder = () => {
     ...item,
     isSelected: false
   }))
+
+  initialSelectedFolders.value = [] // 重置初始选中状态
 }
 
 // 主窗口监听剪贴板事件
