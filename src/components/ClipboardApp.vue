@@ -377,6 +377,7 @@ const currentFolder = ref(null)
 const searchLoading = ref(false)
 const currentItem = ref(null)
 const folderQuery = ref('')
+const unlistenFocusChanged = ref(null) // 存储取消监听的函数
 const test = ref('')
 
 // 防抖定时器
@@ -546,6 +547,9 @@ const togglePinnedView = () => {
 
 // 打开设置
 const openSettings = async () => {
+  // 移除窗口焦点监听器
+  removeWindowListeners()
+
   router.push('/preferences')
   showMessage('打开设置')
 }
@@ -1119,8 +1123,14 @@ const startDragging = async (event) => {
 
 // 窗口失焦时自动关闭窗口
 const setupWindowListeners = async () => { 
+  // 如果已经存在监听器，先移除
+  if (unlistenFocusChanged.value) {
+    unlistenFocusChanged.value()
+    unlistenFocusChanged.value = null
+  }
+
   // 监听窗口失去焦点事件
-  await currentWindow.onFocusChanged(async ({ payload: focused }) => {
+  unlistenFocusChanged.value = await currentWindow.onFocusChanged(async ({ payload: focused }) => {
     if (!focused) {   
       if (isDragging) {
         console.log('检测到正在拖动，不关闭窗口')
@@ -1133,6 +1143,15 @@ const setupWindowListeners = async () => {
       console.log('窗口获得焦点')
     }
   })
+}
+
+// 移除窗口失焦监听函数
+const removeWindowListeners = () => {
+  if (unlistenFocusChanged.value) {
+    unlistenFocusChanged.value()
+    unlistenFocusChanged.value = null
+    console.log('已移除窗口焦点监听器')
+  }
 }
 
 // 生命周期
@@ -1150,6 +1169,13 @@ onMounted(async () => {
   
   // 设置窗口聚焦
   currentWindow.setFocus()
+
+  // 初始化窗口大小
+  try {
+    await currentWindow.setSize(new LogicalSize(400, 600));
+  } catch (error) {
+    console.error('设置窗口大小失败:', error)
+  }
 
   // 设置示例数据
   filteredHistory.value = [
@@ -1170,13 +1196,7 @@ onMounted(async () => {
   // 获取收藏夹记录
   await getAllFolders()
   console.log('数据长度:', filteredHistory.value.length)
-
-  // 初始化窗口大小
-  try {
-    await currentWindow.setSize(new LogicalSize(400, 600));
-  } catch (error) {
-    console.error('设置窗口大小失败:', error)
-  }
+ 
 })
 
 </script>
