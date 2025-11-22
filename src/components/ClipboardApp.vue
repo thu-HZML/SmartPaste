@@ -1012,6 +1012,10 @@ const addToFolder = async () => {
       currentItem.value.is_favorite = false
       await invoke('unfavorite_data_by_id', { id: currentItem.value.id })
     }
+
+    // 刷新界面
+    handleSearch(searchQuery.value)
+    handleCategoryChange(activeCategory.value)
   } catch (err) {
     console.error('创建文件夹失败', err)
   }
