@@ -1,5 +1,5 @@
 <template>
-  <div class="app">
+  <div class="app" @mousedown="startDragging">
     <!-- 顶部搜索栏 -->
     <header class="app-header">
       <div class="search-container">
@@ -384,6 +384,9 @@ let searchTimeout = null
 
 // 双击定时器
 let clickTimeout = null
+
+// 存储是否在拖动
+let isDragging = null
 
 // 分类选项
 const categories = ref([
@@ -1079,11 +1082,50 @@ const loadIcon = async (filePath) => {
   }
 }
 
-// 使用 Tauri 的窗口事件监听器
+// 使用 Tauri API 开始拖动窗口
+const startDragging = async (event) => {
+  // 防止在输入框上触发拖动
+  if (event.target.tagName === 'INPUT' || event.target.closest('input')) {
+    return
+  }
+  
+  // 防止在按钮上触发拖动
+  if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+    return
+  }
+  
+  // 防止在图标上触发拖动
+  if (event.target.tagName === 'svg' || event.target.tagName === 'path' || event.target.closest('svg')) {
+    return
+  }
+  
+  // 防止在模态框上触发拖动
+  if (event.target.closest('.modal')) {
+    return
+  }
+  
+  try {
+    isDragging = true
+    await currentWindow.startDragging()
+  } catch (error) {
+    console.error('开始拖动失败:', error)
+  } finally {
+    // 使用 setTimeout 确保拖动操作完成后再重置状态
+    setTimeout(() => {
+      isDragging = false
+    }, 100)
+  }
+}
+
+// 窗口失焦时自动关闭窗口
 const setupWindowListeners = async () => { 
   // 监听窗口失去焦点事件
   await currentWindow.onFocusChanged(async ({ payload: focused }) => {
-    if (!focused) {        
+    if (!focused) {   
+      if (isDragging) {
+        console.log('检测到正在拖动，不关闭窗口')
+        return
+      }
       console.log('窗口失去焦点，准备关闭')
       currentWindow.close()
     }
@@ -1179,7 +1221,6 @@ body {
 .search-container {
   padding: 8px 10px;
   border-bottom: 1px solid #f0f0f0;
-  -webkit-app-region: drag;
 }
 
 .search-bar {
@@ -1187,7 +1228,6 @@ body {
   flex-direction: row;
   position: relative;
   margin: 0 auto;
-  -webkit-app-region: no-drag;
 }
 
 .search-icon {
@@ -1223,7 +1263,6 @@ body {
   justify-content: space-between;
   padding: 8px 10px;
   background: #ffffff;
-  -webkit-app-region: drag;
   align-items: center;
 }
 
@@ -1241,7 +1280,6 @@ body {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
-  -webkit-app-region: no-drag;
 }
 
 .category-btn:hover {
@@ -1265,8 +1303,7 @@ body {
   font-size: 18px;
   cursor: pointer;
   border-radius: 6px;
-  transition: background 0.2s;
-  -webkit-app-region: no-drag;  
+  transition: background 0.2s;  
 }
 
 .icon-btn:hover {
