@@ -378,6 +378,7 @@ const searchLoading = ref(false)
 const currentItem = ref(null)
 const folderQuery = ref('')
 const unlistenFocusChanged = ref(null) // 存储取消监听的函数
+const canDeleteWindow = ref(true)
 const test = ref('')
 
 // 防抖定时器
@@ -542,6 +543,7 @@ const setActiveCategory = (categoryId) => {
 
 // 切换固定视图
 const togglePinnedView = () => {
+  canDeleteWindow.value = !canDeleteWindow.value
   showMessage('切换固定视图')
 }
 
@@ -714,7 +716,7 @@ const cancelNote = () => {
 
 // 显示OCR内容
 const showOCR = async (item) => {
-  const ocrString = await invoke('ocr_image', { filePath: item.content })
+  const ocrString = await invoke('get_ocr_text_by_item_id', { itemId: item.id })
   console.log(ocrString)
   ocrText.value = JSON.parse(ocrString)[0].text
   showOcrModal.value = true
@@ -821,11 +823,12 @@ const getAllHistory = async () => {
   try {
     const jsonString = await invoke('get_all_data')
     filteredHistory.value = JSON.parse(jsonString)
+
     // 为现有数组中的每个对象添加 is_focus 字段
-    filteredHistory.value = filteredHistory.value.map(item => ({
+    filteredHistory.value = filteredHistory.value.map(async item => ({
       ...item,
       is_focus: false,
-      iconData: null // 初始化为null
+      iconData: await invoke('get_icon_data_by_item_id', { itemId: item.id })
     }))
 
     // 为文件类型的项目加载图标
@@ -1132,12 +1135,12 @@ const setupWindowListeners = async () => {
   // 监听窗口失去焦点事件
   unlistenFocusChanged.value = await currentWindow.onFocusChanged(async ({ payload: focused }) => {
     if (!focused) {   
-      if (isDragging) {
+      if (isDragging || !canDeleteWindow.value) {
         console.log('检测到正在拖动，不关闭窗口')
         return
       }
       console.log('窗口失去焦点，准备关闭')
-      currentWindow.close()
+      // currentWindow.close()
     }
     else {
       console.log('窗口获得焦点')

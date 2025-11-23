@@ -913,7 +913,7 @@ pub fn search_data_by_ocr_text(query: &str) -> Result<String, String> {
     clipboard_items_to_json(results)
 }
 
-/// 插入 icon_data 数据。作为 Tauri command 暴露给前端调用。
+/// 插入 icon_data 数据。
 /// # Param
 /// item_id: &str - 数据项 ID
 /// icon_data: &str - 图标数据（Base64 编码字符串）
