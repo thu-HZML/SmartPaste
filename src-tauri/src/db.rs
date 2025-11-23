@@ -845,11 +845,12 @@ pub fn insert_ocr_text(item_id: &str, ocr_text: &str) -> Result<String, String> 
     Ok("ocr inserted".to_string())
 }
 
-/// 返回对应数据项的 OCR 文本。
+/// 返回对应数据项的 OCR 文本。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// item_id: &str - 数据项 ID
 /// # Returns
 /// String - 包含 OCR 文本的字符串，若无则返回空字符串
+#[tauri::command]
 pub fn get_ocr_text_by_item_id(item_id: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -913,13 +914,12 @@ pub fn search_data_by_ocr_text(query: &str) -> Result<String, String> {
     clipboard_items_to_json(results)
 }
 
-/// 插入 icon_data 数据。作为 Tauri command 暴露给前端调用。
+/// 插入 icon_data 数据。
 /// # Param
 /// item_id: &str - 数据项 ID
 /// icon_data: &str - 图标数据（Base64 编码字符串）
 /// # Returns
 /// String - 信息。若插入成功返回 "icon_data inserted"，否则返回错误信息
-#[tauri::command]
 pub fn insert_icon_data(item_id: &str, icon_data: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
