@@ -26,7 +26,8 @@ export function updateMainWindowPosition(position, size) {
  * @param {Object} options 窗口配置
  */
 export async function createMenuWindow(options = {}) {
-  const windowId = `menu_${Date.now()}`
+  //const windowId = `menu_${Date.now()}`
+  const windowId = 'menu'
   
   try {
     const { x = 100, y = 100, width = 400, height = 600 } = options
@@ -75,7 +76,7 @@ export async function createMenuWindow(options = {}) {
 export async function toggleMenuWindow() {
   // 查找已存在的菜单窗口
   const menuWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('menu_'))
+    .filter(([key]) => key.startsWith('menu'))
   
   if (menuWindows.length > 0) {
     // 如果存在菜单窗口，关闭它们
@@ -119,7 +120,7 @@ export async function toggleMenuWindow() {
 // 新增：更新菜单窗口位置函数
 export async function updateMenuWindowPosition() {
   const menuWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('menu_'))
+    .filter(([key]) => key.startsWith('menu'))
   
   if (menuWindows.length > 0 && mainWindowPosition) {
     const { x, y, width, height } = mainWindowPosition
@@ -143,7 +144,7 @@ export async function updateMenuWindowPosition() {
  * 检查是否有菜单窗口打开
  */
 export function hasMenuWindow() {
-  return Array.from(windowInstances.keys()).some(key => key.startsWith('menu_'))
+  return Array.from(windowInstances.keys()).some(key => key.startsWith('menu'))
 }
 
 /**
@@ -151,7 +152,7 @@ export function hasMenuWindow() {
  */
 export async function updateMenuWindowPositionRealTime() {
   const menuWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('menu_'))
+    .filter(([key]) => key.startsWith('menu'))
   
   if (menuWindows.length > 0 && mainWindowPosition) {
     const { x, y, width, height } = mainWindowPosition
@@ -175,7 +176,7 @@ export async function updateMenuWindowPositionRealTime() {
  * @param {Object} options 窗口配置
  */
 export async function createClipboardWindow(options = {}) {
-  // const windowId = `clipboard_${Date.now()}`
+  //const windowId = `clipboard_${Date.now()}`
   const windowId = 'clipboard'
   try {
     const { x = 100, y = 100, width = 400, height = 600 } = options
@@ -296,7 +297,7 @@ export async function closeWindowById(windowId) {
  */
 export async function closeAllClipboardWindows() {
   const clipboardWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('clipboard_'))
+    .filter(([key]) => key.startsWith('clipboard'))
   
   for (const [windowId, window] of clipboardWindows) {
     try {
@@ -313,7 +314,7 @@ export async function closeAllClipboardWindows() {
  */
 export async function closeAllMenuWindows() {
   const menuWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('menu_'))
+    .filter(([key]) => key.startsWith(''))
   
   for (const [windowId, window] of menuWindows) {
     try {

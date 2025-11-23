@@ -24,7 +24,6 @@ const allowClickPet = ref(true)
 // 存储当前窗口位置
 const currentPosition = ref({ x: 0, y: 0 })
 
-const emit = defineEmits(['show-menu', 'hide-menu'])
 
 let clickPetTimeout = null
 let positionUpdateInterval = null
