@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
-import { 
+import { windowInstances, 
   toggleClipboardWindow, 
   updateMainWindowPosition, 
   toggleMenuWindow,
@@ -9,6 +9,7 @@ import {
   updateMenuWindowPositionRealTime,  // 新增实时更新函数
   hasMenuWindow as checkMenuWindowExists
 } from '../utils/actions.js'
+import { listen, emit } from '@tauri-apps/api/event'
 
 const isHovering = ref(false)
 const hasClipboardWindow = ref(false)
@@ -32,8 +33,8 @@ let dragUpdateInterval = null  // 新增：拖拽时的更新间隔
 onMounted(async () => {
   console.log('[DesktopPet] mounted')
   try {
-    await currentWindow.setSize(new LogicalSize(120, 120));
-    await currentWindow.setPosition(new LogicalPosition(1600, 800))
+    await currentWindow.setSize(new LogicalSize(150, 95));
+    await currentWindow.setPosition(new LogicalPosition(1550, 800))
     const actualScaleFactor = await currentWindow.scaleFactor();
     console.log('系统缩放比例:', actualScaleFactor);
     scaleFactor.value = actualScaleFactor;
@@ -161,7 +162,6 @@ const handlePointerMove = async (event) => {
   }
 
   allowClickPet.value = false
-  console.log('设置点击定时器')
   clickPetTimeout = setTimeout(async () => {
     allowClickPet.value = true
   }, 500)
@@ -183,13 +183,11 @@ const handlePointerUp = async () => {
 // 鼠标进入桌宠区域
 const handlePointerEnter = (event) => {
   isHovering.value = true
-  console.log('鼠标进入，isHovering:', isHovering.value)
 }
 
 // 鼠标离开桌宠区域
 const handlePointerLeave = (event) => {
   isHovering.value = false
-  console.log('鼠标离开，isHovering:', isHovering.value)
 }
 
 // 左键切换菜单窗口
@@ -234,8 +232,6 @@ const handleContextMenu = (event) => {
     x: rect.right + 10,
     y: Math.max(10, rect.top)
   }
-
-  emit('show-menu', menuPosition)
 }
 
 // 清除全局监听
@@ -290,8 +286,8 @@ const cleanupEventListeners = () => {
 }
 
 .pet-image {
-  width: 100px;
-  height: 100px;
+  width: 130px;
+  height: 75px;
   filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
   transition: all 0.3s ease;
   background: transparent;

@@ -1,4 +1,5 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, Result, Result as SqlResult};
+use std::fs;
 use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -55,7 +56,8 @@ pub fn init_db(path: &Path) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS folders (
             id TEXT PRIMARY KEY NOT NULL,
-            name TEXT NOT NULL
+            name TEXT NOT NULL,
+            num_items INTEGER NOT NULL DEFAULT 0
             )",
         [],
     )?;
@@ -75,13 +77,12 @@ pub fn init_db(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
+/// 将接收到的数据插入数据库。
 /// Param:
 /// data: ClipboardItem - 要插入的数据项
 /// Returns:
 /// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
-#[tauri::command]
-pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
+pub fn insert_received_db_data(data: ClipboardItem) -> Result<String, String> {
     // NOTE: 这里我们把数据库文件放在工作目录下的 smartpaste.db 中。
     // 更稳妥的做法是在运行时从 `tauri::api::path::app_dir` 或 `app.path_resolver()` 获取应用本地数据目录。
     let db_path = get_db_path();
@@ -105,6 +106,36 @@ pub fn insert_received_data(data: ClipboardItem) -> Result<String, String> {
     crate::clipboard::set_last_inserted(data.clone());
 
     clipboard_item_to_json(data)
+}
+
+/// 将接收到的文本数据插入数据库。作为 Tauri command 暴露给前端调用。
+/// Param:
+/// text: &str - 要插入的文本数据
+/// Returns:
+/// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
+#[tauri::command]
+pub fn insert_received_text_data(text: &str) -> Result<String, String> {
+    let clipboard_item = ClipboardItem {
+        id: Uuid::new_v4().to_string(),
+        item_type: "text".to_string(),
+        content: text.to_string(),
+        size: Some(text.len() as u64),
+        is_favorite: false,
+        notes: "".to_string(),
+        timestamp: chrono::Utc::now().timestamp_millis(),
+    };
+    insert_received_db_data(clipboard_item)
+}
+
+/// 将接收到的数据插入数据库。作为 Tauri command 暴露给前端调用。
+/// Param:
+/// data: String - 包含要插入数据的 JSON 字符串
+/// Returns:
+/// String - 插入的数据的 JSON 字符串。如果失败则返回错误信息
+#[tauri::command]
+pub fn insert_received_data(data: String) -> Result<String, String> {
+    let clipboard_item: ClipboardItem = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    insert_received_db_data(clipboard_item)
 }
 
 /// 获取上一条数据。作为 Tauri command 暴露给前端调用。
@@ -245,9 +276,50 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
+      // ---------------------------------------------------------
+    // 1. 在删除记录前，先查询该记录的文件路径
+    // ---------------------------------------------------------
+    let query_result: SqlResult<(String, String)> = conn.query_row(
+        "SELECT item_type, content FROM data WHERE id = ?1",
+        params![id],
+        |row| Ok((row.get(0)?, row.get(1)?)), // 获取 item_type 和 content
+    );
+
+    if let Ok((item_type, content)) = query_result {
+        let path = Path::new(&content);
+
+        // 检查路径是否存在
+        if path.exists() {
+            // ✅ 情况 A: 如果是文件夹类型 (或者物理路径确实是个文件夹)
+            if item_type == "folder" || path.is_dir() {
+                // 使用 remove_dir_all 递归删除文件夹及其内容
+                if let Err(e) = fs::remove_dir_all(path) {
+                    eprintln!("⚠️ 删除本地文件夹失败 (ID: {}): {:?} - {}", id, path, e);
+                } else {
+                    println!("🗑️ 已删除关联的本地文件夹: {:?}", path);
+                }
+            } 
+            // ✅ 情况 B: 如果是图片或普通文件
+            else if item_type == "image" || item_type == "file" || path.is_file() {
+                // 使用 remove_file 删除单个文件
+                if let Err(e) = fs::remove_file(path) {
+                    eprintln!("⚠️ 删除本地文件失败 (ID: {}): {:?} - {}", id, path, e);
+                } else {
+                    println!("🗑️ 已删除关联的本地文件: {:?}", path);
+                }
+            }
+        } else {
+            println!("ℹ️ 本地路径不存在，跳过物理删除: {:?}", path);
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 2. 执行数据库删除
+    // ---------------------------------------------------------
     let rows_affected = conn
         .execute("DELETE FROM data WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
+
 
     Ok(rows_affected)
 }
@@ -316,11 +388,12 @@ pub fn set_favorite_status_by_id(id: &str) -> Result<String, String> {
     }
 }
 
-/// 根据 ID 收藏数据。
+/// 根据 ID 收藏数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// id: &str - 要收藏数据的 ID
 /// # Returns
 /// usize - 受影响的行数
+#[tauri::command]
 pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -333,11 +406,12 @@ pub fn favorite_data_by_id(id: &str) -> Result<usize, String> {
     Ok(rows_affected)
 }
 
-/// 根据 ID 取消收藏数据。
+/// 根据 ID 取消收藏数据。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// id: &str - 要取消收藏数据的 ID
 /// # Returns
 /// usize - 受影响的行数
+#[tauri::command]
 pub fn unfavorite_data_by_id(id: &str) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -348,6 +422,49 @@ pub fn unfavorite_data_by_id(id: &str) -> Result<usize, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(rows_affected)
+}
+
+/// 按收藏状态筛选数据。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// is_favorite: bool - 是否筛选收藏的数据
+/// # Returns
+/// String - 包含筛选后数据记录的 JSON 字符串
+#[tauri::command]
+pub fn filter_data_by_favorite(is_favorite: bool) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let fav_value = if is_favorite { 1 } else { 0 };
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE is_favorite = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map(params![fav_value], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    clipboard_items_to_json(results)
 }
 
 /// 文本搜索。作为 Tauri command 暴露给前端调用。
@@ -475,8 +592,8 @@ pub fn create_new_folder(name: &str) -> Result<String, String> {
 
     let id = Uuid::new_v4().to_string();
     conn.execute(
-        "INSERT INTO folders (id, name) VALUES (?1, ?2)",
-        params![id, name],
+        "INSERT INTO folders (id, name, num_items) VALUES (?1, ?2, ?3)",
+        params![id, name, 0]
     )
     .map_err(|e| e.to_string())?;
 
@@ -534,7 +651,7 @@ pub fn get_all_folders() -> Result<String, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, name FROM folders")
+        .prepare("SELECT id, name , num_items FROM folders")
         .map_err(|e| e.to_string())?;
 
     let folder_iter = stmt
@@ -542,6 +659,7 @@ pub fn get_all_folders() -> Result<String, String> {
             Ok(FolderItem {
                 id: row.get(0)?,
                 name: row.get(1)?,
+                num_items:row.get::<_, i64>(2)? as u32,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -566,11 +684,19 @@ pub fn add_item_to_folder(folder_id: &str, item_id: &str) -> Result<String, Stri
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    conn.execute(
+    let rows = conn.execute(
         "INSERT OR IGNORE INTO folder_items (folder_id, item_id) VALUES (?1, ?2)",
         params![folder_id, item_id],
     )
     .map_err(|e| e.to_string())?;
+
+    if rows > 0 {
+        conn.execute(
+            "UPDATE folders SET num_items = num_items + 1 WHERE id = ?1",
+            params![folder_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
 
     Ok("added to folder".to_string())
 }
@@ -587,11 +713,19 @@ pub fn remove_item_from_folder(folder_id: &str, item_id: &str) -> Result<String,
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    conn.execute(
+    let rows = conn.execute(
         "DELETE FROM folder_items WHERE folder_id = ?1 AND item_id = ?2",
         params![folder_id, item_id],
     )
     .map_err(|e| e.to_string())?;
+
+    if rows > 0 {
+        conn.execute(
+            "UPDATE folders SET num_items = num_items - 1 WHERE id = ?1 AND num_items > 0",
+            params![folder_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
 
     Ok("removed from folder".to_string())
 }
@@ -637,6 +771,44 @@ pub fn filter_data_by_folder(folder_name: &str) -> Result<String, String> {
     }
 
     clipboard_items_to_json(results)
+}
+
+/// 根据 item ID 查阅数据所属的所有收藏夹。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// item_id: &str - 数据项 ID
+/// # Returns
+/// String - 包含所属收藏夹列表的 JSON 字符串，若失败则返回错误信息
+#[tauri::command]
+pub fn get_folders_by_item_id(item_id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT f.id, f.name, f.num_items
+             FROM folders f
+             JOIN folder_items fi ON f.id = fi.folder_id
+             WHERE fi.item_id = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let folder_iter = stmt
+        .query_map(params![item_id], |row| {
+            Ok(FolderItem {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                num_items: row.get::<_, i64>(2)? as u32,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in folder_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    folder_items_to_json(results)
 }
 
 /// # 单元测试

@@ -3,7 +3,7 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { LogicalPosition } from '@tauri-apps/api/window'
 
 // 存储所有窗口实例
-const windowInstances = new Map()
+export const windowInstances = new Map()
 
 // 全局状态存储主窗口位置
 let mainWindowPosition = { x: 100, y: 100, width: 200, height: 200 }
@@ -175,8 +175,8 @@ export async function updateMenuWindowPositionRealTime() {
  * @param {Object} options 窗口配置
  */
 export async function createClipboardWindow(options = {}) {
-  const windowId = `clipboard_${Date.now()}`
-  
+  // const windowId = `clipboard_${Date.now()}`
+  const windowId = 'clipboard'
   try {
     const { x = 100, y = 100, width = 400, height = 600 } = options
     
@@ -199,6 +199,7 @@ export async function createClipboardWindow(options = {}) {
     webview.once('tauri://created', () => {
       console.log('剪贴板窗口创建成功:', windowId)
       windowInstances.set(windowId, webview)
+      console.log(windowInstances)
     })
     
     webview.once('tauri://error', (e) => {
@@ -224,15 +225,17 @@ export async function toggleClipboardWindow() {
   // 查找已存在的剪贴板窗口
   console.log('🔍 查找已存在的剪贴板窗口...')
   const clipboardWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('clipboard_'))
-  console.log(`📊 找到 ${clipboardWindows.length} 个剪贴板窗口`)
-  
+    .filter(([key]) => key.startsWith('c'))
+  console.log('正在查找')
+  console.log(clipboardWindows)
   if (clipboardWindows.length > 0) {
     // 如果存在剪贴板窗口，关闭它们
+    console.log('存在窗口')
     for (const [windowId, window] of clipboardWindows) {
       try {
         await window.close()
         windowInstances.delete(windowId)
+        console.log('关闭窗口成功')
       } catch (error) {
         console.error('关闭窗口失败:', error)
       }
