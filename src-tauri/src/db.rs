@@ -477,6 +477,27 @@ pub fn filter_data_by_favorite(is_favorite: bool) -> Result<String, String> {
     clipboard_items_to_json(results)
 }
 
+/// 获取 favorite 数据数量。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// usize - 收藏的数据数量
+#[tauri::command]
+pub fn get_favorite_data_count() -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let count: usize = conn
+        .query_row(
+            "SELECT COUNT(*) FROM data WHERE is_favorite = 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(count)
+}
+
+
 /// 文本搜索。作为 Tauri command 暴露给前端调用。
 /// 根据传入的字符串，对所有属于 text 类的 content 字段进行模糊搜索，返回匹配的记录列表。
 /// # Param
@@ -845,11 +866,12 @@ pub fn insert_ocr_text(item_id: &str, ocr_text: &str) -> Result<String, String> 
     Ok("ocr inserted".to_string())
 }
 
-/// 返回对应数据项的 OCR 文本。
+/// 返回对应数据项的 OCR 文本。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// item_id: &str - 数据项 ID
 /// # Returns
 /// String - 包含 OCR 文本的字符串，若无则返回空字符串
+#[tauri::command]
 pub fn get_ocr_text_by_item_id(item_id: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -919,7 +941,6 @@ pub fn search_data_by_ocr_text(query: &str) -> Result<String, String> {
 /// icon_data: &str - 图标数据（Base64 编码字符串）
 /// # Returns
 /// String - 信息。若插入成功返回 "icon_data inserted"，否则返回错误信息
-#[tauri::command]
 pub fn insert_icon_data(item_id: &str, icon_data: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;

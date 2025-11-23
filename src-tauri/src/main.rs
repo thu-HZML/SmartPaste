@@ -359,6 +359,7 @@ fn main() {
             db::favorite_data_by_id,
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
+            db::get_favorite_data_count,
             db::search_text_content,
             db::add_notes_by_id,
             db::filter_data_by_type,
@@ -370,7 +371,9 @@ fn main() {
             db::remove_item_from_folder,
             db::filter_data_by_folder,
             db::get_folders_by_item_id,
+            db::get_ocr_text_by_item_id,
             db::search_data_by_ocr_text,
+            db::get_icon_data_by_item_id,
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
@@ -418,6 +421,10 @@ fn main() {
             config::set_email,
             config::set_bio,
             config::set_avatar_path,
+            config::set_ocr_provider,
+            config::set_ocr_languages,
+            config::set_ocr_confidence_threshold,
+            config::set_ocr_timeout_secs,
         ])
         .setup(move |app| {
             // 初始化数据库路径
