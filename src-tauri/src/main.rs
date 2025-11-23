@@ -359,6 +359,7 @@ fn main() {
             db::favorite_data_by_id,
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
+            db::get_favorite_data_count,
             db::search_text_content,
             db::add_notes_by_id,
             db::filter_data_by_type,
