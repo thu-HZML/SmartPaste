@@ -49,7 +49,7 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleMinimizeToTray">
+                <input type="checkbox" v-model="settings.showMinimizeTrayIcon" @change="toggleMinimizeToTray">
                 <span class="slider"></span>
               </label>
             </div>
@@ -365,6 +365,96 @@
           </div>
 
 
+        </div>
+
+        <!-- OCR设置 -->
+        <div v-if="activeNav === 'ocr'" class="panel-section">
+          <h2>OCR设置</h2>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>OCR提供者</h3>
+              <p>选择OCR识别服务提供者</p>
+            </div>
+            <div class="setting-control">
+              <select v-model="settings.ocrProvider" class="select-input" @change="updateOCRProvider">
+                <option value="auto">默认</option>
+                <option value="tesseract">Tesseract</option>
+                <option value="windows">Windows OCR</option>
+                <option value="baidu">百度OCR</option>
+                <option value="google">Google Vision</option>
+                <option value="custom">自定义</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>识别语言</h3>
+              <p>选择OCR识别的语言，支持多语言同时识别</p>
+            </div>
+            <div class="setting-control">
+              <div class="checkbox-group">
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.ocrLanguages" value="chi_sim" @change="updateOCRLanguages"> 简体中文
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.ocrLanguages" value="eng" @change="updateOCRLanguages"> 英语
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.ocrLanguages" value="jpn" @change="updateOCRLanguages"> 日语
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.ocrLanguages" value="kor" @change="updateOCRLanguages"> 韩语
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.ocrLanguages" value="fra" @change="updateOCRLanguages"> 法语
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" v-model="settings.ocrLanguages" value="deu" @change="updateOCRLanguages"> 德语
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>置信度阈值</h3>
+              <p>设置识别结果的置信度阈值，低于此值的结果将被忽略</p>
+            </div>
+            <div class="setting-control">
+              <div class="slider-container">
+                <input 
+                  type="range" 
+                  v-model="settings.ocrConfidenceThreshold" 
+                  min="0" 
+                  max="100" 
+                  step="1" 
+                  class="slider-input"
+                  @change="updateOCRConfidenceThreshold"
+                >
+                <span class="slider-value">{{ settings.ocrConfidenceThreshold }}%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>超时时间</h3>
+              <p>设置OCR识别的最长等待时间（秒）</p>
+            </div>
+            <div class="setting-control">
+              <input 
+                type="number" 
+                v-model="settings.ocrTimeoutSecs" 
+                min="5" 
+                max="120" 
+                class="number-input"
+                @change="updateOCRTimeout"
+              >
+              <span class="unit">秒</span>
+            </div>
+          </div>
         </div>
 
         <!-- AI Agent 设置 -->
@@ -813,6 +903,7 @@ const navItems = ref([
   { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
   { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
   { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
+  { id: 'ocr', name: 'OCR设置', icon: ClipboardIcon },
   { id: 'ai', name: 'AI Agent 设置', icon: ClipboardIcon },
   { id: 'security', name: '安全与隐私', icon: ClipboardIcon }, 
   { id: 'backup', name: '数据备份', icon: ClipboardIcon },
@@ -825,6 +916,7 @@ const navItems = ref([
 const settings = reactive({
   autoStart: true,
   showTrayIcon: true,
+  showMinimizeTrayIcon:true,
   autoSave: true,
   retentionDays: '30',
   maxHistoryItems: 100,
@@ -845,6 +937,12 @@ const settings = reactive({
   keepFavorites: true,
   autoSort: true,
 
+  // OCR设置
+  ocrProvider: 'auto',
+  ocrLanguages: ['chi_sim', 'eng'],
+  ocrConfidenceThreshold: 80,
+  ocrTimeoutSecs: 30,
+  
   // AI Agent 设置
   aiEnabled: false,
   aiService: 'openai',
@@ -1477,6 +1575,62 @@ const toggleAutoSort = async () => {
     showMessage(`设置失败: ${error}`)
   }
 }
+
+
+// OCR设置相关方法
+const updateOCRProvider = async () => {
+  try {
+    await invoke('set_ocr_provider', { provider: settings.ocrProvider })
+    showMessage(`OCR提供者已设置为 ${getOCRProviderName(settings.ocrProvider)}`)
+  } catch (error) {
+    console.error('设置OCR提供者失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const updateOCRLanguages = async () => {
+  try {
+    await invoke('set_ocr_languages', { languages: settings.ocrLanguages })
+    showMessage(`OCR语言已更新`)
+  } catch (error) {
+    console.error('设置OCR语言失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const updateOCRConfidenceThreshold = async () => {
+  try {
+    await invoke('set_ocr_confidence_threshold', { threshold: settings.ocrConfidenceThreshold / 100 })
+    showMessage(`置信度阈值已设置为 ${settings.ocrConfidenceThreshold}%`)
+  } catch (error) {
+    console.error('设置置信度阈值失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+const updateOCRTimeout = async () => {
+  try {
+    await invoke('set_ocr_timeout', { timeoutSecs: settings.ocrTimeoutSecs })
+    showMessage(`OCR超时时间已设置为 ${settings.ocrTimeoutSecs} 秒`)
+  } catch (error) {
+    console.error('设置OCR超时时间失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 辅助函数：获取OCR提供者名称
+const getOCRProviderName = (provider) => {
+  const providerMap = {
+    'auto': '默认',
+    'tesseract': 'Tesseract',
+    'windows': 'Windows OCR',
+    'baidu': '百度OCR',
+    'google': 'Google Vision',
+    'custom': '自定义'
+  }
+  return providerMap[provider] || provider
+}
+
 
 // AI Agent 设置相关方法
 const toggleAIEnabled = async () => {
@@ -2571,4 +2725,47 @@ input:checked + .slider:before {
     align-self: center;
   }
 }
+
+/* 滑块输入样式 */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 200px;
+}
+
+.slider-input {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e1e8ed;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3498db;
+  cursor: pointer;
+}
+
+.slider-input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3498db;
+  cursor: pointer;
+  border: none;
+}
+
+.slider-value {
+  min-width: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #2c3e50;
+}
+
 </style>
