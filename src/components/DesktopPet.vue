@@ -147,6 +147,13 @@ const handlePointerMove = async (event) => {
   console.log('删除点击定时器')
   clearTimeout(clickPetTimeout)
 
+  // 检查鼠标是否仍然处于按下状态
+  if (event.buttons === 0) {
+    console.log('鼠标已释放，但move事件仍被触发，立即清理监听器')
+    cleanupEventListeners()
+    return
+  }
+
   const deltaX = event.screenX - dragStartPos.value.x
   const deltaY = event.screenY - dragStartPos.value.y
   
@@ -160,6 +167,7 @@ const handlePointerMove = async (event) => {
     console.error('移动窗口失败:', error)
   }
 
+  // 禁止点击 500ms
   allowClickPet.value = false
   clickPetTimeout = setTimeout(async () => {
     allowClickPet.value = true
@@ -197,10 +205,6 @@ const handleLeftClick = async (event) => {
   }
 
   console.log('🖱️ 桌宠被点击，切换菜单窗口')
-
-  setTimeout(() => {
-    handlePointerUp()
-  }, 10)
 
   try {
     const result = await toggleMenuWindow()
