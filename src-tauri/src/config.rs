@@ -21,7 +21,7 @@ pub struct Config {
     /// 历史记录保留天数（天）
     pub retention_days: u32,
     /// 主界面快捷键
-    #[serde(default = "default_shortcut")] 
+    #[serde(default = "default_shortcut")]
     pub global_shortcut: String,
     /// 第二界面快捷键
     #[serde(default = "default_shortcut_2")]
@@ -110,10 +110,24 @@ pub struct Config {
     pub bio: Option<String>,
     /// 头像文件路径
     pub avatar_path: Option<String>,
+
+    // --- OCR 设置 ---
+    /// OCR 提供商标识（例如 "tesseract"、"google" 等）
+    pub ocr_provider: Option<String>,
+    /// OCR 语言列表（例如 ["eng", "chi"]）
+    pub ocr_languages: Option<Vec<String>>,
+    /// OCR 置信度阈值（0.0 - 1.0）
+    pub ocr_confidence_threshold: Option<f32>,
+    /// OCR 超时时间（秒）
+    pub ocr_timeout_secs: Option<u64>,
 }
 // 辅助函数，防止旧 config.json 缺少字段导致解析失败
-fn default_shortcut() -> String { "Alt+Shift+V".to_string() }
-fn default_shortcut_2() -> String { "Alt+Shift+C".to_string() }
+fn default_shortcut() -> String {
+    "Alt+Shift+V".to_string()
+}
+fn default_shortcut_2() -> String {
+    "Alt+Shift+C".to_string()
+}
 /// 为 Config 实现 Default trait，提供默认配置值。
 impl Default for Config {
     /// 返回 Config 的默认实例。
@@ -174,6 +188,12 @@ impl Default for Config {
             email: None,       // 邮箱：无
             bio: None,         // 用户简介：无
             avatar_path: None, // 头像路径：无
+
+            // OCR
+            ocr_provider: None,             // OCR 提供商：无（使用默认值）
+            ocr_languages: None,            // OCR 语言列表：无
+            ocr_confidence_threshold: None, // OCR 置信度阈值：无
+            ocr_timeout_secs: None,         // OCR 超时时间：无
         }
     }
 }
@@ -279,7 +299,7 @@ pub fn set_global_shortcut_internal(shortcut: String) {
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
         cfg.global_shortcut = shortcut;
-    } 
+    }
     // 写锁在这里自动释放
 
     // 第二步：先获取读锁拿到配置副本，然后释放读锁
@@ -287,7 +307,7 @@ pub fn set_global_shortcut_internal(shortcut: String) {
         lock.read().unwrap().clone()
     } else {
         return;
-    }; 
+    };
     // 读锁在这里自动释放
 
     // 第三步：调用 save_config (它内部会再次获取写锁，但现在是安全的)
