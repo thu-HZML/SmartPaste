@@ -1,5 +1,5 @@
 <template>
-  <div class="app">
+  <div class="app" @mousedown="startDragging">
     <!-- 顶部搜索栏 -->
     <header class="app-header">
       <div class="search-container">
@@ -147,9 +147,7 @@
                         class="file-icon"
                         @error="handleIconError"
                       />
-                      <div class="file-info">
-                        <div class="file-name">{{ getFileName(item.content) }}</div>
-                      </div>
+                      <div class="file-name">{{ getFileName(item.content) }}</div>
                     </div>
 
                     <!-- 未知类型 -->
@@ -331,11 +329,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
+import { toggleClipboardWindow } from '../utils/actions.js'
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -378,6 +377,7 @@ const currentFolder = ref(null)
 const searchLoading = ref(false)
 const currentItem = ref(null)
 const folderQuery = ref('')
+const unlistenFocusChanged = ref(null) // 存储取消监听的函数
 const test = ref('')
 
 // 防抖定时器
@@ -385,6 +385,9 @@ let searchTimeout = null
 
 // 双击定时器
 let clickTimeout = null
+
+// 存储是否在拖动
+let isDragging = null
 
 // 分类选项
 const categories = ref([
@@ -398,6 +401,7 @@ const categories = ref([
 // 历史记录数据结构
 const folders = ref([])
 const filteredHistory = ref([])
+const initialSelectedFolders = ref([]) // 存储当前记录被收藏进的收藏夹
 const iconCache = ref({}) // 用于缓存已加载的图标
 
 /*
@@ -454,6 +458,7 @@ const handleCategoryChange = async (category) => {
   }
   else if (category.trim() === 'favorite'){
     searchLoading.value = true
+    console.log('默认收藏夹内容个数：', folders.value[0].num_items)
     await getAllFolders()
   }
   else if (category.trim() === 'folder') {
@@ -542,6 +547,9 @@ const togglePinnedView = () => {
 
 // 打开设置
 const openSettings = async () => {
+  // 移除窗口焦点监听器
+  removeWindowListeners()
+
   router.push('/preferences')
   showMessage('打开设置')
 }
@@ -596,15 +604,27 @@ const executeDoubleClick = async (item) => {
     try {
       const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
       const foldersJson = JSON.parse(foldersString)
-      console.log(foldersJson)
+
+      // 保存初始选中状态
+      initialSelectedFolders.value = foldersJson.map(f => f.id)
+
       folders.value = folders.value.map(folder => {
         // 检查当前文件夹是否在foldersJson中（即包含该项目）
         const isContained = foldersJson.some(f => f.id === folder.id)
+
         return {
           ...folder,
           isSelected: isContained
         }
       })
+      
+      // 如果项目已被收藏但不在任何收藏夹中，确保默认收藏夹被选中
+      if (item.is_favorite) {
+        const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+        if (defaultFolder && !defaultFolder.isSelected) {
+          defaultFolder.isSelected = true
+        }
+      }
     } catch(err) {
       console.error('获取收藏夹失败:', err)
     }
@@ -635,12 +655,9 @@ const cancelDeleteAll = () => {
 
 // 编辑项目
 const editItem = (item) => {
-  loadIcon(item.content)
-  /*
   editingItem.value = item
   editingText.value = item.content
   showEditModal.value = true
-  */
 }
 
 // 保存编辑
@@ -708,9 +725,15 @@ const copyOCR = async () => {
   if (!ocrText.value || ocrText.value.trim() === '') {
     showMessage('内容不能为空')
   } else {
-    // const string = 
-    // await invoke('insert_received_data', { filePath: item.content })
+    // 添加到数据库
+    await invoke('insert_received_text_data', { text: ocrText.value })
+    // 复制该内容
+    await invoke('write_to_clipboard', { text: ocrText.value })
     showMessage('已复制OCR内容')
+
+    // 刷新界面
+    handleSearch(searchQuery.value)
+    handleCategoryChange(activeCategory.value)
   }
   cancelOCR()
 }
@@ -723,16 +746,38 @@ const cancelOCR = () => {
 
 // 删除历史记录
 const removeItem = async (item) => {
-  /* 图片OCR
-  const result = await invoke('ocr_image', { filePath: history.value[index].content })
-  console.log(result)
-  */ 
-  await invoke('delete_data_by_id', { id: item.id })
-  const index = filteredHistory.value.findIndex(i => i.id === item.id)
-  if (index !== -1) {
-    filteredHistory.value.splice(index, 1)
+  try {
+    // 如果记录被收藏，先从所有收藏夹中移除
+    if (item.is_favorite) {
+      // 获取包含该记录的所有收藏夹
+      const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
+      const foldersContainingItem = JSON.parse(foldersString)
+      
+      // 从每个收藏夹中移除该记录
+      const removePromises = foldersContainingItem.map(folder => 
+        invoke('remove_item_from_folder', {
+          folderId: folder.id,
+          itemId: item.id
+        })
+      )
+      
+      await Promise.all(removePromises)
+    }
+    
+    // 删除历史记录本身
+    await invoke('delete_data_by_id', { id: item.id })
+    
+    // 从前端列表中移除
+    const index = filteredHistory.value.findIndex(i => i.id === item.id)
+    if (index !== -1) {
+      filteredHistory.value.splice(index, 1)
+    }
+    
+    showMessage('已删除记录')
+  } catch (error) {
+    console.error('删除记录失败:', error)
+    showMessage('删除记录失败')
   }
-  showMessage('已删除记录')
 }
 
 // 格式化时间
@@ -903,32 +948,77 @@ const showFolderContent = async (item) => {
 
 // 切换收藏夹选中状态
 const selectFolder = (item) => {
-  // 切换当前项的选中状态
-  item.isSelected = !item.isSelected
+  // 如果是默认收藏夹
+  if (item.name === '默认收藏夹') {
+    // 如果取消选中默认收藏夹，则取消所有其他收藏夹
+    if (item.isSelected) {
+      // 取消选中默认收藏夹
+      item.isSelected = false
+      // 取消所有其他收藏夹的选中
+      folders.value.forEach(folder => {
+        if (folder.name !== '默认收藏夹') {
+          folder.isSelected = false
+        }
+      })
+    } else {
+      // 选中默认收藏夹
+      item.isSelected = true
+    }
+  } else {
+    // 非默认收藏夹
+    // 切换当前项的选中状态
+    item.isSelected = !item.isSelected
+    
+    // 如果选中了任何非默认收藏夹，确保默认收藏夹也被选中
+    if (item.isSelected) {
+      const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+      if (defaultFolder && !defaultFolder.isSelected) {
+        defaultFolder.isSelected = true
+      }
+    }
+  }
 }
 
 // 把历史记录添加到收藏夹中
 const addToFolder = async () => {
   try {
-    const selectedFolders = folders.value.filter(item => item.isSelected)
-    
-    if (selectedFolders.length === 0) {
-      showMessage('请先选择收藏夹')
-      return
-    }
+    const selectedFolders = folders.value.filter(item => 
+      item.isSelected && item.name !== '默认收藏夹'
+    )
+    const previouslySelectedFolders = folders.value.filter(item => 
+      initialSelectedFolders.value.includes(item.id) && !item.isSelected
+    )
     
     // 并行处理所有选中的文件夹
-    const promises = selectedFolders.map(item => 
+    const addPromises = selectedFolders.map(item => 
       invoke('add_item_to_folder', { 
         folderId: item.id,
         itemId: currentItem.value.id
       })
     )   
+    
+    // 从之前选中但现在未选中的收藏夹中移除
+    const removePromises = previouslySelectedFolders.map(item =>
+      invoke('remove_item_from_folder', {
+        folderId: item.id,
+        itemId: currentItem.value.id
+      })
+    )
 
-    await Promise.all(promises)
+    await Promise.all([...addPromises, ...removePromises])
     showMessage('已收藏进指定文件夹')
-    currentItem.value.is_favorite = true
-    await invoke('set_favorite_status_by_id', { id: currentItem.value.id })
+
+    if (folders.value[0].isSelected) {
+      currentItem.value.is_favorite = true
+      await invoke('favorite_data_by_id', { id: currentItem.value.id })
+    } else {
+      currentItem.value.is_favorite = false
+      await invoke('unfavorite_data_by_id', { id: currentItem.value.id })
+    }
+
+    // 刷新界面
+    handleSearch(searchQuery.value)
+    handleCategoryChange(activeCategory.value)
   } catch (err) {
     console.error('创建文件夹失败', err)
   }
@@ -942,6 +1032,8 @@ const cancelAddToFolder = () => {
     ...item,
     isSelected: false
   }))
+
+  initialSelectedFolders.value = [] // 重置初始选中状态
 }
 
 // 主窗口监听剪贴板事件
@@ -994,10 +1086,97 @@ const loadIcon = async (filePath) => {
   }
 }
 
+// 使用 Tauri API 开始拖动窗口
+const startDragging = async (event) => {
+  // 防止在输入框上触发拖动
+  if (event.target.tagName === 'INPUT' || event.target.closest('input')) {
+    return
+  }
+  
+  // 防止在按钮上触发拖动
+  if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+    return
+  }
+  
+  // 防止在图标上触发拖动
+  if (event.target.tagName === 'svg' || event.target.tagName === 'path' || event.target.closest('svg')) {
+    return
+  }
+  
+  // 防止在模态框上触发拖动
+  if (event.target.closest('.modal')) {
+    return
+  }
+  
+  try {
+    isDragging = true
+    await currentWindow.startDragging()
+  } catch (error) {
+    console.error('开始拖动失败:', error)
+  } finally {
+    // 使用 setTimeout 确保拖动操作完成后再重置状态
+    setTimeout(() => {
+      isDragging = false
+    }, 100)
+  }
+}
+
+// 窗口失焦时自动关闭窗口
+const setupWindowListeners = async () => { 
+  // 如果已经存在监听器，先移除
+  if (unlistenFocusChanged.value) {
+    unlistenFocusChanged.value()
+    unlistenFocusChanged.value = null
+  }
+
+  // 监听窗口失去焦点事件
+  unlistenFocusChanged.value = await currentWindow.onFocusChanged(async ({ payload: focused }) => {
+    if (!focused) {   
+      if (isDragging) {
+        console.log('检测到正在拖动，不关闭窗口')
+        return
+      }
+      console.log('窗口失去焦点，准备关闭')
+      currentWindow.close()
+    }
+    else {
+      console.log('窗口获得焦点')
+    }
+  })
+}
+
+// 移除窗口失焦监听函数
+const removeWindowListeners = () => {
+  if (unlistenFocusChanged.value) {
+    unlistenFocusChanged.value()
+    unlistenFocusChanged.value = null
+    console.log('已移除窗口焦点监听器')
+  }
+}
+
 // 生命周期
 onMounted(async () => {
   console.log('开始初始化...')
+
+  // OCR配置
+  await invoke('configure_ocr', {})
   
+  // 开启后端监听
+  await setupClipboardRelay()
+  
+  // 设置窗口事件监听器
+  await setupWindowListeners()
+  
+  // 设置窗口聚焦
+  currentWindow.setFocus()
+
+  // 初始化窗口大小
+  try {
+    await currentWindow.setSize(new LogicalSize(400, 600));
+  } catch (error) {
+    console.error('设置窗口大小失败:', error)
+  }
+
   // 设置示例数据
   filteredHistory.value = [
     {
@@ -1017,20 +1196,9 @@ onMounted(async () => {
   // 获取收藏夹记录
   await getAllFolders()
   console.log('数据长度:', filteredHistory.value.length)
-
-  // OCR配置
-  await invoke('configure_ocr', {})
-  
-  // 开启后端监听
-  await setupClipboardRelay()
-
-  // 初始化窗口大小
-  try {
-    await currentWindow.setSize(new LogicalSize(400, 600));
-  } catch (error) {
-    console.error('设置窗口大小失败:', error)
-  }
+ 
 })
+
 </script>
 
 <style scoped>
@@ -1073,7 +1241,6 @@ body {
 .search-container {
   padding: 8px 10px;
   border-bottom: 1px solid #f0f0f0;
-  -webkit-app-region: drag;
 }
 
 .search-bar {
@@ -1081,7 +1248,6 @@ body {
   flex-direction: row;
   position: relative;
   margin: 0 auto;
-  -webkit-app-region: no-drag;
 }
 
 .search-icon {
@@ -1117,7 +1283,6 @@ body {
   justify-content: space-between;
   padding: 8px 10px;
   background: #ffffff;
-  -webkit-app-region: drag;
   align-items: center;
 }
 
@@ -1135,7 +1300,6 @@ body {
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
-  -webkit-app-region: no-drag;
 }
 
 .category-btn:hover {
@@ -1159,8 +1323,7 @@ body {
   font-size: 18px;
   cursor: pointer;
   border-radius: 6px;
-  transition: background 0.2s;
-  -webkit-app-region: no-drag;  
+  transition: background 0.2s;  
 }
 
 .icon-btn:hover {
@@ -1327,7 +1490,6 @@ body {
 /* 剪贴文本样式 */
 .item-content {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 10px;
@@ -1348,6 +1510,7 @@ body {
   color: #1f1f1f;
   min-height: 83px;
   max-height: 83px;
+  align-items: center;
 }
 
 /* 剪贴图片预览样式 */
@@ -1380,35 +1543,29 @@ body {
 .file-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background-color: #f9f9f9;
+  gap: 8px;
+  overflow: hidden;
+  height: 80px;
 }
 
 .file-icon {
-  font-size: 24px;
-}
-
-.file-info {
-  flex: 1;
-  min-width: 0; /* 允许文本截断 */
+  max-height: 50px;
 }
 
 .file-name {
-  font-weight: 500;
-  white-space: nowrap;
+  display: -webkit-box;
+  line-clamp: 2;          /* 限制显示行数 */
+  -webkit-line-clamp: 2;      /* 限制显示行数 */
+  white-space: pre-wrap;  /* 保留连续空格和换行 */
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.file-path {
-  font-size: 12px;
-  color: #888;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+  color: #1f1f1f;
+  max-height: 42px;
 }
 
 /* 收藏夹样式 */

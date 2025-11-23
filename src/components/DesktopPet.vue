@@ -113,7 +113,7 @@ const handleLeftClick = async (event) => {
   }, 10)
 
   try {
-    const result = await toggleClipboardWindow()
+    await toggleClipboardWindow()
     hasClipboardWindow.value = !hasClipboardWindow.value
     
     if (hasClipboardWindow.value) {

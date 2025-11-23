@@ -317,7 +317,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                 let state = app_handle.state::<ClipboardSourceState>();
                 let mut flag = state.is_frontend_copy.lock().unwrap();
                 if *flag {
-                    frontend_ignore_countdown = 9; // 0.9秒倒计时
+                    frontend_ignore_countdown = 30; // 3秒倒计时
                     *flag = false; // 重置状态
                     println!("前端触发复制，启动忽略倒计时...");
                 }
@@ -429,7 +429,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
             // --- 文件监控 ---
             else if let Ok(paths) = clipboard_files::read() {
                 if !paths.is_empty() && paths != last_file_paths {
-                    println!("检测到新的文件复制: {:?}", paths);
+                    //println!("检测到新的文件复制: {:?}", paths);
                     last_file_paths = paths.clone();
                     last_text.clear();
                     last_image_bytes.clear();
@@ -459,7 +459,13 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                     })
                                     .unwrap_or_else(|| "file".to_string())
                             };
-
+                            if item_type == "image" {
+                                println!("检测到图片复制: {:?}", path);
+                            } else if item_type == "file" {
+                                println!("检测到文件复制: {:?}", path);
+                            } else if item_type == "folder" {
+                                println!("检测到文件夹复制: {:?}", path);
+                            }
                             if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                                 let timestamp = Utc::now().timestamp_millis();
                                 let new_file_name = format!("{}-{}", timestamp, file_name);
