@@ -191,9 +191,9 @@ impl Default for Config {
 
             // OCR
             ocr_provider: None,             // OCR 提供商：无（使用默认值）
-            ocr_languages: None,            // OCR 语言列表：无
-            ocr_confidence_threshold: None, // OCR 置信度阈值：无
-            ocr_timeout_secs: None,         // OCR 超时时间：无
+            ocr_languages: None,            // OCR 语言列表：无（使用默认值）
+            ocr_confidence_threshold: None, // OCR 置信度阈值：无（使用默认值）
+            ocr_timeout_secs: None,         // OCR 超时时间：无（使用默认值）
         }
     }
 }
@@ -902,6 +902,63 @@ pub fn set_avatar_path(avatar_path: String) {
         } else {
             Some(avatar_path)
         };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 9. OCR 设置 ---------------
+/// 设置 OCR 提供商。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// provider: String - OCR 提供商标识
+#[tauri::command]
+pub fn set_ocr_provider(provider: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ocr_provider = if provider.is_empty() {
+            None
+        } else {
+            Some(provider)
+        };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 OCR 语言列表。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// languages: Vec<String> - OCR 语言列表
+#[tauri::command]
+pub fn set_ocr_languages(languages: Vec<String>) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        if languages.is_empty() {
+            cfg.ocr_languages = None;
+        } else {
+            cfg.ocr_languages = Some(languages);
+        }
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 OCR 置信度阈值。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// threshold: f32 - 置信度阈值（0.0 - 1.0）
+#[tauri::command]
+pub fn set_ocr_confidence_threshold(threshold: f32) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ocr_confidence_threshold = Some(threshold);
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 OCR 超时时间。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// timeout_secs: u64 - 超时时间（秒）
+#[tauri::command]
+pub fn set_ocr_timeout_secs(timeout_secs: u64) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ocr_timeout_secs = Some(timeout_secs);
     }
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }

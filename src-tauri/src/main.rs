@@ -418,6 +418,10 @@ fn main() {
             config::set_email,
             config::set_bio,
             config::set_avatar_path,
+            config::set_ocr_provider,
+            config::set_ocr_languages,
+            config::set_ocr_confidence_threshold,
+            config::set_ocr_timeout_secs,
         ])
         .setup(move |app| {
             // 初始化数据库路径
