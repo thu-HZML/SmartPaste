@@ -370,6 +370,7 @@ fn main() {
             db::remove_item_from_folder,
             db::filter_data_by_folder,
             db::get_folders_by_item_id,
+            db::search_data_by_ocr_text,
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
