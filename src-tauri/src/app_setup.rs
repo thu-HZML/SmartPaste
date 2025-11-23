@@ -511,15 +511,15 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                                 {
                                                     Ok(data_uri) => {
                                                         // data:image/png;base64,XXXXX -> 取逗号后的 base64
-                                                        let base64 = match data_uri.find(',') {
-                                                            Some(idx) => {
-                                                                data_uri[idx + 1..].to_string()
-                                                            }
-                                                            None => data_uri,
-                                                        };
+                                                        // let base64 = match data_uri.find(',') {
+                                                        //     Some(idx) => {
+                                                        //         data_uri[idx + 1..].to_string()
+                                                        //     }
+                                                        //     None => data_uri,
+                                                        // };
                                                         if let Err(err) = db::insert_icon_data(
                                                             &item_id_for_icon,
-                                                            &base64,
+                                                            &data_uri,
                                                         ) {
                                                             eprintln!(
                                                                 "❌ insert_icon_data 失败: {:?}",
