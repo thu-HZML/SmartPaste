@@ -718,7 +718,7 @@ const cancelNote = () => {
 const showOCR = async (item) => {
   const ocrString = await invoke('get_ocr_text_by_item_id', { itemId: item.id })
   console.log(ocrString)
-  ocrText.value = JSON.parse(ocrString)[0].text
+  ocrText.value = ocrString
   showOcrModal.value = true
 }
 
@@ -825,14 +825,16 @@ const getAllHistory = async () => {
     filteredHistory.value = JSON.parse(jsonString)
 
     // 为现有数组中的每个对象添加 is_focus 字段
-    filteredHistory.value = filteredHistory.value.map(async item => ({
-      ...item,
-      is_focus: false,
-      iconData: await invoke('get_icon_data_by_item_id', { itemId: item.id })
-    }))
-
-    // 为文件类型的项目加载图标
-    await loadIconsForFiles()
+    for (let i = 0; i < filteredHistory.value.length; i++) {
+      filteredHistory.value[i].is_focus = false;
+      let iconString = await invoke('get_icon_data_by_item_id', { 
+        itemId: filteredHistory.value[i].id 
+      });
+      console.log('文件图标：',iconString)
+      
+      filteredHistory.value[i].iconData = iconString
+    }
+    loadIconsForFiles()
   } catch (error) {
     console.error('调用失败:', error)
   }
@@ -1064,7 +1066,7 @@ const loadIconsForFiles = async () => {
       } else {
         const iconBase64 = await loadIcon(item.content)
         if (iconBase64) {
-          item.iconData = iconBase64
+          console.log('标准文件图标：',iconBase64)
           iconCache.value[item.content] = iconBase64 // 缓存图标
         }
       }
@@ -1140,7 +1142,7 @@ const setupWindowListeners = async () => {
         return
       }
       console.log('窗口失去焦点，准备关闭')
-      // currentWindow.close()
+      currentWindow.close()
     }
     else {
       console.log('窗口获得焦点')
