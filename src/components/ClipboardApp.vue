@@ -460,8 +460,9 @@ const handleCategoryChange = async (category) => {
   }
   else if (category.trim() === 'favorite'){
     searchLoading.value = true
-    console.log('默认收藏夹内容个数：', folders.value[0].num_items)
     await getAllFolders()
+    const result = await invoke('get_favorite_data_count')
+    folders.value[0].num_items = result
   }
   else if (category.trim() === 'folder') {
     await performFolder()
