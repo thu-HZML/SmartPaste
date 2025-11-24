@@ -1,5 +1,5 @@
 <template>
-  <div class="app" @mousedown="startDragging">
+  <div class="app" >
     <!-- 顶部搜索栏 -->
     <header class="app-header">
       <div class="search-container">
@@ -179,10 +179,9 @@
             v-for="(item, index) in folders" 
             :key="index" 
             class="folder-item"
-            tabindex="0"
-            @click="showFolderContent(item)"
+            tabindex="0"            
           >
-            <div class="folder-content">
+            <div class="folder-content" @click="showFolderContent(item)">
               <FolderIcon class="icon-folder" />
               <span class="folder-name" :title="item.name">{{ item.name }}</span>
               <span class="content-count">{{ item.num_items }}</span> 
@@ -1070,6 +1069,16 @@ const startDragging = async (event) => {
   
   // 防止在模态框上触发拖动
   if (event.target.closest('.modal')) {
+    return
+  }
+  
+  // 新增：防止在收藏夹项目上触发拖动
+  if (event.target.closest('.folder-item')) {
+    return
+  }
+  
+  // 新增：防止在收藏夹内容区域上触发拖动
+  if (event.target.closest('.folder-content')) {
     return
   }
   
