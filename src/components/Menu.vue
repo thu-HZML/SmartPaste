@@ -70,7 +70,7 @@
 
 <script setup>
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { toggleClipboardWindow } from '../utils/actions.js'
+import { toggleClipboardWindow ,toggleFavoritesWindow} from '../utils/actions.js'
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -95,8 +95,14 @@ const openHistory = async () => {
   }
 }
 
-const openFavorites = () => {
+const openFavorites = async () => {
   console.log('打开收藏夹')
+  try {
+    await toggleFavoritesWindow()
+    console.log('⭐ 收藏夹窗口已打开')
+  } catch (error) {
+    console.error('打开收藏夹窗口失败:', error)
+  }
 }
 
 const openTimeline = () => {
