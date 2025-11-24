@@ -1,5 +1,5 @@
 <template>
-  <div class="app" >
+  <div class="app" @mousedown="startDragging">
     <!-- 顶部搜索栏 -->
     <header class="app-header">
       <div class="search-container">
@@ -31,7 +31,8 @@
         
         <div class="toolbar-actions">
           <button class="icon-btn" @click="togglePinnedView">
-            <LockClosedIcon class="icon-settings" />
+            <LockOpenIcon v-if="canDeleteWindow" class="icon-settings" />
+            <LockClosedIcon v-else class="icon-settings" />
           </button>
           <button class="icon-btn" @click="openSettings">         
             <Cog6ToothIcon class="icon-settings" />
@@ -346,7 +347,8 @@ import {
   TrashIcon,
   Square2StackIcon,
   FolderPlusIcon,
-  FolderIcon
+  FolderIcon,
+  LockOpenIcon
  } from '@heroicons/vue/24/outline'
 import { 
   StarIcon as StarIconSolid
@@ -439,10 +441,10 @@ const handleSearch = async (query) => {
   
   searchLoading.value = true
   
-  // 设置新的定时器（300ms 防抖）
+  // 设置新的定时器（100ms 防抖）
   searchTimeout = setTimeout(async () => {
     await performSearch(query)
-  }, 300)
+  }, 100)
 }
 
 // 分类逻辑
@@ -475,6 +477,15 @@ const performSearch = async (query) => {
     })
     
     filteredHistory.value = JSON.parse(result)
+
+    // 为现有数组中的每个对象添加 is_focus、iconData字段
+    for (let i = 0; i < filteredHistory.value.length; i++) {
+      filteredHistory.value[i].is_focus = false;
+      let iconString = await invoke('get_icon_data_by_item_id', { 
+        itemId: filteredHistory.value[i].id 
+      });
+      filteredHistory.value[i].iconData = iconString
+    }
   } catch (err) {
     console.error('搜索失败:', err)
   } finally {
@@ -489,6 +500,15 @@ const performClassify = async (currentCategory) => {
       itemType: currentCategory.trim() 
     })    
     filteredHistory.value = JSON.parse(result)
+
+    // 为现有数组中的每个对象添加 is_focus、iconData字段
+    for (let i = 0; i < filteredHistory.value.length; i++) {
+      filteredHistory.value[i].is_focus = false;
+      let iconString = await invoke('get_icon_data_by_item_id', { 
+        itemId: filteredHistory.value[i].id 
+      });
+      filteredHistory.value[i].iconData = iconString
+    }
   } catch (err) {
     console.error('分类失败:', err)
   } finally {
@@ -1041,7 +1061,7 @@ const cancelAddToFolder = () => {
 const setupClipboardRelay = async () => {
   const unlisten = await listen('clipboard-updated', async (event) => {
     console.log('接受后端更新消息')
-    console.log('通过中转收到剪贴板事件:', event.payload)
+
     // 刷新历史记录
     handleSearch(searchQuery.value)
     handleCategoryChange(activeCategory.value)
@@ -1071,7 +1091,7 @@ const startDragging = async (event) => {
   if (event.target.closest('.modal')) {
     return
   }
-  
+
   // 新增：防止在收藏夹项目上触发拖动
   if (event.target.closest('.folder-item')) {
     return
@@ -1081,7 +1101,7 @@ const startDragging = async (event) => {
   if (event.target.closest('.folder-content')) {
     return
   }
-  
+
   try {
     isDragging = true
     await currentWindow.startDragging()
