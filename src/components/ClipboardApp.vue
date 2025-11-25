@@ -30,13 +30,25 @@
         </div>
         
         <div class="toolbar-actions">
+          <!-- 多选复制按钮 -->
+          <button 
+            v-if="showMultiCopyBtn" 
+            class="icon-btn" 
+            @click="copySelectedItems"
+            title="复制选中的项目"
+          >
+            <Square2StackIconSolid class="icon-settings" />
+          </button>
+          <!-- 固定视图按钮 -->
           <button class="icon-btn" @click="togglePinnedView">
             <LockOpenIcon v-if="canDeleteWindow" class="icon-settings" />
             <LockClosedIcon v-else class="icon-settings" />
           </button>
+          <!-- 打开设置按钮 -->
           <button class="icon-btn" @click="openSettings">         
             <Cog6ToothIcon class="icon-settings" />
           </button>
+          <!-- 清空按钮 -->
           <button class="icon-btn" @click="showDeleteAll">           
             <TrashIcon class="icon-settings" />
           </button>
@@ -59,7 +71,9 @@
             v-for="(item, index) in filteredHistory" 
             :key="index" 
             class="history-item"
+            :class="{ 'selected': item.is_selected }"
             tabindex="0"
+            @click="handleItemClick(item, $event)"
             @mouseenter="item.is_focus = true"
             @mouseleave="item.is_focus = false"
           >
@@ -73,6 +87,9 @@
 
               <!-- 右上方按钮组 -->
               <div class="item-actions-top">
+                <div v-if="item.selectionOrder" class="selection-order-badge">
+                  {{ item.selectionOrder }}
+                </div>
                 <button 
                   v-if="item.item_type === 'image'"
                   class="icon-btn-small" 
@@ -351,7 +368,8 @@ import {
   LockOpenIcon
  } from '@heroicons/vue/24/outline'
 import { 
-  StarIcon as StarIconSolid
+  StarIcon as StarIconSolid,
+  Square2StackIcon as Square2StackIconSolid
 } from '@heroicons/vue/24/solid'
 
 const router = useRouter()
@@ -360,6 +378,8 @@ const currentWindow = getCurrentWindow();
 // 响应式数据
 const searchQuery = ref('')
 const activeCategory = ref('all')
+
+// 提示框&模态框
 const showToast = ref(false)
 const toastMessage = ref('')
 const showEditModal = ref(false)
@@ -374,22 +394,32 @@ const notingText = ref('')
 const notingItem = ref(null)
 const ocrText = ref('')
 const folderNotingText = ref('')
+
+// 指向性数据
 const currentFolder = ref(null)
-const searchLoading = ref(false)
 const currentItem = ref(null)
 const folderQuery = ref('')
 const unlistenFocusChanged = ref(null) // 存储取消监听的函数
+
+// 状态显示
+const searchLoading = ref(false)
 const canDeleteWindow = ref(true)
+let isDragging = null
 const test = ref('')
+
+// 多选相关数据
+const multiSelectMode = ref(false)
+const selectedItems = ref([]) // 存储选中的历史记录
+const showMultiCopyBtn = ref(false) // 控制复制按钮显示
+
+// 计算属性
+const selectedItemsCount = computed(() => selectedItems.value.length)
 
 // 防抖定时器
 let searchTimeout = null
 
 // 双击定时器
 let clickTimeout = null
-
-// 存储是否在拖动
-let isDragging = null
 
 // 分类选项
 const categories = ref([
@@ -452,7 +482,6 @@ const handleCategoryChange = async (category) => {
   if (['image', 'video', 'file'].includes(category)) {
     searchLoading.value = true
     await performClassify(category)
-    return
   }
   else if (category.trim() === 'all'){
     searchLoading.value = true
@@ -466,7 +495,11 @@ const handleCategoryChange = async (category) => {
   }
   else if (category.trim() === 'folder') {
     await performFolder()
-    return
+  }
+
+  if (multiSelectMode.value) {
+    // 退出多选状态
+    exitMultiSelectMode()
   }
 }
 
@@ -482,6 +515,7 @@ const performSearch = async (query) => {
     // 为现有数组中的每个对象添加 is_focus、iconData字段
     for (let i = 0; i < filteredHistory.value.length; i++) {
       filteredHistory.value[i].is_focus = false;
+      filteredHistory.value[i].is_selected = false;
       let iconString = await invoke('get_icon_data_by_item_id', { 
         itemId: filteredHistory.value[i].id 
       });
@@ -505,6 +539,7 @@ const performClassify = async (currentCategory) => {
     // 为现有数组中的每个对象添加 is_focus、iconData字段
     for (let i = 0; i < filteredHistory.value.length; i++) {
       filteredHistory.value[i].is_focus = false;
+      filteredHistory.value[i].is_selected = false;
       let iconString = await invoke('get_icon_data_by_item_id', { 
         itemId: filteredHistory.value[i].id 
       });
@@ -847,6 +882,7 @@ const getAllHistory = async () => {
     // 为现有数组中的每个对象添加 is_focus 字段
     for (let i = 0; i < filteredHistory.value.length; i++) {
       filteredHistory.value[i].is_focus = false;
+      filteredHistory.value[i].is_selected = false;
       let iconString = await invoke('get_icon_data_by_item_id', { 
         itemId: filteredHistory.value[i].id 
       });
@@ -1103,6 +1139,11 @@ const startDragging = async (event) => {
     return
   }
 
+  // 新增：防止在历史记录上触发拖动
+  if (event.target.closest('.history-item')) {
+    return
+  }
+
   try {
     isDragging = true
     await currentWindow.startDragging()
@@ -1147,6 +1188,100 @@ const removeWindowListeners = () => {
     unlistenFocusChanged.value = null
     console.log('已移除窗口焦点监听器')
   }
+}
+
+// 更新序号
+const updateSelectionOrder = () => {
+  // 按选中顺序重新排序并分配序号
+  selectedItems.value.forEach((item, index) => {
+    item.selectionOrder = index + 1
+  })
+}
+
+// 处理项目点击（支持Shift多选）
+const handleItemClick = (item, event) => {
+  if (event.shiftKey && multiSelectMode.value) {
+    // Shift多选逻辑
+    const existingIndex = selectedItems.value.findIndex(selected => selected.id === item.id)
+    
+    if (existingIndex !== -1) {
+      // 如果已经选中，则移除
+      item.is_selected = false
+      selectedItems.value.splice(existingIndex, 1)
+      item.selectionOrder = 0 // 清除序号
+    } else {
+      // 如果未选中，则添加
+      item.is_selected = true
+      selectedItems.value.push(item)
+    }
+    
+    // 更新复制按钮显示状态
+    showMultiCopyBtn.value = selectedItems.value.length > 0
+
+    // 更新所有选中项的序号
+    updateSelectionOrder()
+
+    event.stopPropagation()
+  } else if (event.shiftKey && !multiSelectMode.value) {
+    // 第一次按Shift点击，进入多选模式
+    multiSelectMode.value = true
+    item.is_selected = true
+    selectedItems.value.push(item)
+    showMultiCopyBtn.value = true
+    showMessage('已进入多选模式，继续按Shift点击可选择多个项目')
+
+    item.selectionOrder = 1 // 第一个项目序号为1
+
+    event.stopPropagation()
+  } else {
+    exitMultiSelectMode()
+  }
+}
+
+// 复制所有选中的项目
+const copySelectedItems = async () => {
+  if (selectedItems.value.size === 0) {
+    showMessage('请先选择要复制的项目')
+    return
+  }
+
+  try {
+    let successCount = 0
+    let errorCount = 0
+    let copyString = ''
+
+    selectedItems.value.forEach(item => {
+      if (item.item_type === 'text') {
+        copyString += item.content + '\n'
+        successCount++
+      }     
+    })
+
+    if (copyString.trim() !== '') {
+      await invoke('write_to_clipboard', { text: copyString })
+      showMessage(`已成功复制 ${successCount} 个文本项目`)
+    } else {
+      showMessage('没有找到可复制的文本内容')
+    }
+    // 复制完成后退出多选模式
+    exitMultiSelectMode()
+    
+  } catch (error) {
+    console.error('复制选中项目失败:', error)
+    showMessage('复制失败，请重试')
+  }
+}
+
+// 退出多选模式
+const exitMultiSelectMode = () => {
+  multiSelectMode.value = false
+  console.log('多选复制内容为：',selectedItems)
+  selectedItems.value.forEach(item => {
+    item.is_selected = false    
+    item.selectionOrder = 0
+  })
+  selectedItems.value = []
+  showMultiCopyBtn.value = false
 }
 
 // 生命周期
@@ -1436,6 +1571,10 @@ body {
   transition: all 0.2s ease;
   position: relative;
   max-width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .history-item:hover {
@@ -1445,12 +1584,35 @@ body {
 .history-item:focus {
   border-color: #3282f6;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+  outline: none;
+}
+
+/* 多选模式样式 */
+.history-item.selected {
+  border-color: #3282f6;
+  background-color: #e4edfd;
 }
 
 /* 信息框架 */
 .item-info {
   display: flex;
   justify-content: space-between;
+}
+
+/* 多选序号 */
+.selection-order-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: #3282f6;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 
 /* 元信息样式 */
