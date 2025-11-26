@@ -1267,9 +1267,7 @@ const exitMultiSelectMode = () => {
   showMultiCopyBtn.value = false
 }
 
-/**
- * 高性能版本 - 结合响应式和直接修改的优点
- */
+// 为历史记录数组添加前端额外字段并获取图标数据
 async function optimizeHistoryItems(historyRef, options = {}) {
   const { defaultFocus = false, defaultSelected = false } = options
   const array = historyRef.value
@@ -1280,22 +1278,51 @@ async function optimizeHistoryItems(historyRef, options = {}) {
     item.is_focus = defaultFocus
     item.is_selected = defaultSelected
   }
-  setTimeout(async () => {
-    // 并行获取图标数据
-    const fileItems = array.filter(item => item.item_type === 'file')
-    const promises = fileItems.map(item => 
-      invoke('get_icon_data_by_item_id', { itemId: item.id })
-        .then(iconString => {
-          item.iconData = iconString
-        })
-        .catch(error => {
-          console.error(`Failed to get icon for ${item.id}:`, error)
-          item.iconData = null
-        })
-    )   
-    await Promise.all(promises)
-  }, 800)
-  
+
+  // 并行获取图标数据（带重试功能）
+  const fileItems = array.filter(item => item.item_type === 'file')
+  const promises = fileItems.map(item => 
+    fetchIconWithRetryRecursive(item.id, 5) // 最多重试5次
+      .then(iconString => {
+        item.iconData = iconString
+      })
+      .catch(error => {
+        console.error(`Failed to get icon for ${item.id} after retries:`, error)
+        item.iconData = null
+      })
+  )   
+  await Promise.all(promises)
+}
+
+// 递归版本的带重试功能的图标获取函数
+async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
+  try {
+    const iconString = await invoke('get_icon_data_by_item_id', { itemId })
+    
+    // 如果获取到的图标数据不为空，直接返回
+    if (iconString && iconString.trim() !== '') {
+      return iconString
+    }
+    // 如果为空且还有重试次数，等待100ms后递归调用
+    if (retriesLeft > 0) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      return fetchIconWithRetryRecursive(itemId, retriesLeft - 1)
+    } else {
+      // 达到最大重试次数，返回空字符串
+      console.warn(`Icon data for ${itemId} is empty after 5 retries.`)
+      return ''
+    }
+  } catch (error) {
+    // 如果发生错误且还有重试次数，等待100ms后递归调用
+    if (retriesLeft > 0) {
+      console.warn(`Failed to get icon for ${itemId}, retrying... (${5 - retriesLeft + 1}/5)`)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      return fetchIconWithRetryRecursive(itemId, retriesLeft - 1)
+    } else {
+      // 达到最大重试次数，抛出错误
+      throw new Error(`Failed to get icon after 5 retries: ${error}`)
+    }
+  }
 }
 
 // 生命周期
