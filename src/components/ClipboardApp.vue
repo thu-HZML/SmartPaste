@@ -512,15 +512,8 @@ const performSearch = async (query) => {
     
     filteredHistory.value = JSON.parse(result)
 
-    // 为现有数组中的每个对象添加 is_focus、iconData字段
-    for (let i = 0; i < filteredHistory.value.length; i++) {
-      filteredHistory.value[i].is_focus = false;
-      filteredHistory.value[i].is_selected = false;
-      let iconString = await invoke('get_icon_data_by_item_id', { 
-        itemId: filteredHistory.value[i].id 
-      });
-      filteredHistory.value[i].iconData = iconString
-    }
+    // 为数组添加前端额外字段
+    await optimizeHistoryItems(filteredHistory)
   } catch (err) {
     console.error('搜索失败:', err)
   } finally {
@@ -536,15 +529,8 @@ const performClassify = async (currentCategory) => {
     })    
     filteredHistory.value = JSON.parse(result)
 
-    // 为现有数组中的每个对象添加 is_focus、iconData字段
-    for (let i = 0; i < filteredHistory.value.length; i++) {
-      filteredHistory.value[i].is_focus = false;
-      filteredHistory.value[i].is_selected = false;
-      let iconString = await invoke('get_icon_data_by_item_id', { 
-        itemId: filteredHistory.value[i].id 
-      });
-      filteredHistory.value[i].iconData = iconString
-    }
+    // 为数组添加前端额外字段
+    await optimizeHistoryItems(filteredHistory)
   } catch (err) {
     console.error('分类失败:', err)
   } finally {
@@ -554,7 +540,6 @@ const performClassify = async (currentCategory) => {
 
 // 收藏夹过滤
 const performFolder = async () => { 
-  console.log('开始筛选收藏夹')
   if (currentFolder.value.name === '默认收藏夹') {
     console.log('进入默认收藏夹')
     try {
@@ -562,7 +547,9 @@ const performFolder = async () => {
         isFavorite: true
       })    
       filteredHistory.value = JSON.parse(result)
-      console.log('收藏夹数量:', folders.value[0].num_items)
+
+      // 为数组添加前端额外字段
+      await optimizeHistoryItems(filteredHistory)
     } catch (err) {
       console.error('默认收藏夹获取失败:', err)
     }
@@ -574,6 +561,9 @@ const performFolder = async () => {
         folderName: currentFolder.value.name
       })    
       filteredHistory.value = JSON.parse(result)
+
+      // 为数组添加前端额外字段
+      await optimizeHistoryItems(filteredHistory)
     } catch (err) {
       console.error('获取收藏夹内容失败:', err)
     } finally {
@@ -879,15 +869,8 @@ const getAllHistory = async () => {
     const jsonString = await invoke('get_all_data')
     filteredHistory.value = JSON.parse(jsonString)
 
-    // 为现有数组中的每个对象添加 is_focus 字段
-    for (let i = 0; i < filteredHistory.value.length; i++) {
-      filteredHistory.value[i].is_focus = false;
-      filteredHistory.value[i].is_selected = false;
-      let iconString = await invoke('get_icon_data_by_item_id', { 
-        itemId: filteredHistory.value[i].id 
-      });
-      filteredHistory.value[i].iconData = iconString
-    }
+    // 为数组添加前端额外字段
+    await optimizeHistoryItems(filteredHistory)
   } catch (error) {
     console.error('调用失败:', error)
   }
@@ -1284,6 +1267,37 @@ const exitMultiSelectMode = () => {
   showMultiCopyBtn.value = false
 }
 
+/**
+ * 高性能版本 - 结合响应式和直接修改的优点
+ */
+async function optimizeHistoryItems(historyRef, options = {}) {
+  const { defaultFocus = false, defaultSelected = false } = options
+  const array = historyRef.value
+  
+  // 批量处理基础字段
+  for (let i = 0; i < array.length; i++) {
+    const item = array[i]
+    item.is_focus = defaultFocus
+    item.is_selected = defaultSelected
+  }
+  setTimeout(async () => {
+    // 并行获取图标数据
+    const fileItems = array.filter(item => item.item_type === 'file')
+    const promises = fileItems.map(item => 
+      invoke('get_icon_data_by_item_id', { itemId: item.id })
+        .then(iconString => {
+          item.iconData = iconString
+        })
+        .catch(error => {
+          console.error(`Failed to get icon for ${item.id}:`, error)
+          item.iconData = null
+        })
+    )   
+    await Promise.all(promises)
+  }, 800)
+  
+}
+
 // 生命周期
 onMounted(async () => {
   console.log('开始初始化...')
@@ -1414,6 +1428,10 @@ body {
   padding: 8px 10px;
   background: #ffffff;
   align-items: center;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .category-buttons {
