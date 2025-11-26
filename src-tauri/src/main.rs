@@ -9,6 +9,10 @@ mod config;
 mod db;
 mod ocr;
 
+// 注册性能测试模块 (仅在测试模式下编译)
+#[cfg(test)]
+mod test_performance;
+
 use app_setup::{
     update_shortcut, update_shortcut2, AppShortcutState, AppShortcutState2, ClipboardSourceState,
 };

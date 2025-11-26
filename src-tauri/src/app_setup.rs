@@ -3,6 +3,7 @@ use crate::config::{self, CONFIG};
 use crate::db;
 use crate::ocr;
 use chrono::Utc;
+use image::buffer::EnumeratePixelsMut;
 use image::ColorType;
 use serde_json::Value;
 use std::fs;
@@ -499,24 +500,46 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                         let item_id_for_icon = new_item.id.clone();
                                         let dest_path_for_icon = new_item.content.clone();
 
+                                        // 记录数据库插入开始时间
+                                        let db_insert_start = Instant::now();
+
                                         if let Err(e) = db::insert_received_db_data(new_item) {
                                             eprintln!("❌ 保存数据到数据库失败: {:?}", e);
                                         } else {
-                                            // 异步提取系统图标并存入 extended_data.icon_data（仅保存 base64 部分）
+                                            println!(
+                                                "[Main] 数据库插入耗时: {:?}",
+                                                db_insert_start.elapsed()
+                                            );
+
+                                            // 记录调度时间
+                                            let schedule_time = Instant::now();
+
+                                            // 异步提取系统图标并存入 extended_data.icon_data
                                             tauri::async_runtime::spawn(async move {
+                                                // 记录开始时间
+                                                let task_start = Instant::now();
+                                                println!(
+                                                    "[Async] 图标获取任务启动延迟： {:?}",
+                                                    task_start.duration_since(schedule_time)
+                                                );
+
+                                                // 记录图标提取开始时间
+                                                let icon_extract_start = Instant::now();
+
                                                 match crate::get_file_icon(
                                                     dest_path_for_icon.clone(),
                                                 )
                                                 .await
                                                 {
                                                     Ok(data_uri) => {
-                                                        // data:image/png;base64,XXXXX -> 取逗号后的 base64
-                                                        // let base64 = match data_uri.find(',') {
-                                                        //     Some(idx) => {
-                                                        //         data_uri[idx + 1..].to_string()
-                                                        //     }
-                                                        //     None => data_uri,
-                                                        // };
+                                                        println!(
+                                                            "[Async] 图标提取耗时: {:?}",
+                                                            icon_extract_start.elapsed()
+                                                        );
+
+                                                        // 记录图标插入数据库开始时间
+                                                        let db_icon_insert_start = Instant::now();
+
                                                         if let Err(err) = db::insert_icon_data(
                                                             &item_id_for_icon,
                                                             &data_uri,
@@ -526,6 +549,14 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                                                 err
                                                             );
                                                         }
+                                                        println!(
+                                                            "[Async] 图标数据插入耗时: {:?}",
+                                                            db_icon_insert_start.elapsed()
+                                                        );
+                                                        println!(
+                                                            "[Async] 图标任务总耗时: {:?}",
+                                                            task_start.elapsed()
+                                                        );
                                                     }
                                                     Err(err) => {
                                                         eprintln!("⚠️ get_file_icon 失败: {}", err);
@@ -542,9 +573,11 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         }
 
                         if has_new_files {
+                            let emit_start = Instant::now();
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let _ = window.emit("clipboard-updated", "");
                             }
+                            println!("[Main] 事件发送耗时: {:?}", emit_start.elapsed());
                         }
                     }
                 }
