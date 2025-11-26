@@ -9,6 +9,10 @@ mod config;
 mod db;
 mod ocr;
 
+// 注册性能测试模块 (仅在测试模式下编译)
+#[cfg(test)]
+mod test_performance;
+
 use app_setup::{
     update_shortcut, update_shortcut2, AppShortcutState, AppShortcutState2, ClipboardSourceState,
 };
@@ -19,7 +23,22 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
-
+use std::ffi::OsStr;
+use std::io::Cursor;
+use std::os::windows::ffi::OsStrExt;
+use base64::{engine::general_purpose, Engine as _};
+use image::{ImageFormat, RgbaImage};
+use windows::core::{PCWSTR};
+use windows::Win32::Foundation::{HWND};
+use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+use windows::Win32::Graphics::Gdi::{
+    DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC,BITMAP, BITMAPINFO,
+    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+};
+use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DestroyIcon, GetIconInfo, HICON, ICONINFO,
+};
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -239,6 +258,7 @@ fn get_current_shortcut(state: tauri::State<AppShortcutState>) -> String {
 fn get_current_shortcut2(state: tauri::State<AppShortcutState2>) -> String {
     state.current_shortcut.lock().unwrap().clone()
 }
+
 /// 获取文件的系统图标（Base64 格式，不包含文件夹）
 #[tauri::command]
 async fn get_file_icon(path: String) -> Result<String, String> {
@@ -248,72 +268,142 @@ async fn get_file_icon(path: String) -> Result<String, String> {
     if !p.exists() {
         return Err(format!("路径不存在: {}", path));
     }
-
-    // 2. 排除文件夹 (根据你的要求)
     if p.is_dir() {
         return Err("不支持获取文件夹图标".to_string());
     }
 
-    // 3. 仅在 Windows 下执行提取逻辑
     #[cfg(target_os = "windows")]
     {
-        #[cfg(target_os = "windows")]
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
+        // 调用 unsafe 的帮助函数来处理 Win32 API
+        let icon_base64 = tauri::async_runtime::spawn_blocking(move || {
+            extract_icon_base64(&path)
+        })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))??;
 
-        // PowerShell 脚本：
-        // 1. 加载 System.Drawing
-        // 2. 使用 ExtractAssociatedIcon 提取图标
-        // 3. 转换为 Bitmap -> 内存流 -> PNG 格式 -> Base64 字符串
-        let ps_script = format!(
-            r#"
-            Add-Type -AssemblyName System.Drawing
-            $path = '{}'
-            try {{
-                $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
-                if ($icon -ne $null) {{
-                    $ms = New-Object System.IO.MemoryStream
-                    $icon.ToBitmap().Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-                    $base64 = [Convert]::ToBase64String($ms.ToArray())
-                    Write-Output $base64
-                    $ms.Dispose()
-                    $icon.Dispose()
-                }}
-            }} catch {{
-                Write-Error $_
-            }}
-            "#,
-            path.replace("'", "''") // 转义单引号
-        );
-
-        // const CREATE_NO_WINDOW: u32 = 0x08000000; // 如果你想完全隐藏控制台窗口
-        let output = Command::new("powershell")
-            .args(&["-NoProfile", "-Command", &ps_script])
-            // .creation_flags(CREATE_NO_WINDOW) // 可选：防止闪烁，但在 Tauri 2.0 插件中通常不需要
-            .output()
-            .map_err(|e| format!("执行 PowerShell 失败: {}", e))?;
-
-        if !output.status.success() {
-            let err = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("提取图标失败: {}", err));
-        }
-
-        let base64_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-        if base64_str.is_empty() {
-            return Err("提取的图标数据为空".to_string());
-        }
-
-        // 返回前端可直接用于 <img src="..."> 的格式
-        Ok(format!("data:image/png;base64,{}", base64_str))
+        Ok(format!("data:image/png;base64,{}", icon_base64))
     }
 
-    // 4. macOS/Linux 的占位符（如果后续需要支持，需使用其他方法）
     #[cfg(not(target_os = "windows"))]
     {
         Err("当前系统暂不支持图标提取".to_string())
     }
 }
+
+
+#[cfg(target_os = "windows")]
+fn extract_icon_base64(path: &str) -> Result<String, String> {
+    unsafe {
+        let wide_path: Vec<u16> = OsStr::new(path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        
+        let mut shfi = SHFILEINFOW::default();
+        let result = SHGetFileInfoW(
+            PCWSTR(wide_path.as_ptr()),
+            FILE_FLAGS_AND_ATTRIBUTES(0), 
+            Some(&mut shfi),
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON,
+        );
+
+        if result == 0 || shfi.hIcon.is_invalid() {
+            return Err("SHGetFileInfoW 失败或未找到图标".to_string());
+        }
+
+        let hicon = shfi.hIcon;
+        let _icon_guard = ScopeGuard(hicon, |h| { let _ = DestroyIcon(h); });
+
+        hicon_to_png_base64(hicon)
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn hicon_to_png_base64(hicon: HICON) -> Result<String, String> {
+    let mut icon_info = ICONINFO::default();
+    GetIconInfo(hicon, &mut icon_info)
+        .map_err(|e| format!("GetIconInfo 失败: {}", e))?;
+    
+    let _color_bmp_guard = ScopeGuard(icon_info.hbmColor, |h| { let _ = DeleteObject(h); });
+    let _mask_bmp_guard = ScopeGuard(icon_info.hbmMask, |h| { let _ = DeleteObject(h); });
+
+    let hdc_screen = GetDC(HWND(std::ptr::null_mut()));
+    let _dc_guard = ScopeGuard(hdc_screen, |h| { let _ = ReleaseDC(HWND(std::ptr::null_mut()), h); });
+    
+    let mut bmp: BITMAP = std::mem::zeroed();
+    
+    // GetObjectW 参数转换
+    if GetObjectW(
+        windows::Win32::Graphics::Gdi::HGDIOBJ(icon_info.hbmColor.0), 
+        std::mem::size_of::<BITMAP>() as i32, 
+        Some(&mut bmp as *mut _ as *mut _)
+    ) == 0 {
+        return Err("GetObjectW 失败".to_string());
+    }
+
+    let width = bmp.bmWidth;
+    let height = bmp.bmHeight;
+    let pixel_count = (width * height) as usize;
+
+    let mut bi = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            biHeight: -height, 
+            biPlanes: 1,
+            biBitCount: 32, 
+            // BI_RGB 是 BI_COMPRESSION 类型，需要 .0 取出 u32
+            biCompression: BI_RGB.0, 
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let mut pixels: Vec<u8> = vec![0; pixel_count * 4];
+
+    if GetDIBits(
+        hdc_screen,
+        icon_info.hbmColor,
+        0,
+        height as u32,
+        Some(pixels.as_mut_ptr() as *mut _),
+        &mut bi,
+        DIB_RGB_COLORS,
+    ) == 0 {
+        return Err("GetDIBits 失败".to_string());
+    }
+
+    // BGRA -> RGBA 转换
+    for chunk in pixels.chunks_mut(4) {
+        let b = chunk[0];
+        let r = chunk[2];
+        chunk[0] = r;
+        chunk[2] = b;
+    }
+
+    let img_buffer = RgbaImage::from_raw(width as u32, height as u32, pixels)
+        .ok_or("无法构建图像缓冲区")?;
+
+    let mut png_data = Vec::new();
+    let mut cursor = Cursor::new(&mut png_data);
+    
+    // 使用 ImageFormat::Png
+    img_buffer
+        .write_to(&mut cursor, ImageFormat::Png)
+        .map_err(|e| format!("图片编码失败: {}", e))?;
+
+    Ok(general_purpose::STANDARD.encode(png_data))
+}
+
+struct ScopeGuard<T: Copy, F: FnMut(T)>(T, F);
+
+impl<T: Copy, F: FnMut(T)> Drop for ScopeGuard<T, F> {
+    fn drop(&mut self) {
+        (self.1)(self.0);
+    }
+}
+
 fn main() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::Builder::new().build())
@@ -330,7 +420,6 @@ fn main() {
             current_shortcut: Mutex::new(String::new()),
         })
         .manage(ClipboardSourceState {
-            // 新增的状态
             is_frontend_copy: Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![
