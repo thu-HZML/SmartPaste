@@ -27,6 +27,12 @@
           >
             {{ category.name }}
           </button>
+          <button 
+            v-if="activeCategory === 'folder'" 
+            :class="['category-btn', { active: true }]"
+          >
+            内容
+          </button>
         </div>
         
         <div class="toolbar-actions">
@@ -44,6 +50,10 @@
             <LockOpenIcon v-if="canDeleteWindow" class="icon-settings" />
             <LockClosedIcon v-else class="icon-settings" />
           </button>
+          <!-- 项目时间轴按钮 -->
+          <button class="icon-btn" @click="showProjectTime">         
+            <ChartBarIcon class="icon-settings" />
+          </button>
           <!-- 打开设置按钮 -->
           <button class="icon-btn" @click="openSettings">         
             <Cog6ToothIcon class="icon-settings" />
@@ -59,7 +69,7 @@
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
       <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
-      <div v-if="['all', 'image', 'video', 'file', 'folder'].includes(activeCategory)">
+      <div v-if="['all', 'text', 'image', 'file', 'folder'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
           <p v-if="searchQuery">未找到匹配的记录</p>
           <p v-else>暂无剪贴板记录</p>
@@ -342,6 +352,44 @@
         </div>
       </div>    
     </div>
+    <!-- 项目时间轴模态框 -->
+    <div v-if="showProjectTimeModal" class="modal">
+      <div class="modal-content">
+        <h3>项目时间轴</h3>
+        <div class="folders-container">         
+          <div class="history-list">  
+            <!-- 新建时间轴 -->
+            <div class="search-bar">           
+              <input 
+                type="text" 
+                v-model="folderQuery"
+                placeholder="新建项目：请输入名称" 
+                class="toast-input"
+              >
+              <button @click="addFolderToast" class="btn-create">创建</button>
+            </div>    
+            <!-- 普通收藏夹 -->
+            <div 
+              v-for="(item, index) in folders" 
+              :key="index" 
+              class="folder-item-toast"
+              tabindex="0"
+              @click="selectFolder(item)"        
+            >
+              <div class="folder-content-toast">
+                <div class="custom-folder-icon" :class="{ 'selected': item.isSelected }"></div>
+                <span class="folder-name" :title="item.name">{{ item.name }}</span>
+                <span class="content-count">{{ item.numItems }}个内容</span>                      
+              </div>
+            </div>  
+          </div>       
+        </div>       
+        <div class="modal-actions">
+          <button @click="cancelAddToFolder" class="btn btn-secondary">取消</button>
+          <button @click="addToFolder" class="btn btn-primary">确认</button>
+        </div>
+      </div>    
+    </div>
   </div>
 </template>
 
@@ -365,7 +413,8 @@ import {
   Square2StackIcon,
   FolderPlusIcon,
   FolderIcon,
-  LockOpenIcon
+  LockOpenIcon,
+  ChartBarIcon
  } from '@heroicons/vue/24/outline'
 import { 
   StarIcon as StarIconSolid,
@@ -388,6 +437,7 @@ const showFolderModal = ref(false)
 const showFoldersModal = ref(false)
 const showOcrModal = ref(false)
 const showDeleteModal = ref(false)
+const showProjectTimeModal = ref(false)
 const editingText = ref('')
 const editingItem = ref(null)
 const notingText = ref('')
@@ -424,8 +474,8 @@ let clickTimeout = null
 // 分类选项
 const categories = ref([
   { id: 'all', name: '全部' },
+  { id: 'text', name: '文本' },
   { id: 'image', name: '图片' },
-  { id: 'video', name: '视频' },
   { id: 'file', name: '文件' },
   { id: 'favorite', name: '收藏' }
 ])
@@ -479,7 +529,7 @@ const handleSearch = async (query) => {
 
 // 分类逻辑
 const handleCategoryChange = async (category) => {
-  if (['image', 'video', 'file'].includes(category)) {
+  if (['image', 'text', 'file'].includes(category)) {
     searchLoading.value = true
     await performClassify(category)
   }
@@ -1323,6 +1373,11 @@ async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
       throw new Error(`Failed to get icon after 5 retries: ${error}`)
     }
   }
+}
+
+// 弹出"项目时间轴"模态框
+const showProjectTime = () => {
+  showProjectTimeModal.value = true
 }
 
 // 生命周期
