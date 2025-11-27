@@ -496,51 +496,224 @@ pub fn get_favorite_data_count() -> Result<usize, String> {
 
     Ok(count)
 }
-
-
-/// 文本搜索。作为 Tauri command 暴露给前端调用。
-/// 根据传入的字符串，对所有属于 text 类的 content 字段进行模糊搜索，返回匹配的记录列表。
+/// 搜索。作为 Tauri command 暴露给前端调用。
+/// 根据传入的搜索关键词，以及传入的搜索类型，对所有 content 字段进行模糊搜索，返回匹配的记录列表。
 /// # Param
+/// search_type: &str - 搜索类型 ("text", "ocr", "path", "timestamp")
 /// query: &str - 搜索关键词
+/// - "text" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配，只返回 text 类型数据
+/// - "ocr" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配，只返回 image 类型数据
+/// - "path" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配，返回 file、folder、image 类型数据
+/// - "timestamp" 类型：待搜索的时间范围，格式为 "start_timestamp,end_timestamp"，在 timestamp 字段中进行范围匹配
 /// # Returns
-/// String - 包含匹配数据记录的 JSON 字符串
+/// String - 包含匹配数据记录的 JSON 字符串，或者错误信息（如格式错误等）
 #[tauri::command]
-pub fn search_text_content(query: &str) -> Result<String, String> {
+pub fn search_data(search_type: &str, query: &str) -> Result<String, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let like_pattern = format!("%{}%", query);
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
-             FROM data 
-             WHERE item_type = 'text' AND content LIKE ?1",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let clipboard_iter = stmt
-        .query_map(params![like_pattern], |row| {
-            Ok(ClipboardItem {
-                id: row.get(0)?,
-                item_type: row.get(1)?,
-                content: row.get(2)?,
-                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
-                is_favorite: row.get::<_, i32>(4)? != 0,
-                notes: row.get(5)?,
-                timestamp: row.get(6)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
     let mut results = Vec::new();
-    for item in clipboard_iter {
-        results.push(item.map_err(|e| e.to_string())?);
-    }
 
+    match search_type {
+        "timestamp" => {
+            let parts: Vec<&str> = query.split(',').collect();
+            if parts.len() != 2 {
+                return Err("Invalid timestamp range format".to_string());
+            }
+            let start: i64 = parts[0].parse().map_err(|_| "Invalid start timestamp".to_string())?;
+            let end: i64 = parts[1].parse().map_err(|_| "Invalid end timestamp".to_string())?;
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE timestamp BETWEEN ?1 AND ?2",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![start, end], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+        "text" => {
+            let like_pattern = format!("%{}%", query);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE content LIKE ?1 AND item_type = 'text'",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![like_pattern], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+        "ocr" => {
+            let like_pattern = format!("%{}%", query);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE content LIKE ?1 AND item_type = 'image'",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![like_pattern], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+        "path" => {
+            let like_pattern = format!("%{}%", query);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE content LIKE ?1 AND item_type IN ('file', 'folder', 'image')",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![like_pattern], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+        _ => {
+            let like_pattern = format!("%{}%", query);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE content LIKE ?1",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![like_pattern], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+    }
     clipboard_items_to_json(results)
 }
+
+
+// 文本搜索。作为 Tauri command 暴露给前端调用。
+// 根据传入的字符串，对所有属于 text 类的 content 字段进行模糊搜索，返回匹配的记录列表。
+// # Param
+// query: &str - 搜索关键词
+// # Returns
+// String - 包含匹配数据记录的 JSON 字符串
+// #[tauri::command]
+// pub fn search_text_content(query: &str) -> Result<String, String> {
+//     let db_path = get_db_path();
+//     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+//     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+//     let like_pattern = format!("%{}%", query);
+
+//     let mut stmt = conn
+//         .prepare(
+//             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+//              FROM data 
+//              WHERE item_type = 'text' AND content LIKE ?1",
+//         )
+//         .map_err(|e| e.to_string())?;
+
+//     let clipboard_iter = stmt
+//         .query_map(params![like_pattern], |row| {
+//             Ok(ClipboardItem {
+//                 id: row.get(0)?,
+//                 item_type: row.get(1)?,
+//                 content: row.get(2)?,
+//                 size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+//                 is_favorite: row.get::<_, i32>(4)? != 0,
+//                 notes: row.get(5)?,
+//                 timestamp: row.get(6)?,
+//             })
+//         })
+//         .map_err(|e| e.to_string())?;
+
+//     let mut results = Vec::new();
+//     for item in clipboard_iter {
+//         results.push(item.map_err(|e| e.to_string())?);
+//     }
+
+//     clipboard_items_to_json(results)
+// }
 
 /// 增加备注。作为 Tauri command 暴露给前端调用。
 /// # Param
@@ -571,7 +744,8 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<String, String> {
 
 /// 按类型筛选数据。作为 Tauri command 暴露给前端调用。
 /// # Param
-/// item_type: &str - 数据类型（如 "text", "image" 等）
+/// item_type: &str - 数据类型（如 "text", "image" 等）。
+/// *(当输入 "folder" 或 "file" 时，会同时返回 folder 和 file 类型的数据)*
 /// # Returns
 /// String - 包含筛选后数据记录的 JSON 字符串
 #[tauri::command]
@@ -580,27 +754,46 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let mut stmt = conn
-        .prepare(
+    let (sql, params) = if item_type == "folder" || item_type == "file" {
+        // 当类型为 folder 或 file 时，同时返回两种类型的数据
+        (
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE item_type IN ('folder', 'file')",
+            vec![]
+        )
+    } else {
+        // 其他类型按原来的逻辑处理
+        (
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE item_type = ?1",
+            vec![item_type]
         )
+    };
+
+    let mut stmt = conn
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
-    let clipboard_iter = stmt
-        .query_map(params![item_type], |row| {
-            Ok(ClipboardItem {
-                id: row.get(0)?,
-                item_type: row.get(1)?,
-                content: row.get(2)?,
-                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
-                is_favorite: row.get::<_, i32>(4)? != 0,
-                notes: row.get(5)?,
-                timestamp: row.get(6)?,
-            })
+    let row_to_clipboard_item = |row: &rusqlite::Row| -> rusqlite::Result<ClipboardItem> {
+        Ok(ClipboardItem {
+            id: row.get(0)?,
+            item_type: row.get(1)?,
+            content: row.get(2)?,
+            size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+            is_favorite: row.get::<_, i32>(4)? != 0,
+            notes: row.get(5)?,
+            timestamp: row.get(6)?,
         })
-        .map_err(|e| e.to_string())?;
+    };
+
+    let clipboard_iter = if params.is_empty() {
+        stmt.query_map([], row_to_clipboard_item)
+    } else {
+        stmt.query_map(rusqlite::params![params[0]], row_to_clipboard_item)
+    }
+    .map_err(|e| e.to_string())?;
 
     let mut results = Vec::new();
     for item in clipboard_iter {

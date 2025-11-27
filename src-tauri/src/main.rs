@@ -36,7 +36,16 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DestroyIcon, GetIconInfo, HICON, ICONINFO,
+};
+use std::env;
+use clipboard_rs::{
+    Clipboard as ClipboardRsTrait, 
+    ClipboardContext
+};
+use uuid::Uuid;
+use std::io;
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -57,51 +66,159 @@ fn write_to_clipboard(
     Ok(())
 }
 /// 将指定的文本写入系统剪贴板。作为 Tauri command 暴露给前端调用。
-/// 此函数会设置一个状态标志，以区分是前端主动复制还是由其他程序引起的剪贴板变化。
-/// # Param
-/// text: String - 需要写入剪贴板的文本内容。
-/// app_handle: tauri::AppHandle - Tauri 的应用句柄。
-/// state: State<'_,ClipboardSourceState> - 用于管理剪贴板来源状态的 Tauri 状态。
-/// # Returns
-/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
+/// 将文件写入剪贴板（去除时间戳前缀）
 #[tauri::command]
 async fn write_file_to_clipboard(
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
     file_path: String,
     state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
-    // 设置标志，表示这是前端触发的复制
     *state.is_frontend_copy.lock().unwrap() = true;
-    let path = Path::new(&file_path);
+    
+    // 直接复用修复后的处理逻辑，它现在支持文件夹且没有权限问题
+    let final_path = process_file_for_clipboard(&file_path)?;
 
-    // 检查文件是否存在
-    if !path.exists() {
-        return Err(format!("文件不存在: {}", file_path));
+    // 写入剪贴板 (复用列表逻辑，只不过列表里只有一个)
+    copy_files_list_to_clipboard(vec![final_path])
+}
+fn copy_dir_all(src: &Path, dst: &Path) -> io::Result<()> {
+    // 如果目标文件夹不存在，创建它
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
     }
+    
+    // 遍历源文件夹
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
 
-    // 检查是否是文件（不是目录）
-    // if !path.is_file() {
-    //     return Err("路径指向的不是文件".to_string());
-    // }
-
-    // 获取文件的绝对路径
-    let absolute_path =
-        fs::canonicalize(path).map_err(|e| format!("无法获取文件绝对路径: {}", e))?;
-
-    let mut final_path_str = absolute_path.to_string_lossy().to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        // 去除 Rust canonicalize 产生的 \\?\ 前缀
-        const VERBATIM_PREFIX: &str = r"\\?\";
-        if final_path_str.starts_with(VERBATIM_PREFIX) {
-            final_path_str = final_path_str[VERBATIM_PREFIX.len()..].to_string();
+        if file_type.is_dir() {
+            // 如果是子文件夹，递归调用
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            // 如果是文件，直接复制
+            fs::copy(&entry.path(), &dest_path)?;
         }
     }
-    // 根据不同平台调用相应的文件复制方法
-    copy_file_to_clipboard(PathBuf::from(final_path_str))
+    Ok(())
+}
+// --- 辅助函数：处理单个文件（去除时间戳，复制到临时目录，返回绝对路径） ---
+fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
+    let path = Path::new(file_path);
+
+    // 1. 检查是否存在
+    if !path.exists() {
+        return Err(format!("路径不存在: {}", file_path));
+    }
+
+    // 2. 解析原始文件名
+    let file_name_os = path.file_name().ok_or("无法获取名称")?;
+    let file_name_str = file_name_os.to_string_lossy();
+    
+    // 解析时间戳逻辑
+    let clean_file_name = if let Some((prefix, name)) = file_name_str.split_once('-') {
+        if prefix.len() == 13 && prefix.chars().all(char::is_numeric) {
+            name.to_string()
+        } else {
+            file_name_str.to_string()
+        }
+    } else {
+        file_name_str.to_string()
+    };
+
+    // 3. 【关键修改】创建唯一的父级临时目录
+    // 结构变为: %TEMP% / {UUID} / {CleanFileName}
+    let temp_root = env::temp_dir();
+    let unique_sub_dir = temp_root.join(Uuid::new_v4().to_string());
+    
+    // 创建这个唯一的文件夹
+    if let Err(e) = fs::create_dir_all(&unique_sub_dir) {
+        return Err(format!("无法创建临时容器目录: {}", e));
+    }
+
+    // 真正的目标路径
+    let temp_target_path = unique_sub_dir.join(&clean_file_name);
+
+    // 4. 执行复制
+    if path.is_dir() {
+        // 复制文件夹
+        if let Err(e) = copy_dir_all(path, &temp_target_path) {
+             return Err(format!("复制文件夹失败: {}", e));
+        }
+    } else {
+        // 复制文件
+        if let Err(e) = fs::copy(path, &temp_target_path) {
+            return Err(format!("复制文件失败: {}", e));
+        }
+    }
+
+    // 5. 获取绝对路径并处理 Windows 前缀
+    let absolute_path = fs::canonicalize(&temp_target_path)
+        .map_err(|e| format!("无法获取绝对路径: {}", e))?;
+
+    #[cfg(target_os = "windows")]
+    let final_path = {
+        let mut s = absolute_path.to_string_lossy().to_string();
+        const VERBATIM_PREFIX: &str = r"\\?\";
+        if s.starts_with(VERBATIM_PREFIX) {
+            s = s[VERBATIM_PREFIX.len()..].to_string();
+        }
+        PathBuf::from(s)
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let final_path = absolute_path;
+
+    Ok(final_path)
 }
 
+// --- 核心 helper：将路径列表写入剪贴板 ---
+fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
+    let ctx = ClipboardContext::new().map_err(|e| e.to_string())?;
+    
+    // 将 PathBuf 转换为 String 列表
+    let paths_str: Vec<String> = paths.into_iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    ctx.set_files(paths_str).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn write_files_to_clipboard(
+    _app_handle: tauri::AppHandle,
+    file_paths: Vec<String>,
+    state: State<'_, ClipboardSourceState>,
+) -> Result<(), String> {
+    *state.is_frontend_copy.lock().unwrap() = true;
+
+    if file_paths.is_empty() {
+        return Err("未选择任何内容".to_string());
+    }
+
+    let mut final_paths: Vec<PathBuf> = Vec::new();
+
+    for path_str in file_paths {
+        // 这里调用修改后的 process_file_for_clipboard
+        match process_file_for_clipboard(&path_str) {
+            Ok(clean_path) => final_paths.push(clean_path),
+            Err(e) => {
+                println!("处理失败 [{}]: {}", path_str, e);
+            }
+        }
+    }
+
+    if final_paths.is_empty() {
+        return Err("所有内容处理失败".to_string());
+    }
+
+    // 写入剪贴板 (复用之前的函数)
+    copy_files_list_to_clipboard(final_paths)?;
+
+    Ok(())
+}
 /// 跨平台地将文件复制到系统剪贴板。作为 Tauri command 暴露给前端调用。
 /// 此函数会根据编译的目标操作系统（Windows, macOS, Linux）调用相应的底层实现。
 /// # Param
@@ -379,6 +496,7 @@ fn main() {
             get_current_shortcut,
             get_all_shortcuts,
             get_file_icon,
+            write_files_to_clipboard,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
@@ -394,7 +512,7 @@ fn main() {
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
             db::get_favorite_data_count,
-            db::search_text_content,
+            db::search_data,
             db::add_notes_by_id,
             db::filter_data_by_type,
             db::create_new_folder,
