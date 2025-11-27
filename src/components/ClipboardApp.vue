@@ -159,7 +159,7 @@
                     </div>
 
                     <!-- 显示文件 -->
-                    <div v-else-if="item.item_type === 'file'" class="file-container">
+                    <div v-else-if="['file', 'folder'].includes(item.item_type)" class="file-container">
                       <img 
                         :src="item.iconData"
                         class="file-icon"
@@ -1280,7 +1280,7 @@ async function optimizeHistoryItems(historyRef, options = {}) {
   }
 
   // 并行获取图标数据（带重试功能）
-  const fileItems = array.filter(item => item.item_type === 'file')
+  const fileItems = array.filter(item => item.item_type === 'file' || item.item_type === 'folder')
   const promises = fileItems.map(item => 
     fetchIconWithRetryRecursive(item.id, 5) // 最多重试5次
       .then(iconString => {
