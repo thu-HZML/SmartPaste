@@ -1285,6 +1285,22 @@ const copySelectedItems = async () => {
     let errorCount = 0
     let copyString = ''
 
+    let filePaths = []
+    // 多选文件
+    selectedItems.value.forEach(item => {
+      if (item.item_type === 'file' || item.item_type === 'image' || item.item_type === 'folder') {
+        filePaths.push(item.content)
+        successCount++
+      }     
+    })
+
+    if (filePaths) {
+      await invoke('write_files_to_clipboard', { text: copyString })
+      showMessage(`已成功复制 ${successCount} 个文件项目`)
+    } else {
+      showMessage('没有找到可复制的文本内容')
+    }
+/*
     selectedItems.value.forEach(item => {
       if (item.item_type === 'text') {
         copyString += item.content + '\n'
@@ -1298,6 +1314,7 @@ const copySelectedItems = async () => {
     } else {
       showMessage('没有找到可复制的文本内容')
     }
+    */
     // 复制完成后退出多选模式
     exitMultiSelectMode()
     
