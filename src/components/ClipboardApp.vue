@@ -14,6 +14,35 @@
             placeholder="搜索剪贴板内容..." 
             class="search-input"
           >
+          <!-- 新增搜索类型下拉框 -->
+          <div class="search-type-selector">
+            <select v-model="searchType" class="search-type-select">
+              <option value="text">纯文本</option>
+              <option value="ocr">OCR</option>
+              <option value="path">路径</option>
+              <option value="time">时间区间</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 时间区间搜索的额外输入框 -->
+        <div v-if="searchType === 'time'" class="time-range-inputs">
+          <div class="time-input-group">
+            <label>开始时间:</label>
+            <input 
+              type="datetime-local" 
+              v-model="startTime"
+              class="time-input"
+            >
+          </div>
+          <div class="time-input-group">
+            <label>结束时间:</label>
+            <input 
+              type="datetime-local" 
+              v-model="endTime"
+              class="time-input"
+            >
+          </div>
         </div>
       </div>
       
@@ -411,10 +440,15 @@ const canDeleteWindow = ref(true)
 let isDragging = null
 const test = ref('')
 
-// 多选相关数据
+// 多选相关变量
 const multiSelectMode = ref(false)
 const selectedItems = ref([]) // 存储选中的历史记录
 const showMultiCopyBtn = ref(false) // 控制复制按钮显示
+
+// 搜索相关变量
+const searchType = ref('text') // 默认纯文本搜索
+const startTime = ref('')
+const endTime = ref('')
 
 // 计算属性
 const selectedItemsCount = computed(() => selectedItems.value.length)
@@ -440,19 +474,40 @@ const filteredHistory = ref([])
 const initialSelectedFolders = ref([]) // 存储当前记录被收藏进的收藏夹
 const iconCache = ref({}) // 用于缓存已加载的图标
 
-/*
-// 计算属性
-const displayHistory = computed(() => {
-  if (activeCategory.value === 'folder') {
-    return folders.value
-  } else {
-    return filteredHistory.value
+// 计算属性：根据搜索类型动态改变placeholder
+const searchPlaceholder = computed(() => {
+  switch (searchType.value) {
+    case 'text':
+      return '搜索剪贴板内容...'
+    case 'ocr':
+      return '搜索图片OCR文字内容...'
+    case 'path':
+      return '搜索文件路径...'
+    case 'time':
+      return '请选择时间区间...'
+    default:
+      return '搜索剪贴板内容...'
   }
 })
-*/
+
+// 监听搜索类型变化
+watch(searchType, (newType) => {
+  // 切换搜索类型时清空搜索框
+  searchQuery.value = ''
+  // 如果是时间搜索，初始化时间
+  if (newType === 'time') {
+    const now = new Date()
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    startTime.value = formatDateTimeLocal(oneWeekAgo)
+    endTime.value = formatDateTimeLocal(now)
+  } else {
+    startTime.value = ''
+    endTime.value = ''
+  }
+})
 
 // 监听 searchQuery 变化
-watch(searchQuery, async(newQuery) => {
+watch(searchQuery, async (newQuery) => {
   await handleSearch(newQuery)
 })
 
@@ -1441,6 +1496,7 @@ body {
 .search-bar {
   display: flex;
   flex-direction: row;
+  align-items: center;
   position: relative;
   margin: 0 auto;
 }
@@ -1454,7 +1510,7 @@ body {
 
 /* 搜索框样式 */
 .search-input {
-  width: 100%;
+  flex: 1;
   padding: 6px 10px 6px 40px;
   border: 1px solid #e1e8ed;
   border-radius: 8px;
@@ -1468,6 +1524,74 @@ body {
 }
 
 .search-input:focus {
+  border-color: #3282f6;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+}
+
+/* 新增搜索类型选择器样式 */
+.search-type-selector {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.search-type-select {
+  padding: 6px 8px;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 120px;
+}
+
+.search-type-select:hover {
+  border-color: #b7c8fe;
+}
+
+.search-type-select:focus {
+  border-color: #3282f6;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+}
+
+/* 时间区间搜索输入框样式 */
+.time-range-inputs {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 0 4px;
+}
+
+.time-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.time-input-group label {
+  font-size: 12px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.time-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #e1e8ed;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.time-input:hover {
+  border-color: #b7c8fe;
+}
+
+.time-input:focus {
   border-color: #3282f6;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
 }
