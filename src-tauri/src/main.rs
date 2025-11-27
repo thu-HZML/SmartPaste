@@ -45,6 +45,7 @@ use clipboard_rs::{
     ClipboardContext
 };
 use uuid::Uuid;
+use std::io;
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -130,19 +131,42 @@ async fn write_file_to_clipboard(
     // 6. 将新的临时文件路径写入剪贴板
     copy_file_to_clipboard(PathBuf::from(final_path_str))
 }
+fn copy_dir_all(src: &Path, dst: &Path) -> io::Result<()> {
+    // 如果目标文件夹不存在，创建它
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+    
+    // 遍历源文件夹
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            // 如果是子文件夹，递归调用
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            // 如果是文件，直接复制
+            fs::copy(&entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
+}
 // --- 辅助函数：处理单个文件（去除时间戳，复制到临时目录，返回绝对路径） ---
 fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     let path = Path::new(file_path);
 
+    // 1. 检查是否存在
     if !path.exists() {
-        return Err(format!("文件不存在: {}", file_path));
+        return Err(format!("路径不存在: {}", file_path));
     }
 
-    // 解析原始文件名（去除时间戳）
-    let file_name_os = path.file_name().ok_or("无法获取文件名")?;
+    // 2. 解析原始文件名/文件夹名（去除时间戳）
+    let file_name_os = path.file_name().ok_or("无法获取名称")?;
     let file_name_str = file_name_os.to_string_lossy();
     
-    // 逻辑：找到第一个 "-"，且前缀为13位数字时，取后面部分
+    // 解析时间戳逻辑
     let clean_file_name = if let Some((prefix, name)) = file_name_str.split_once('-') {
         if prefix.len() == 13 && prefix.chars().all(char::is_numeric) {
             name.to_string()
@@ -153,20 +177,29 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
         file_name_str.to_string()
     };
 
-    // 创建临时文件路径
+    // 3. 准备临时路径
     let temp_dir = env::temp_dir();
     let temp_target_path = temp_dir.join(&clean_file_name);
 
-    // 复制文件
-    if let Err(e) = fs::copy(path, &temp_target_path) {
-        return Err(format!("创建临时文件失败: {}", e));
+    // 4. 判断是文件还是文件夹，执行不同的复制逻辑
+    if path.is_dir() {
+        // --- 如果是文件夹，使用递归复制 ---
+        // 注意：如果临时目录已存在同名文件夹，这里可能需要先清理，视需求而定
+        // 这里直接覆盖/合并
+        if let Err(e) = copy_dir_all(path, &temp_target_path) {
+             return Err(format!("复制文件夹失败: {}", e));
+        }
+    } else {
+        // --- 如果是文件，使用标准复制 ---
+        if let Err(e) = fs::copy(path, &temp_target_path) {
+            return Err(format!("复制文件失败: {}", e));
+        }
     }
 
-    // 获取绝对路径
+    // 5. 获取绝对路径并处理 Windows 前缀
     let absolute_path = fs::canonicalize(&temp_target_path)
-        .map_err(|e| format!("无法获取临时文件绝对路径: {}", e))?;
+        .map_err(|e| format!("无法获取绝对路径: {}", e))?;
 
-    // Windows 路径前缀处理
     #[cfg(target_os = "windows")]
     let final_path = {
         let mut s = absolute_path.to_string_lossy().to_string();
@@ -196,39 +229,35 @@ fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
-// --- 新的 Command：支持多文件复制 ---
 #[tauri::command]
 async fn write_files_to_clipboard(
     _app_handle: tauri::AppHandle,
-    file_paths: Vec<String>, 
+    file_paths: Vec<String>,
     state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
-    // 1. 设置标志
     *state.is_frontend_copy.lock().unwrap() = true;
 
     if file_paths.is_empty() {
-        return Err("未选择任何文件".to_string());
+        return Err("未选择任何内容".to_string());
     }
 
     let mut final_paths: Vec<PathBuf> = Vec::new();
 
-    // 2. 循环处理每个文件
     for path_str in file_paths {
+        // 这里调用修改后的 process_file_for_clipboard
         match process_file_for_clipboard(&path_str) {
             Ok(clean_path) => final_paths.push(clean_path),
             Err(e) => {
-                println!("跳过文件 {}: {}", path_str, e);
-                // 可以选择报错返回，或者跳过错误文件继续处理
-                // 这里选择跳过并打印日志
+                println!("处理失败 [{}]: {}", path_str, e);
             }
         }
     }
 
     if final_paths.is_empty() {
-        return Err("所有文件处理失败".to_string());
+        return Err("所有内容处理失败".to_string());
     }
 
-    // 3. 将处理后的文件列表一次性写入剪贴板
+    // 写入剪贴板 (复用之前的函数)
     copy_files_list_to_clipboard(final_paths)?;
 
     Ok(())
