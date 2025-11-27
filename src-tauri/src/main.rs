@@ -73,63 +73,13 @@ async fn write_file_to_clipboard(
     file_path: String,
     state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
-    // 设置标志，表示这是前端触发的复制
     *state.is_frontend_copy.lock().unwrap() = true;
     
-    let path = Path::new(&file_path);
+    // 直接复用修复后的处理逻辑，它现在支持文件夹且没有权限问题
+    let final_path = process_file_for_clipboard(&file_path)?;
 
-    // 1. 检查文件是否存在
-    if !path.exists() {
-        return Err(format!("文件不存在: {}", file_path));
-    }
-
-    // 2. 解析原始文件名（去除时间戳）
-    // 假设格式为: {13位时间戳}-{原始文件名}，例如 "1764212693766-计网.pdf"
-    let file_name_os = path.file_name().ok_or("无法获取文件名")?;
-    let file_name_str = file_name_os.to_string_lossy();
-    
-    // 简单的解析逻辑：找到第一个 "-"，取后面的部分作为文件名
-    // 如果找不到 "-" 或者格式不匹配，则回退使用原文件名
-    let clean_file_name = if let Some((prefix, name)) = file_name_str.split_once('-') {
-        // 校验前缀是否看起来像时间戳（可选，防止误删普通文件的连字符）
-        if prefix.len() == 13 && prefix.chars().all(char::is_numeric) {
-            name.to_string()
-        } else {
-            file_name_str.to_string()
-        }
-    } else {
-        file_name_str.to_string()
-    };
-
-    println!("准备复制文件，原始名: {}, 处理后: {}", file_name_str, clean_file_name);
-
-    // 3. 创建临时文件路径
-    let temp_dir = env::temp_dir(); // 获取系统临时目录 (Windows下通常是 %TEMP%)
-    let temp_target_path = temp_dir.join(&clean_file_name);
-
-    // 4. 将原文件复制到临时目录并重命名
-    // 注意：如果是大文件，这里会产生IO耗时，可以考虑异步处理或提示
-    if let Err(e) = fs::copy(path, &temp_target_path) {
-        return Err(format!("创建临时文件失败: {}", e));
-    }
-
-    // 5. 获取临时文件的绝对路径
-    let absolute_path = fs::canonicalize(&temp_target_path)
-        .map_err(|e| format!("无法获取临时文件绝对路径: {}", e))?;
-
-    let mut final_path_str = absolute_path.to_string_lossy().to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        // 去除 Rust canonicalize 产生的 \\?\ 前缀
-        const VERBATIM_PREFIX: &str = r"\\?\";
-        if final_path_str.starts_with(VERBATIM_PREFIX) {
-            final_path_str = final_path_str[VERBATIM_PREFIX.len()..].to_string();
-        }
-    }
-
-    // 6. 将新的临时文件路径写入剪贴板
-    copy_file_to_clipboard(PathBuf::from(final_path_str))
+    // 写入剪贴板 (复用列表逻辑，只不过列表里只有一个)
+    copy_files_list_to_clipboard(vec![final_path])
 }
 fn copy_dir_all(src: &Path, dst: &Path) -> io::Result<()> {
     // 如果目标文件夹不存在，创建它
@@ -162,7 +112,7 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
         return Err(format!("路径不存在: {}", file_path));
     }
 
-    // 2. 解析原始文件名/文件夹名（去除时间戳）
+    // 2. 解析原始文件名
     let file_name_os = path.file_name().ok_or("无法获取名称")?;
     let file_name_str = file_name_os.to_string_lossy();
     
@@ -177,20 +127,27 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
         file_name_str.to_string()
     };
 
-    // 3. 准备临时路径
-    let temp_dir = env::temp_dir();
-    let temp_target_path = temp_dir.join(&clean_file_name);
+    // 3. 【关键修改】创建唯一的父级临时目录
+    // 结构变为: %TEMP% / {UUID} / {CleanFileName}
+    let temp_root = env::temp_dir();
+    let unique_sub_dir = temp_root.join(Uuid::new_v4().to_string());
+    
+    // 创建这个唯一的文件夹
+    if let Err(e) = fs::create_dir_all(&unique_sub_dir) {
+        return Err(format!("无法创建临时容器目录: {}", e));
+    }
 
-    // 4. 判断是文件还是文件夹，执行不同的复制逻辑
+    // 真正的目标路径
+    let temp_target_path = unique_sub_dir.join(&clean_file_name);
+
+    // 4. 执行复制
     if path.is_dir() {
-        // --- 如果是文件夹，使用递归复制 ---
-        // 注意：如果临时目录已存在同名文件夹，这里可能需要先清理，视需求而定
-        // 这里直接覆盖/合并
+        // 复制文件夹
         if let Err(e) = copy_dir_all(path, &temp_target_path) {
              return Err(format!("复制文件夹失败: {}", e));
         }
     } else {
-        // --- 如果是文件，使用标准复制 ---
+        // 复制文件
         if let Err(e) = fs::copy(path, &temp_target_path) {
             return Err(format!("复制文件失败: {}", e));
         }
