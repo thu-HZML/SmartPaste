@@ -578,17 +578,19 @@ const performSearch = async (query) => {
     
     switch (searchType.value) {
       case 'text':
-        result = await invoke('search_text_content', { 
+        result = await invoke('search_data', { 
+          searchType: 'text',
           query: query.trim() 
         })
         break
       case 'ocr':
-        result = await invoke('search_ocr_content', { 
+        result = await invoke('search_data_by_ocr_text', { 
           query: query.trim() 
         })
         break
       case 'path':
-        result = await invoke('search_path_content', { 
+        result = await invoke('search_data', { 
+          searchType: 'path',
           query: query.trim() 
         })
         break
@@ -596,9 +598,10 @@ const performSearch = async (query) => {
         if (startTime.value && endTime.value) {
           const startTimestamp = new Date(startTime.value).getTime()
           const endTimestamp = new Date(endTime.value).getTime()
-          result = await invoke('search_time_range', { 
-            startTime: startTimestamp,
-            endTime: endTimestamp
+          const timeRangeQuery = `${startTimestamp},${endTimestamp}`
+          result = await invoke('search_data', { 
+            searchType: 'timestamp',
+            query: timeRangeQuery
           })
         } else {
           result = '[]'
