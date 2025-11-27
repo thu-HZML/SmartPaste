@@ -36,7 +36,10 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DestroyIcon, GetIconInfo, HICON, ICONINFO,
+};
+use std::env;
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -57,36 +60,56 @@ fn write_to_clipboard(
     Ok(())
 }
 /// 将指定的文本写入系统剪贴板。作为 Tauri command 暴露给前端调用。
-/// 此函数会设置一个状态标志，以区分是前端主动复制还是由其他程序引起的剪贴板变化。
-/// # Param
-/// text: String - 需要写入剪贴板的文本内容。
-/// app_handle: tauri::AppHandle - Tauri 的应用句柄。
-/// state: State<'_,ClipboardSourceState> - 用于管理剪贴板来源状态的 Tauri 状态。
-/// # Returns
-/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
+/// 将文件写入剪贴板（去除时间戳前缀）
 #[tauri::command]
 async fn write_file_to_clipboard(
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
     file_path: String,
     state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
     // 设置标志，表示这是前端触发的复制
     *state.is_frontend_copy.lock().unwrap() = true;
+    
     let path = Path::new(&file_path);
 
-    // 检查文件是否存在
+    // 1. 检查文件是否存在
     if !path.exists() {
         return Err(format!("文件不存在: {}", file_path));
     }
 
-    // 检查是否是文件（不是目录）
-    // if !path.is_file() {
-    //     return Err("路径指向的不是文件".to_string());
-    // }
+    // 2. 解析原始文件名（去除时间戳）
+    // 假设格式为: {13位时间戳}-{原始文件名}，例如 "1764212693766-计网.pdf"
+    let file_name_os = path.file_name().ok_or("无法获取文件名")?;
+    let file_name_str = file_name_os.to_string_lossy();
+    
+    // 简单的解析逻辑：找到第一个 "-"，取后面的部分作为文件名
+    // 如果找不到 "-" 或者格式不匹配，则回退使用原文件名
+    let clean_file_name = if let Some((prefix, name)) = file_name_str.split_once('-') {
+        // 校验前缀是否看起来像时间戳（可选，防止误删普通文件的连字符）
+        if prefix.len() == 13 && prefix.chars().all(char::is_numeric) {
+            name.to_string()
+        } else {
+            file_name_str.to_string()
+        }
+    } else {
+        file_name_str.to_string()
+    };
 
-    // 获取文件的绝对路径
-    let absolute_path =
-        fs::canonicalize(path).map_err(|e| format!("无法获取文件绝对路径: {}", e))?;
+    println!("准备复制文件，原始名: {}, 处理后: {}", file_name_str, clean_file_name);
+
+    // 3. 创建临时文件路径
+    let temp_dir = env::temp_dir(); // 获取系统临时目录 (Windows下通常是 %TEMP%)
+    let temp_target_path = temp_dir.join(&clean_file_name);
+
+    // 4. 将原文件复制到临时目录并重命名
+    // 注意：如果是大文件，这里会产生IO耗时，可以考虑异步处理或提示
+    if let Err(e) = fs::copy(path, &temp_target_path) {
+        return Err(format!("创建临时文件失败: {}", e));
+    }
+
+    // 5. 获取临时文件的绝对路径
+    let absolute_path = fs::canonicalize(&temp_target_path)
+        .map_err(|e| format!("无法获取临时文件绝对路径: {}", e))?;
 
     let mut final_path_str = absolute_path.to_string_lossy().to_string();
 
@@ -98,7 +121,8 @@ async fn write_file_to_clipboard(
             final_path_str = final_path_str[VERBATIM_PREFIX.len()..].to_string();
         }
     }
-    // 根据不同平台调用相应的文件复制方法
+
+    // 6. 将新的临时文件路径写入剪贴板
     copy_file_to_clipboard(PathBuf::from(final_path_str))
 }
 
