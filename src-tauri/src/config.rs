@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     sync::{OnceLock, RwLock},
 };
-
+use tauri_plugin_autostart::ManagerExt;
 /// 系统配置结构体，包含通用设置、剪贴板参数、AI、隐私、备份、云同步和用户信息等配置项。
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Config {
@@ -336,18 +336,69 @@ pub fn set_global_shortcut_2_internal(shortcut: String) {
         eprintln!("❌ 保存配置文件失败: {}", e);
     }
 }
-// --------------- 1. 通用设置 ---------------
-
-/// 设置开机自启动。作为 Tauri Command 暴露给前端调用。
+/// 设置开机自启配置 (包含持久化保存，已处理死锁问题)
 /// # Param
-/// enabled: bool - 是否启用开机自启动
-#[tauri::command]
-pub fn set_config_autostart(enabled: bool) {
+/// enable: bool - 是否启用
+pub fn set_autostart_config(enable: bool) -> Result<(), String> {
+    // 1. 更新内存中的配置
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
-        cfg.autostart = enabled;
+        cfg.autostart = enable;
+    } else {
+        return Err("Config not initialized".to_string());
     }
-    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+
+    // 2. 获取配置副本 (此时已释放写锁)
+    let cfg_clone = if let Some(lock) = CONFIG.get() {
+        lock.read().unwrap().clone()
+    } else {
+        return Err("Config not initialized".to_string());
+    };
+
+    // 3. 保存到文件 (save_config 内部会再次获取锁，但现在是安全的)
+    save_config(cfg_clone)
+}
+// --------------- 1. 通用设置 ---------------
+
+/// 设置或取消应用的开机自启。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
+/// enable: bool - true表示启用开机自启，false表示禁用。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
+#[tauri::command]
+pub fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
+    let autolaunch = app.autolaunch();
+
+    if enable {
+        autolaunch
+            .enable()
+            .map_err(|e| format!("启用开机自启失败: {}", e))?;
+    } else {
+        autolaunch
+            .disable()
+            .map_err(|e| format!("禁用开机自启失败: {}", e))?;
+    }
+    crate::config::set_autostart_config(enable)?;
+    Ok(())
+}
+
+/// 检查应用是否已设置为开机自启。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
+/// # Returns
+/// Result<bool, String> - 操作成功则返回 Ok(bool)，其中 true 表示已启用自启，false 表示未启用。失败则返回包含错误信息的 Err。
+#[tauri::command]
+pub fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    let autolaunch = app.autolaunch();
+
+    let state = autolaunch
+        .is_enabled()
+        .map_err(|e| format!("检查自启状态失败: {}", e))?;
+    if let Err(e) = crate::config::set_autostart_config(state) {
+        eprintln!("同步开机自启状态到配置文件失败: {}", e);
+    }
+    Ok(state)
 }
 
 /// 设置系统托盘图标可见性。作为 Tauri Command 暴露给前端调用。
