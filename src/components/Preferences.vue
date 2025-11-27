@@ -88,10 +88,10 @@
             </div>
             <div class="setting-control">
               <select v-model="settings.retentionDays" class="select-input" @change="updateRetentionDays">
-                <option value="7">7天</option>
-                <option value="30">30天</option>
-                <option value="90">90天</option>
-                <option value="0">永久保存</option>
+                <option value=7>7天</option>
+                <option value=30>30天</option>
+                <option value=90>90天</option>
+                <option value=0>永久保存</option>
               </select>
             </div>
           </div>
@@ -249,7 +249,7 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleOCRAutoRecognition">
+                <input type="checkbox" v-model="deleteConfirmationWithMessage">
                 <span class="slider"></span>
               </label>
             </div>
@@ -776,10 +776,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted,computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { useSettingsStore } from '../stores/settings'
 import { 
   Cog6ToothIcon,
   TvIcon,
@@ -833,66 +834,7 @@ const navItems = ref([
 ])
 
 // 设置数据
-const settings = reactive({
-  autoStart: true,
-  showTrayIcon: true,
-  showMinimizeTrayIcon:true,
-  autoSave: true,
-  retentionDays: '30',
-  maxHistoryItems: 100,
-  ignoreShortText: 3,
-  ignoreBigFile: 5,
-  ignoredApps: ['密码管理器', '银行应用'],
-  previewLength: 115,
-  cloudSync: true,
-  syncFrequency: 'realtime',
-  syncContantType: 'onlytxt',
-  syncOnlyWifi: true,
-  encryptCloudData: true,
-
-  // 剪贴板参数设置
-  autoClassify: true,
-  ocrAutoRecognition: true,
-  deleteConfirmation: true,
-  keepFavorites: true,
-  autoSort: true,
-
-  // OCR设置
-  ocrProvider: 'auto',
-  ocrLanguages: ['chi_sim', 'eng'],
-  ocrConfidenceThreshold: 80,
-  ocrTimeoutSecs: 30,
-  
-  // AI Agent 设置
-  aiEnabled: false,
-  aiService: 'openai',
-  aiApiKey: '',
-  aiAutoTag: true,
-  aiAutoSummary: true,
-  aiTranslation: true,
-  aiWebSearch: false,
-  
-  // 安全与隐私
-  sensitiveFilter: true,
-  filterPasswords: true,
-  filterBankCards: true,
-  filterIDCards: true,
-  filterPhoneNumbers: true,
-  privacyRetentionDays: '7',
-  
-  // 数据备份
-  dataStoragePath: '',
-  autoBackup: true,
-  backupFrequency: 'weekly',
-
-  shortcuts: {
-    toggleWindow: '',
-    pasteWindow: '',
-    AIWindow: '',
-    quickPaste: '',
-    clearHistory: ''
-  }
-})
+const settings = useSettingsStore()
 
 // 快捷键显示名称映射
 const shortcutDisplayNames = {
@@ -1377,7 +1319,14 @@ const toggleOCRAutoRecognition = async () => {
   }
 }
 //删除确认
-const toggleDeleteConfirmation = async () => {
+const deleteConfirmationWithMessage = computed({
+  get: () => settings.deleteConfirmation,
+  set: (value) => {
+    settings.deleteConfirmation = value
+    showMessage(value ? '已启用删除确认' : '已禁用删除确认')
+  }
+})
+/*const toggleDeleteConfirmation = async () => {
   try {
     await invoke('set_delete_confirmation', { enabled: settings.deleteConfirmation })
     showMessage(settings.deleteConfirmation ? '已启用删除确认' : '已禁用删除确认')
@@ -1386,7 +1335,7 @@ const toggleDeleteConfirmation = async () => {
     settings.deleteConfirmation = !settings.deleteConfirmation
     showMessage(`设置失败: ${error}`)
   }
-}
+}*/
 //收藏保留
 const toggleKeepFavorites = async () => {
   try {

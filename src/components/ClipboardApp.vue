@@ -356,6 +356,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 import { toggleClipboardWindow } from '../utils/actions.js'
+import { useSettingsStore } from '../stores/settings'
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -378,6 +379,7 @@ import {
 const router = useRouter()
 const route = useRoute()
 const currentWindow = getCurrentWindow();
+const settings = useSettingsStore()
 
 // 响应式数据
 const searchQuery = ref('')
@@ -683,7 +685,13 @@ const executeDoubleClick = async (item) => {
 
 // 弹出"确认删除"提示框
 const showDeleteAll = () => {
-  showDeleteModal.value = true
+  // 根据 deleteConfirmation 设置决定是否显示确认对话框
+  if (settings.deleteConfirmation) {
+    showDeleteModal.value = true
+  } else {
+    // 如果不需要确认，直接执行删除操作
+    deleteAllHistory()
+  }
 }
 
 // 删除所有历史记录
