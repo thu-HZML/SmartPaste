@@ -40,6 +40,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DestroyIcon, GetIconInfo, HICON, ICONINFO,
 };
 use std::env;
+use clipboard_rs::{Clipboard, ClipboardContext, ContentFormat};
+use uuid::Uuid;
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -125,7 +127,110 @@ async fn write_file_to_clipboard(
     // 6. 将新的临时文件路径写入剪贴板
     copy_file_to_clipboard(PathBuf::from(final_path_str))
 }
+// --- 辅助函数：处理单个文件（去除时间戳，复制到临时目录，返回绝对路径） ---
+fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
+    let path = Path::new(file_path);
 
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", file_path));
+    }
+
+    // 解析原始文件名（去除时间戳）
+    let file_name_os = path.file_name().ok_or("无法获取文件名")?;
+    let file_name_str = file_name_os.to_string_lossy();
+    
+    // 逻辑：找到第一个 "-"，且前缀为13位数字时，取后面部分
+    let clean_file_name = if let Some((prefix, name)) = file_name_str.split_once('-') {
+        if prefix.len() == 13 && prefix.chars().all(char::is_numeric) {
+            name.to_string()
+        } else {
+            file_name_str.to_string()
+        }
+    } else {
+        file_name_str.to_string()
+    };
+
+    // 创建临时文件路径
+    let temp_dir = env::temp_dir();
+    let temp_target_path = temp_dir.join(&clean_file_name);
+
+    // 复制文件
+    if let Err(e) = fs::copy(path, &temp_target_path) {
+        return Err(format!("创建临时文件失败: {}", e));
+    }
+
+    // 获取绝对路径
+    let absolute_path = fs::canonicalize(&temp_target_path)
+        .map_err(|e| format!("无法获取临时文件绝对路径: {}", e))?;
+
+    // Windows 路径前缀处理
+    #[cfg(target_os = "windows")]
+    let final_path = {
+        let mut s = absolute_path.to_string_lossy().to_string();
+        const VERBATIM_PREFIX: &str = r"\\?\";
+        if s.starts_with(VERBATIM_PREFIX) {
+            s = s[VERBATIM_PREFIX.len()..].to_string();
+        }
+        PathBuf::from(s)
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let final_path = absolute_path;
+
+    Ok(final_path)
+}
+
+// --- 核心 helper：将路径列表写入剪贴板 ---
+fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
+    // 这里使用 clipboard-rs 库，它原生支持 set_files
+    let ctx = ClipboardContext::new().map_err(|e| e.to_string())?;
+    
+    // 将 PathBuf 转换为 String 列表
+    let paths_str: Vec<String> = paths.into_iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+
+    ctx.set_files(paths_str).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// --- 新的 Command：支持多文件复制 ---
+#[tauri::command]
+async fn write_files_to_clipboard(
+    _app_handle: tauri::AppHandle,
+    file_paths: Vec<String>, 
+    state: State<'_, ClipboardSourceState>,
+) -> Result<(), String> {
+    // 1. 设置标志
+    *state.is_frontend_copy.lock().unwrap() = true;
+
+    if file_paths.is_empty() {
+        return Err("未选择任何文件".to_string());
+    }
+
+    let mut final_paths: Vec<PathBuf> = Vec::new();
+
+    // 2. 循环处理每个文件
+    for path_str in file_paths {
+        match process_file_for_clipboard(&path_str) {
+            Ok(clean_path) => final_paths.push(clean_path),
+            Err(e) => {
+                println!("跳过文件 {}: {}", path_str, e);
+                // 可以选择报错返回，或者跳过错误文件继续处理
+                // 这里选择跳过并打印日志
+            }
+        }
+    }
+
+    if final_paths.is_empty() {
+        return Err("所有文件处理失败".to_string());
+    }
+
+    // 3. 将处理后的文件列表一次性写入剪贴板
+    copy_files_list_to_clipboard(final_paths)?;
+
+    Ok(())
+}
 /// 跨平台地将文件复制到系统剪贴板。作为 Tauri command 暴露给前端调用。
 /// 此函数会根据编译的目标操作系统（Windows, macOS, Linux）调用相应的底层实现。
 /// # Param
@@ -403,6 +508,7 @@ fn main() {
             get_current_shortcut,
             get_all_shortcuts,
             get_file_icon,
+            write_files_to_clipboard,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
