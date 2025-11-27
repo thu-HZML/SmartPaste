@@ -21,42 +21,148 @@ use tauri_plugin_global_shortcut::{
 pub struct ClipboardSourceState {
     pub is_frontend_copy: Mutex<bool>,
 }
-pub struct AppShortcutState {
-    pub current_shortcut: Mutex<String>,
+/// 管理应用的主快捷键状态
+pub struct AppShortcutManager {
+    pub shortcuts: Mutex<std::collections::HashMap<String, String>>,
 }
-pub struct AppShortcutState2 {
-    pub current_shortcut: Mutex<String>,
+impl AppShortcutManager {
+    pub fn new() -> Self {
+        Self {
+            shortcuts: Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+    
+    pub fn get_shortcut(&self, shortcut_type: &str) -> Option<String> {
+        self.shortcuts.lock().unwrap().get(shortcut_type).cloned()
+    }
+    
+    pub fn set_shortcut(&self, shortcut_type: &str, shortcut: String) {
+        self.shortcuts.lock().unwrap().insert(shortcut_type.to_string(), shortcut);
+    }
+    
+    pub fn remove_shortcut(&self, shortcut_type: &str) {
+        self.shortcuts.lock().unwrap().remove(shortcut_type);
+    }
+}
+// 快捷键配置定义
+#[derive(Clone)]
+pub struct ShortcutConfig {
+    pub storage_key: &'static str,
+    pub default_value: &'static str,
+    pub handler: fn(&AppHandle, &str),
 }
 
-/// 从 Config 中加载主快捷键配置
-/// 不再需要 handle 参数来找路径，但为了保持函数签名兼容性或方便后续修改，可以留着或去掉
-fn load_shortcut_from_storage(_handle: &AppHandle) -> String {
-    if let Some(lock) = CONFIG.get() {
-        let cfg = lock.read().unwrap();
-        cfg.global_shortcut.clone()
+// 快捷键配置映射
+lazy_static::lazy_static! {
+    static ref SHORTCUT_CONFIGS: std::collections::HashMap<&'static str, ShortcutConfig> = {
+        let mut m = std::collections::HashMap::new();
+        m.insert("toggleWindow", ShortcutConfig {
+            storage_key: "global_shortcut",
+            default_value: "Alt+Shift+V",
+            handler: |app, _shortcut| {
+                println!("🎯 执行主窗口切换");
+                if let Some(window) = app.get_webview_window("main") {
+                    toggle_window_visibility(&window);
+                }
+            },
+        });
+        m.insert("pasteWindow", ShortcutConfig {
+            storage_key: "global_shortcut_2", 
+            default_value: "Alt+Shift+C",
+            handler: |app, shortcut| {
+                println!("🎯 执行剪贴板窗口切换，快捷键: {}", shortcut);
+                if let Some(window) = app.get_webview_window("main") {
+                    match window.eval(
+                        "if (typeof toggleClipboardWindow === 'function') { console.log('Rust: 调用剪贴板窗口切换'); toggleClipboardWindow(); } else { console.error('Rust: toggleClipboardWindow 未找到'); }"
+                    ) {
+                        Ok(_) => println!("✅ JavaScript 执行命令发送成功"),
+                        Err(e) => println!("❌ JavaScript 执行失败: {:?}", e),
+                    }
+                }
+            },
+        });
+        m.insert("AIWindow", ShortcutConfig {
+            storage_key: "global_shortcut_3",
+            default_value: "Ctrl+Shift+A", 
+            handler: |app, shortcut| {
+                println!("🤖 执行AI窗口切换，快捷键: {}", shortcut);
+                if let Some(window) = app.get_webview_window("main") {
+                    match window.eval(
+                        "if (typeof toggleAIWindow === 'function') { console.log('Rust: 调用AI窗口切换'); toggleAIWindow(); } else { console.error('Rust: toggleAIWindow 未找到'); }"
+                    ) {
+                        Ok(_) => println!("✅ AI窗口切换命令发送成功"),
+                        Err(e) => println!("❌ AI窗口切换执行失败: {:?}", e),
+                    }
+                }
+            },
+        });
+        m.insert("quickPaste", ShortcutConfig {
+            storage_key: "global_shortcut_4",
+            default_value: "Ctrl+Shift+V",
+            handler: |app, shortcut| {
+                println!("📋 执行快速粘贴，快捷键: {}", shortcut);
+                if let Some(window) = app.get_webview_window("main") {
+                    match window.eval(
+                        "if (typeof quickPaste === 'function') { console.log('Rust: 调用快速粘贴'); quickPaste(); } else { console.error('Rust: quickPaste 未找到'); }"
+                    ) {
+                        Ok(_) => println!("✅ 快速粘贴命令发送成功"),
+                        Err(e) => println!("❌ 快速粘贴执行失败: {:?}", e),
+                    }
+                }
+            },
+        });
+        m.insert("clearHistory", ShortcutConfig {
+            storage_key: "global_shortcut_5", 
+            default_value: "Ctrl+Shift+Delete",
+            handler: |app, shortcut| {
+                println!("🗑️ 执行清空历史，快捷键: {}", shortcut);
+                if let Some(window) = app.get_webview_window("main") {
+                    match window.eval(
+                        "if (typeof clearClipboardHistory === 'function') { console.log('Rust: 调用清空历史'); clearClipboardHistory(); } else { console.error('Rust: clearClipboardHistory 未找到'); }"
+                    ) {
+                        Ok(_) => println!("✅ 清空历史命令发送成功"),
+                        Err(e) => println!("❌ 清空历史执行失败: {:?}", e),
+                    }
+                }
+            },
+        });
+        m
+    };
+}
+
+/// 从 Config 中加载快捷键配置
+fn load_shortcut_from_storage(shortcut_type: &str) -> String {
+    if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type) {
+        if let Some(lock) = CONFIG.get() {
+            let cfg = lock.read().unwrap();
+            match config.storage_key {
+                "global_shortcut" => cfg.global_shortcut.clone(),
+                "global_shortcut_2" => cfg.global_shortcut_2.clone(),
+                "global_shortcut_3" => cfg.global_shortcut_3.clone(),
+                "global_shortcut_4" => cfg.global_shortcut_4.clone(),
+                "global_shortcut_5" => cfg.global_shortcut_5.clone(),
+                _ => config.default_value.to_string(),
+            }
+        } else {
+            config.default_value.to_string()
+        }
     } else {
-        "Alt+Shift+V".to_string()
+        "".to_string()
     }
 }
 
-/// 从 Config 中加载第二个界面的快捷键配置
-fn load_shortcut_from_storage2(_handle: &AppHandle) -> String {
-    if let Some(lock) = CONFIG.get() {
-        let cfg = lock.read().unwrap();
-        cfg.global_shortcut_2.clone()
-    } else {
-        "Alt+Shift+C".to_string()
+/// 保存快捷键到 Config
+fn save_shortcut_to_storage(shortcut_type: &str, shortcut: &str) {
+    if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type) {
+        match config.storage_key {
+            "global_shortcut" => config::set_global_shortcut_internal(shortcut.to_string()),
+            "global_shortcut_2" => config::set_global_shortcut_2_internal(shortcut.to_string()),
+            "global_shortcut_3" => config::set_global_shortcut_3_internal(shortcut.to_string()),
+            "global_shortcut_4" => config::set_global_shortcut_4_internal(shortcut.to_string()),
+            "global_shortcut_5" => config::set_global_shortcut_5_internal(shortcut.to_string()),
+            _ => {},
+        }
     }
-}
-
-/// 将主快捷键保存到 Config
-fn save_shortcut_to_storage(_handle: &AppHandle, shortcut: &str) {
-    config::set_global_shortcut_internal(shortcut.to_string());
-}
-
-/// 将第二个快捷键保存到 Config
-fn save_shortcut_to_storage2(_handle: &AppHandle, shortcut: &str) {
-    config::set_global_shortcut_2_internal(shortcut.to_string());
 }
 /// 动态更新并注册应用的主全局快捷键。作为 Tauri command 暴露给前端调用。
 ///
@@ -74,95 +180,57 @@ fn save_shortcut_to_storage2(_handle: &AppHandle, shortcut: &str) {
 /// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
 #[tauri::command]
 pub fn update_shortcut(
+    shortcut_type: String,
     new_shortcut_str: String,
     handle: AppHandle,
-    state: State<AppShortcutState>,
+    state: State<AppShortcutManager>,
 ) -> Result<(), String> {
-    let mut current_shortcut_str = state.current_shortcut.lock().unwrap();
     let manager = handle.global_shortcut();
-
-    // 1. 注销旧的快捷键 (先解析成 Shortcut 对象)
-    if !current_shortcut_str.is_empty() {
-        if let Ok(old_shortcut) = Shortcut::from_str(&*current_shortcut_str) {
+    
+    // 1. 获取旧的快捷键并注销
+    let old_shortcut_str = state.get_shortcut(&shortcut_type).unwrap_or_default();
+    if !old_shortcut_str.is_empty() {
+        if let Ok(old_shortcut) = Shortcut::from_str(&old_shortcut_str) {
             if let Err(e) = manager.unregister(old_shortcut) {
-                eprintln!(
-                    "⚠️ 注销旧快捷键 {} 可能失败: {:?}",
-                    &*current_shortcut_str, e
-                );
+                eprintln!("⚠️ 注销旧快捷键 {} 可能失败: {:?}", old_shortcut_str, e);
             }
         }
     }
 
-    // 2. 尝试注册新的快捷键 (先解析成 Shortcut 对象)
+    // 2. 尝试注册新的快捷键
     let new_shortcut = Shortcut::from_str(&new_shortcut_str).map_err(|e| e.to_string())?;
     if let Err(e) = manager.register(new_shortcut.clone()) {
-        // 如果注册失败，尝试恢复旧的快捷键
-        if !current_shortcut_str.is_empty() {
-            if let Ok(old_shortcut_revert) = Shortcut::from_str(&*current_shortcut_str) {
+        // 注册失败，尝试恢复旧的快捷键
+        if !old_shortcut_str.is_empty() {
+            if let Ok(old_shortcut_revert) = Shortcut::from_str(&old_shortcut_str) {
                 manager.register(old_shortcut_revert).ok();
             }
         }
-        return Err(format!("注册新快捷键失败，可能已被占用: {}", e));
+        return Err(format!("注册快捷键失败，可能已被占用: {}", e));
     }
 
-    // 3. 成功后，更新状态并保存
-    println!("✅ 已成功更新并注册快捷键: {}", new_shortcut_str);
-    *current_shortcut_str = new_shortcut_str.clone();
-    save_shortcut_to_storage(&handle, &new_shortcut_str);
+    // 3. 更新状态并保存
+    println!("✅ 已成功更新快捷键 {}: {}", shortcut_type, new_shortcut_str);
+    state.set_shortcut(&shortcut_type, new_shortcut_str.clone());
+    save_shortcut_to_storage(&shortcut_type, &new_shortcut_str);
 
     Ok(())
 }
-/// 动态更新并注册应用的第二个全局快捷键。作为 Tauri command 暴露给前端调用。
-///
-/// 功能与 `update_shortcut` 类似，但针对的是第二个独立的快捷键。
-/// 它会注销旧的、注册新的，并在失败时回滚。成功后会更新对应的状态 `AppShortcutState2`
-/// 并调用 `save_shortcut_to_storage2` 进行持久化。
-///
-/// # Param
-/// new_shortcut_str: String - 新的快捷键组合字符串。
-/// handle: AppHandle - Tauri 的应用句柄，用于访问全局快捷键管理器。
-/// state: State<AppShortcutState2> - 存储当前第二个快捷键的 Tauri 状态。
-/// # Returns
-/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
+/// 获取当前快捷键
 #[tauri::command]
-pub fn update_shortcut2(
-    new_shortcut_str: String,
-    handle: AppHandle,
-    state: State<AppShortcutState2>,
-) -> Result<(), String> {
-    let mut current_shortcut_str = state.current_shortcut.lock().unwrap();
-    let manager = handle.global_shortcut();
-
-    // 1. 注销旧的快捷键 (先解析成 Shortcut 对象)
-    if !current_shortcut_str.is_empty() {
-        if let Ok(old_shortcut) = Shortcut::from_str(&*current_shortcut_str) {
-            if let Err(e) = manager.unregister(old_shortcut) {
-                eprintln!(
-                    "⚠️ 注销第二个界面旧快捷键 {} 可能失败: {:?}",
-                    &*current_shortcut_str, e
-                );
-            }
-        }
-    }
-
-    // 2. 尝试注册新的快捷键 (先解析成 Shortcut 对象)
-    let new_shortcut = Shortcut::from_str(&new_shortcut_str).map_err(|e| e.to_string())?;
-    if let Err(e) = manager.register(new_shortcut.clone()) {
-        // 如果注册失败，尝试恢复旧的快捷键
-        if !current_shortcut_str.is_empty() {
-            if let Ok(old_shortcut_revert) = Shortcut::from_str(&*current_shortcut_str) {
-                manager.register(old_shortcut_revert).ok();
-            }
-        }
-        return Err(format!("注册第二个界面新快捷键失败，可能已被占用: {}", e));
-    }
-
-    // 3. 成功后，更新状态并保存
-    println!("✅ 已成功更新并注册第二个界面快捷键: {}", new_shortcut_str);
-    *current_shortcut_str = new_shortcut_str.clone();
-    save_shortcut_to_storage2(&handle, &new_shortcut_str);
-
-    Ok(())
+pub fn get_current_shortcut(
+    shortcut_type: String,
+    state: State<AppShortcutManager>,
+) -> Result<String, String> {
+    state.get_shortcut(&shortcut_type)
+        .ok_or_else(|| "快捷键未找到".to_string())
+}
+/// 获取所有快捷键
+#[tauri::command]
+pub fn get_all_shortcuts(
+    state: State<AppShortcutManager>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    Ok(state.shortcuts.lock().unwrap().clone())
 }
 
 /// 创建系统托盘图标和菜单
@@ -208,95 +276,118 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
 
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle_for_closure = handle.clone();
+    let shortcut_manager = handle.state::<AppShortcutManager>();
 
-    // 1. 设置一个全局的、唯一的事件处理器
+    // 1. 设置统一的全局事件处理器 - 修复格式匹配问题
     handle.plugin(
         tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(move |_app, shortcut, event| {
-                let state = handle_for_closure.state::<AppShortcutState>();
-                let active_shortcut_str = state.current_shortcut.lock().unwrap();
-
-                if let Ok(active_shortcut) = Shortcut::from_str(&active_shortcut_str) {
-                    if shortcut == &active_shortcut && event.state() == PluginShortcutState::Pressed
-                    {
-                        if let Some(window) = handle_for_closure.get_webview_window("main") {
-                            println!("✅ 第一个界面快捷键触发，执行窗口切换逻辑");
-                            toggle_window_visibility(&window);
-                        }
-                    }
+            .with_handler(move |app, shortcut, event| {
+                //println!("🔧 收到快捷键事件: {}, 状态: {:?}", shortcut, event.state());
+                
+                if event.state() != PluginShortcutState::Pressed {
+                    return;
                 }
 
-                // 添加第二个界面的快捷键处理
-                let state2 = handle_for_closure.state::<AppShortcutState2>();
-                let active_shortcut_str2 = state2.current_shortcut.lock().unwrap();
+                let shortcut_str = shortcut.to_string();
+                //println!("🔍 查找快捷键: {}", shortcut_str);
+                
+                let manager = app.state::<AppShortcutManager>();
+                let shortcuts = manager.shortcuts.lock().unwrap();
 
-                if let Ok(active_shortcut2) = Shortcut::from_str(&active_shortcut_str2) {
-                    if shortcut == &active_shortcut2 && event.state() == PluginShortcutState::Pressed
-                    {
-                        if let Some(window) = handle_for_closure.get_webview_window("main") {
-                            println!("🎯 执行前端 toggleClipboardWindow 函数");
-                            match window.eval(
-                                "if (typeof toggleClipboardWindow === 'function') { console.log('Rust: 调用剪贴板窗口切换'); toggleClipboardWindow(); } else { console.error('Rust: toggleClipboardWindow 未找到'); }"
-                            ) {
-                                Ok(_) => println!("✅ JavaScript 执行命令发送成功"),
-                                Err(e) => println!("❌ JavaScript 执行失败: {:?}", e),
-                            }
+                // 打印所有已注册的快捷键用于调试
+                //println!("📋 已注册快捷键: {:?}", *shortcuts);
+
+                // 统一快捷键格式进行比较
+                let normalized_received = normalize_shortcut_format(&shortcut_str);
+                //println!("🔄 标准化后的快捷键: {}", normalized_received);
+
+                // 检查所有注册的快捷键
+                for (shortcut_type, registered_shortcut) in shortcuts.iter() {
+                    let normalized_registered = normalize_shortcut_format(registered_shortcut);
+                    //println!("🔍 比较: {} vs {}", normalized_received, normalized_registered);
+                    
+                    if normalized_received == normalized_registered {
+                        println!("✅ 匹配到快捷键: {} - {}", shortcut_type, registered_shortcut);
+                        
+                        // 调用对应的处理器
+                        if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type.as_str()) {
+                            println!("🚀 执行处理器: {}", shortcut_type);
+                            (config.handler)(app, registered_shortcut);
                         } else {
-                            println!("❌ 主窗口未找到，无法执行前端函数");
+                            println!("❌ 未找到处理器: {}", shortcut_type);
                         }
+                        return;
                     }
                 }
+                
+                println!("❌ 未找到匹配的快捷键处理器");
             })
             .build(),
     )?;
 
-    // 2. 加载、存储并注册第一个界面的初始快捷键
-    let shortcut_str = load_shortcut_from_storage(&handle);
-    println!("ℹ️ 正在尝试注册第一个界面快捷键: {}", shortcut_str);
+    // 2. 初始化并注册所有快捷键
+    for (&shortcut_type, config) in SHORTCUT_CONFIGS.iter() {
+        let shortcut_str = load_shortcut_from_storage(shortcut_type);
+        println!("ℹ️ 正在尝试注册快捷键 {}: {}", shortcut_type, shortcut_str);
 
-    if let Ok(shortcut) = Shortcut::from_str(&shortcut_str) {
-        let manager = handle.global_shortcut();
-        if let Err(e) = manager.register(shortcut) {
-            eprintln!(
-                "❌ 注册第一个界面初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。",
-                shortcut_str, e
-            );
+        if let Ok(shortcut) = Shortcut::from_str(&shortcut_str) {
+            let manager = handle.global_shortcut();
+            if let Err(e) = manager.register(shortcut) {
+                eprintln!(
+                    "❌ 注册快捷键 {} {} 失败: {:?}. 用户可能需要重新设置。",
+                    shortcut_type, shortcut_str, e
+                );
+            } else {
+                println!("✅ 已成功注册快捷键 {}: {}", shortcut_type, shortcut_str);
+                shortcut_manager.set_shortcut(shortcut_type, shortcut_str);
+            }
         } else {
-            println!("✅ 已成功注册第一个界面全局快捷键: {}", shortcut_str);
+            eprintln!("❌ 快捷键 {} '{}' 格式无效。", shortcut_type, shortcut_str);
         }
-    } else {
-        eprintln!("❌ 第一个界面初始快捷键 '{}' 格式无效。", shortcut_str);
     }
-
-    // 3. 将加载的快捷键字符串存入状态管理
-    let state = handle.state::<AppShortcutState>();
-    *state.current_shortcut.lock().unwrap() = shortcut_str;
-
-    // 4. 加载、存储并注册第二个界面的初始快捷键
-    let shortcut_str2 = load_shortcut_from_storage2(&handle);
-    println!("ℹ️ 正在尝试注册第二个界面快捷键: {}", shortcut_str2);
-
-    if let Ok(shortcut2) = Shortcut::from_str(&shortcut_str2) {
-        let manager = handle.global_shortcut();
-        if let Err(e) = manager.register(shortcut2) {
-            eprintln!(
-                "❌ 注册第二个界面初始快捷键 {} 失败: {:?}. 用户可能需要重新设置。",
-                shortcut_str2, e
-            );
-        } else {
-            println!("✅ 已成功注册第二个界面全局快捷键: {}", shortcut_str2);
-        }
-    } else {
-        eprintln!("❌ 第二个界面初始快捷键 '{}' 格式无效。", shortcut_str2);
-    }
-
-    // 5. 将加载的第二个界面快捷键字符串存入状态管理
-    let state2 = handle.state::<AppShortcutState2>();
-    *state2.current_shortcut.lock().unwrap() = shortcut_str2;
 
     Ok(())
 }
 
+fn normalize_shortcut_format(shortcut: &str) -> String {
+    let mut normalized = shortcut.to_lowercase();
+    
+    // 替换常见的格式差异
+    normalized = normalized.replace("keya", "a");
+    normalized = normalized.replace("keyb", "b");
+    normalized = normalized.replace("keyc", "c");
+    normalized = normalized.replace("keyd", "d");
+    normalized = normalized.replace("keye", "e");
+    normalized = normalized.replace("keyf", "f");
+    normalized = normalized.replace("keyg", "g");
+    normalized = normalized.replace("keyh", "h");
+    normalized = normalized.replace("keyi", "i");
+    normalized = normalized.replace("keyj", "j");
+    normalized = normalized.replace("keyk", "k");
+    normalized = normalized.replace("keyl", "l");
+    normalized = normalized.replace("keym", "m");
+    normalized = normalized.replace("keyn", "n");
+    normalized = normalized.replace("keyo", "o");
+    normalized = normalized.replace("keyp", "p");
+    normalized = normalized.replace("keyq", "q");
+    normalized = normalized.replace("keyr", "r");
+    normalized = normalized.replace("keys", "s");
+    normalized = normalized.replace("keyt", "t");
+    normalized = normalized.replace("keyu", "u");
+    normalized = normalized.replace("keyv", "v");
+    normalized = normalized.replace("keyw", "w");
+    normalized = normalized.replace("keyx", "x");
+    normalized = normalized.replace("keyy", "y");
+    normalized = normalized.replace("keyz", "z");
+    
+    // 统一修饰键名称
+    normalized = normalized.replace("ctrl", "control");
+    normalized = normalized.replace("cmd", "super");
+    normalized = normalized.replace("command", "super");
+    normalized = normalized.replace("meta", "super");
+    
+    normalized
+}
 
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {

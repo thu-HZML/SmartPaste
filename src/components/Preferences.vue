@@ -101,104 +101,21 @@
         <div v-if="activeNav === 'shortcuts'" class="panel-section">
           <h2>快捷键设置</h2>
           
-          <div class="setting-item">
+          <div class="setting-item" v-for="(displayName, shortcutType) in shortcutDisplayNames" :key="shortcutType">
             <div class="setting-info">
-              <h3>显示/隐藏桌宠</h3>
-              <p>快速显示或隐藏剪贴板管理器桌宠</p>
+              <h3>{{ displayName }}</h3>
+              <p>快速{{ displayName.replace('显示/隐藏', '').replace('清空', '') }}功能</p>
             </div>
             <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('toggleWindow')">
-                {{ settings.shortcuts.toggleWindow || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>显示/隐藏剪贴板</h3>
-              <p>快速显示或隐藏剪贴板</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording2('pasteWindow')">
-                {{ settings.shortcuts.pasteWindow || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>显示/隐藏AI Agent</h3>
-              <p>快速显示或隐藏AI助手</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording2('AIWindow')">
-                {{ settings.shortcuts.AIWindow || '点击设置' }}
-              </div>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>快速粘贴</h3>
-              <p>使用快捷键快速粘贴最近的内容</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>快速收藏</h3>
-              <p>使用快捷键快速收藏最近的复制内容</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>快速Tag</h3>
-              <p>还没想好</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>截图并识别</h3>
-              <p>使用快捷键快速截图并使用OCR识别</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>清空剪贴板历史</h3>
-              <p>快速清空所有剪贴板历史记录</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('clearHistory')">
-                {{ settings.shortcuts.clearHistory || '点击设置' }}
+              <div class="shortcut-input" @click="startRecording(shortcutType)">
+                {{ settings.shortcuts[shortcutType] || '点击设置' }}
               </div>
             </div>
           </div>
           
           <div class="hint">
             <p>提示：点击快捷键输入框，然后按下您想要设置的组合键</p>
+            <p>按 ESC 键可取消设置</p>
           </div>
         </div>
 
@@ -894,9 +811,12 @@ const errorMsg = ref('')
 const successMsg = ref('')
 const currentShortcut = ref('')
 let timer = null
+const shortcutManager = reactive({
+  currentType: '',
+  isRecording: false,
+  currentKeys: new Set()
+})
 const recordingShortcutType = ref('') // 当前正在录制的快捷键类型
-const isRecording = ref(false) // 是否正在录制
-let currentKeys = new Set() // 记录当前按下的键
 
 // 导航项
 const navItems = ref([
@@ -974,6 +894,15 @@ const settings = reactive({
   }
 })
 
+// 快捷键显示名称映射
+const shortcutDisplayNames = {
+  toggleWindow: '显示/隐藏主窗口',
+  pasteWindow: '显示/隐藏剪贴板', 
+  AIWindow: '显示/隐藏AI助手',
+  quickPaste: '快速粘贴',
+  clearHistory: '清空剪贴板历史'
+}
+
 // 同步状态相关数据
 const lastSyncTime = ref(null) // 上次同步时间戳
 const lastSyncStatus = ref('') // 'success', 'error', ''
@@ -1024,27 +953,6 @@ const showMessage = (message) => {
   }, 2000)
 }
 
-// 加载当前快捷键设置
-const loadCurrentShortcuts = async () => {
-  try {
-    const toggleWindowShortcut = await invoke('get_current_shortcut')
-    const pasteWindowShortcut = await invoke('get_current_shortcut2')
-    
-    settings.shortcuts.toggleWindow = toggleWindowShortcut || 'Shift+D'
-    settings.shortcuts.pasteWindow = pasteWindowShortcut || 'Alt+Shift+C'
-    
-    console.log('加载当前快捷键:', {
-      toggleWindow: settings.shortcuts.toggleWindow,
-      pasteWindow: settings.shortcuts.pasteWindow
-    })
-  } catch (error) {
-    console.error('加载快捷键失败:', error)
-    // 设置默认值
-    settings.shortcuts.toggleWindow = 'Shift+D'
-    settings.shortcuts.pasteWindow = 'Alt+Shift+C'
-  }
-}
-
 // 生命周期
 onMounted(async () => {
   // 加载保存的设置
@@ -1057,7 +965,7 @@ onMounted(async () => {
     lastSyncTime.value = parseInt(savedTime);
   }
   await checkAutostartStatus()
-  await loadCurrentShortcuts()
+  await loadAllShortcuts()
 
   // 初始化窗口大小
   try {
@@ -1148,93 +1056,53 @@ const updateRetentionDays = async () => {
 // 快捷键设置相关函数
 // 开始录制快捷键
 const startRecording = (shortcutType) => {
-  recordingShortcutType.value = shortcutType
-  isRecording.value = true
-  currentKeys.clear()
-  showMessage(`请按下 ${getShortcutDisplayName(shortcutType)} 的快捷键...`)
+  shortcutManager.currentType = shortcutType
+  shortcutManager.isRecording = true
+  shortcutManager.currentKeys.clear()
   
-  // 添加全局键盘事件监听
+  showMessage(`请按下 ${shortcutDisplayNames[shortcutType]} 的快捷键...`)
+  
+  // 添加全局事件监听
   window.addEventListener('keydown', handleKeyDownDuringRecording)
-  window.addEventListener('keyup', handleKeyUpDuringRecording)
-}
-
-const startRecording2 = (shortcutType) => {
-  recordingShortcutType.value = shortcutType
-  isRecording.value = true
-  currentKeys.clear()
-  showMessage(`请按下 ${getShortcutDisplayName(shortcutType)} 的快捷键...`)
-  
-  // 添加全局键盘事件监听
-  window.addEventListener('keydown', handleKeyDownDuringRecording2)
   window.addEventListener('keyup', handleKeyUpDuringRecording)
 }
 
 // 处理录制期间的按键
 const handleKeyDownDuringRecording = (event) => {
-  if (!isRecording.value) return
+  if (!shortcutManager.isRecording) return
   
   event.preventDefault()
   event.stopPropagation()
   
-  // 记录按下的键
   const key = getKeyName(event)
   if (key) {
-    currentKeys.add(key)
+    shortcutManager.currentKeys.add(key)
   }
   
-  // 如果按下了 Escape 键，取消录制
+  // 按ESC取消
   if (event.key === 'Escape') {
     cancelRecording()
     return
   }
   
-  // 当有至少一个普通键（非修饰键）被按下时，完成录制
-  const hasRegularKey = Array.from(currentKeys).some(key => 
+  // 检测是否有普通键被按下
+  const hasRegularKey = Array.from(shortcutManager.currentKeys).some(key => 
     !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(key)
   )
   
-  if (hasRegularKey && currentKeys.size > 0) {
-    const shortcutStr = Array.from(currentKeys).join('+')
+  if (hasRegularKey && shortcutManager.currentKeys.size > 0) {
+    const shortcutStr = Array.from(shortcutManager.currentKeys).join('+')
     finishRecording(shortcutStr)
   }
 }
 
-const handleKeyDownDuringRecording2 = (event) => {
-  if (!isRecording.value) return
-  
-  event.preventDefault()
-  event.stopPropagation()
-  
-  // 记录按下的键
-  const key = getKeyName(event)
-  if (key) {
-    currentKeys.add(key)
-  }
-  
-  // 如果按下了 Escape 键，取消录制
-  if (event.key === 'Escape') {
-    cancelRecording()
-    return
-  }
-  
-  // 当有至少一个普通键（非修饰键）被按下时，完成录制
-  const hasRegularKey = Array.from(currentKeys).some(key => 
-    !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(key)
-  )
-  
-  if (hasRegularKey && currentKeys.size > 0) {
-    const shortcutStr = Array.from(currentKeys).join('+')
-    finishRecording2(shortcutStr)
-  }
-}
-
-// 处理按键释放
+// 统一的按键释放处理
 const handleKeyUpDuringRecording = (event) => {
-  if (!isRecording.value) return
+  if (!shortcutManager.isRecording) return
   
   const key = getKeyName(event)
   if (key) {
-    currentKeys.delete(key)
+    shortcutManager.currentKeys.delete(key)
   }
 }
 
@@ -1297,108 +1165,54 @@ const getKeyName = (event) => {
 
 // 完成录制并设置快捷键
 const finishRecording = async (newShortcut) => {
-  isRecording.value = false
-  const shortcutType = recordingShortcutType.value
-  recordingShortcutType.value = ''
+  shortcutManager.isRecording = false
   
   // 移除事件监听
   window.removeEventListener('keydown', handleKeyDownDuringRecording)
   window.removeEventListener('keyup', handleKeyUpDuringRecording)
   
-  // 调用你的 setShortcut 函数
-  await setShortcut(newShortcut, shortcutType)
+  // 调用统一的设置函数
+  await setShortcut(newShortcut, shortcutManager.currentType)
+  shortcutManager.currentType = ''
 }
 
-const finishRecording2 = async (newShortcut) => {
-  isRecording.value = false
-  const shortcutType = recordingShortcutType.value
-  recordingShortcutType.value = ''
-  
-  // 移除事件监听
-  window.removeEventListener('keydown', handleKeyDownDuringRecording)
-  window.removeEventListener('keyup', handleKeyUpDuringRecording)
-  
-  // 调用你的 setShortcut 函数
-  await setShortcut2(newShortcut, shortcutType)
-}
-
-const setShortcut = async (newShortcutStr, shortcutType = null) => {
-  const targetType = shortcutType || recordingShortcutType.value
-  if (!targetType) {
+const setShortcut = async (newShortcutStr, shortcutType) => {
+  if (!shortcutType) {
     console.error('没有指定快捷键类型')
     return
   }
   
-  errorMsg.value = '';
-  successMsg.value = '';
+  errorMsg.value = ''
+  successMsg.value = ''
 
   try {
-    // 根据后端函数，只传递 new_shortcut_str 参数
     await invoke('update_shortcut', { 
+      shortcutType: shortcutType,
       newShortcutStr: newShortcutStr 
-    });
+    })
 
     // 更新界面显示
-    settings.shortcuts[targetType] = newShortcutStr;
-    successMsg.value = `${getShortcutDisplayName(targetType)} 快捷键设置成功！`;
-    console.log(`✅ ${getShortcutDisplayName(targetType)} 快捷键已成功更新为: ${newShortcutStr}`);
+    settings.shortcuts[shortcutType] = newShortcutStr
+    successMsg.value = `${shortcutDisplayNames[shortcutType]} 快捷键设置成功！`
+    console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
 
-    await loadCurrentShortcuts();
+    // 重新加载当前快捷键
+    await loadAllShortcuts()
   } catch (err) {
-    errorMsg.value = `设置失败: ${err}`;
-    console.error('❌ 设置快捷键失败:', err);
+    errorMsg.value = `设置失败: ${err}`
+    console.error('❌ 设置快捷键失败:', err)
     
-    // 如果出错，可能是因为快捷键冲突，提示用户
     if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
-      errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键';
+      errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键'
     }
   }
 
-  // 3秒后自动清除提示消息
-  if (timer) clearTimeout(timer);
+  // 自动清除提示消息
+  if (timer) clearTimeout(timer)
   timer = setTimeout(() => {
-    successMsg.value = '';
-    errorMsg.value = '';
-  }, 3000);
-}
-
-const setShortcut2 = async (newShortcutStr, shortcutType = null) => {
-  const targetType = shortcutType || recordingShortcutType.value
-  if (!targetType) {
-    console.error('没有指定快捷键类型')
-    return
-  }
-  
-  errorMsg.value = '';
-  successMsg.value = '';
-
-  try {
-    // 根据后端函数，只传递 new_shortcut_str 参数
-    await invoke('update_shortcut2', { 
-      newShortcutStr: newShortcutStr 
-    });
-
-    // 更新界面显示
-    settings.shortcuts[targetType] = newShortcutStr;
-    successMsg.value = `${getShortcutDisplayName(targetType)} 快捷键设置成功！`;
-    console.log(`✅ ${getShortcutDisplayName(targetType)} 快捷键已成功更新为: ${newShortcutStr}`);
-    await loadCurrentShortcuts();
-  } catch (err) {
-    errorMsg.value = `设置失败: ${err}`;
-    console.error('❌ 设置快捷键失败:', err);
-    
-    // 如果出错，可能是因为快捷键冲突，提示用户
-    if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
-      errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键';
-    }
-  }
-
-  // 3秒后自动清除提示消息
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(() => {
-    successMsg.value = '';
-    errorMsg.value = '';
-  }, 3000);
+    successMsg.value = ''
+    errorMsg.value = ''
+  }, 3000)
 }
 
 // 辅助函数：获取快捷键显示名称
@@ -1412,13 +1226,33 @@ const getShortcutDisplayName = (shortcutType) => {
   return nameMap[shortcutType] || shortcutType;
 }
 
+
 // 取消录制（可选）
 const cancelRecording = () => {
-  isRecording.value = false
-  recordingShortcutType.value = ''
+  shortcutManager.isRecording = false
+  shortcutManager.currentType = ''
   window.removeEventListener('keydown', handleKeyDownDuringRecording)
   window.removeEventListener('keyup', handleKeyUpDuringRecording)
   showMessage('已取消快捷键设置')
+}
+
+const loadAllShortcuts = async () => {
+  try {
+    const allShortcuts = await invoke('get_all_shortcuts')
+    Object.assign(settings.shortcuts, allShortcuts)
+    console.log('所有快捷键加载完成:', allShortcuts)
+  } catch (error) {
+    console.error('加载快捷键失败:', error)
+    // 设置默认值
+    const defaultShortcuts = {
+      toggleWindow: 'Shift+D',
+      pasteWindow: 'Alt+Shift+C', 
+      AIWindow: 'Ctrl+Shift+A',
+      quickPaste: 'Ctrl+Shift+V',
+      clearHistory: 'Ctrl+Shift+Delete'
+    }
+    Object.assign(settings.shortcuts, defaultShortcuts)
+  }
 }
 
 // 剪贴板参数设置相关函数

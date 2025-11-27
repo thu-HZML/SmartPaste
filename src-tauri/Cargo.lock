@@ -906,6 +906,7 @@ dependencies = [
  "chrono",
  "clipboard-files",
  "image",
+ "lazy_static",
  "rusqlite",
  "serde",
  "serde_json",

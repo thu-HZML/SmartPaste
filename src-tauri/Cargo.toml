@@ -30,6 +30,7 @@ tauri-plugin-autostart = "2.0"
 anyhow = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 uni-ocr = {git = "https://github.com/mediar-ai/uniocr.git"}
+lazy_static = "1.4.0"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
