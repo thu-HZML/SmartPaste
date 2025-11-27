@@ -27,6 +27,12 @@
           >
             {{ category.name }}
           </button>
+          <button 
+            v-if="activeCategory === 'folder'" 
+            :class="['category-btn', { active: true }]"
+          >
+            内容
+          </button>
         </div>
         
         <div class="toolbar-actions">
@@ -59,7 +65,7 @@
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
       <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
-      <div v-if="['all', 'image', 'video', 'file', 'folder'].includes(activeCategory)">
+      <div v-if="['all', 'text', 'image', 'file', 'folder'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
           <p v-if="searchQuery">未找到匹配的记录</p>
           <p v-else>暂无剪贴板记录</p>
@@ -118,14 +124,14 @@
                   @click="editItem(item)"
                   title="编辑"
                 >
-                  <ClipboardIcon class="icon-default" />
+                  <PencilSquareIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
                   @click="noteItem(item)"
                   title="备注"
                 >
-                  <PencilSquareIcon class="icon-default" />
+                  <ClipboardDocumentListIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
@@ -136,27 +142,25 @@
                 </button>
               </div>
             </div>
-            <div class="item-content"> 
-              <transition name="fade" mode="out-in">               
-                  <div v-if="item.is_focus || !item.notes" class="item-text">
-
-                    <!-- 显示文本 -->
-                    <div v-if="item.item_type === 'text'" :title="item.content">
-                      {{ item.content }}
-                    </div>
-                    
-                    <!-- 显示图片 -->
-                    <div v-else-if="item.item_type === 'image'" class="image-container">
-                      <img 
-                        v-if="item.content"
-                        :src="convertFileSrc(item.content)" 
-                        :alt="'图片: ' + getFileName(item.content)"
-                        class="preview-image"
-                        @error="handleImageError"
-                      />
-                      <div v-else class="loading">加载中...</div>
-                      <div class="image-filename">{{ getFileName(item.content) }}</div>
-                    </div>
+            <div class="item-content">            
+              <div v-if="item.is_focus || !item.notes" class="item-text">
+                <!-- 显示文本 -->
+                <div v-if="item.item_type === 'text'" :title="item.content">
+                  {{ item.content }}
+                </div>
+                
+                <!-- 显示图片 -->
+                <div v-else-if="item.item_type === 'image'" class="image-container">
+                  <img 
+                    v-if="item.content"
+                    :src="convertFileSrc(item.content)" 
+                    :alt="'图片: ' + getFileName(item.content)"
+                    class="preview-image"
+                    @error="handleImageError"
+                  />
+                  <div v-else class="loading">加载中...</div>
+                  <div class="image-filename">{{ getFileName(item.content) }}</div>
+                </div>
 
                     <!-- 显示文件 -->
                     <div v-else-if="['file', 'folder'].includes(item.item_type)" class="file-container">
@@ -168,15 +172,15 @@
                       <div class="file-name">{{ getFileName(item.content) }}</div>
                     </div>
 
-                    <!-- 未知类型 -->
-                    <div v-else :title="item.content">
-                      {{ item.content }}
-                    </div>
-                  </div>
-                  <div v-else class="item-text">
-                    {{ item.notes }}
-                  </div>
-              </transition> 
+                <!-- 未知类型 -->
+                <div v-else :title="item.content">
+                  {{ item.content }}
+                </div>
+              </div>
+              <div v-else class="item-text">
+                <ClipboardDocumentListIcon class="icon-notes" />
+                {{ item.notes }}
+              </div>
             </div>    
           </div>
         </div>
@@ -358,7 +362,6 @@ import {
   ArrowPathIcon,
   LockClosedIcon,
   StarIcon,
-  ClipboardIcon,
   PencilSquareIcon,
   ClipboardDocumentListIcon,
   TrashIcon,
@@ -424,8 +427,8 @@ let clickTimeout = null
 // 分类选项
 const categories = ref([
   { id: 'all', name: '全部' },
+  { id: 'text', name: '文本' },
   { id: 'image', name: '图片' },
-  { id: 'video', name: '视频' },
   { id: 'file', name: '文件' },
   { id: 'favorite', name: '收藏' }
 ])
@@ -479,7 +482,7 @@ const handleSearch = async (query) => {
 
 // 分类逻辑
 const handleCategoryChange = async (category) => {
-  if (['image', 'video', 'file'].includes(category)) {
+  if (['image', 'text', 'file'].includes(category)) {
     searchLoading.value = true
     await performClassify(category)
   }
@@ -921,13 +924,6 @@ const getFileName = (path) => {
 // 图片加载错误处理
 const handleImageError = (event) => {
   console.error('图片加载失败:', event.target.src)
-}
-
-// 检查是否是文档文件
-const isDocumentFile = (path) => {
-  if (!path) return false
-  const docExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md']
-  return docExtensions.some(ext => path.toLowerCase().endsWith(ext))
 }
 
 // 显示创建收藏夹模态框
@@ -1552,6 +1548,14 @@ body {
   color: #595959;
 }
 
+.icon-notes {
+  width: 1rem;
+  height: 1rem;
+  position: relative;
+  top: 3px; 
+  color: #595959;
+}
+
 /* OCR标签 */
 .content-OCR {
   border: 1px solid #3282f6;
@@ -2061,22 +2065,6 @@ body {
 .toast-input:focus {
   border-color: #3282f6;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
-}
-
-/* 淡入淡出动画效果 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.1s ease, transform 0.1s ease;
-}
-
-.fade-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
 }
 
 /* 响应式设计 */
