@@ -40,7 +40,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DestroyIcon, GetIconInfo, HICON, ICONINFO,
 };
 use std::env;
-use clipboard_rs::{Clipboard, ClipboardContext, ContentFormat};
+use clipboard_rs::{
+    Clipboard as ClipboardRsTrait, 
+    ClipboardContext
+};
 use uuid::Uuid;
 #[tauri::command]
 fn test_function() -> String {
@@ -182,15 +185,14 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
 
 // --- 核心 helper：将路径列表写入剪贴板 ---
 fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
-    // 这里使用 clipboard-rs 库，它原生支持 set_files
     let ctx = ClipboardContext::new().map_err(|e| e.to_string())?;
     
     // 将 PathBuf 转换为 String 列表
     let paths_str: Vec<String> = paths.into_iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect();
-
     ctx.set_files(paths_str).map_err(|e| e.to_string())?;
+    
     Ok(())
 }
 
