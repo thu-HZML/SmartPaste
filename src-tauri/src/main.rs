@@ -232,10 +232,6 @@ async fn get_file_icon(path: String) -> Result<String, String> {
     if !p.exists() {
         return Err(format!("路径不存在: {}", path));
     }
-    if p.is_dir() {
-        return Err("不支持获取文件夹图标".to_string());
-    }
-
     #[cfg(target_os = "windows")]
     {
         // 调用 unsafe 的帮助函数来处理 Win32 API
