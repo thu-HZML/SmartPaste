@@ -350,7 +350,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch,nextTick } from 'vue'
 import { useRouter,useRoute } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -1324,11 +1324,18 @@ async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
 
 // 生命周期
 onMounted(async () => {
+
   console.log('开始初始化...')
 
-  if (route.query.category === 'favorite') {
-    activeCategory.value = 'favorite'
-    console.log('检测到收藏页面参数，跳转到收藏界面')
+  // 保存当前参数状态
+  const shouldShowFavorites = route.query.category === 'favorite'
+  const shouldOpenSettings = route.query.category === 'set'
+  // 立即清除所有参数
+  if (route.query.category) {
+    const newQuery = { ...route.query }
+    delete newQuery.category
+    await router.replace({ query: newQuery })
+    console.log('路由参数已清除')
   }
 
   // OCR配置
@@ -1350,6 +1357,21 @@ onMounted(async () => {
     console.error('设置窗口大小失败:', error)
   }
 
+  // 根据保存的状态执行操作
+  if (shouldShowFavorites) {
+    activeCategory.value = 'favorite'
+    console.log('跳转到收藏界面')
+  }
+
+  if (shouldOpenSettings) {
+    console.log('准备打开设置页面')
+    // 使用 setTimeout 确保在下一个事件循环中执行
+    setTimeout(() => {
+      openSettings()
+      console.log('设置页面已打开')
+    }, 50)
+  }
+  
   // 设置示例数据
   filteredHistory.value = [
     {

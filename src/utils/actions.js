@@ -359,6 +359,93 @@ export async function toggleFavoritesWindow() {
   }
 }
 
+export async function createSetWindow(options = {}) {
+  const windowId = 'clipboard'
+  
+  try {
+    const { x = 100, y = 100, width = 400, height = 600 } = options
+    
+    const webview = new WebviewWindow(windowId, {
+      url: '/clipboardapp?category=set', // 直接跳转到剪贴板页面的收藏界面
+      title: '设置',
+      width,
+      height,
+      x,
+      y,
+      resizable: true,
+      minimizable: true,
+      maximizable: false,
+      decorations: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hiddenTitle: true,
+      focus: true
+    })
+    
+    webview.once('tauri://created', () => {
+      console.log('设置窗口创建成功:', windowId)
+      windowInstances.set(windowId, webview)
+    })
+    
+    webview.once('tauri://error', (e) => {
+      console.error('设置窗口创建失败:', e)
+    })
+    
+    // 监听窗口关闭
+    webview.listen('tauri://destroyed', () => {
+      console.log('设置窗口已关闭:', windowId)
+      windowInstances.delete(windowId)
+    })
+    
+    return webview
+  } catch (error) {
+    console.error('创建设置窗口错误:', error)
+  }
+}
+
+/**
+ * 获取或切换设置窗口
+ */
+export async function toggleSetWindow() {
+  // 查找已存在的设置窗口
+  const setsWindows = Array.from(windowInstances.entries())
+    .filter(([key]) => key.startsWith('clipboard'))
+  
+  if (setsWindows.length > 0) {
+    // 如果存在设置窗口，关闭它们
+    for (const [windowId, window] of setsWindows) {
+      try {
+        await window.close()
+        windowInstances.delete(windowId)
+      } catch (error) {
+        console.error('关闭设置窗口失败:', error)
+      }
+    }
+    return null
+  } else {
+    // 如果不存在，创建新窗口
+    try {
+      // 使用全局存储的主窗口位置
+      const { x, y, width, height } = mainWindowPosition
+      
+      // 计算新窗口位置（在桌宠右侧）
+      const newX = x + width + 10
+      const newY = y
+      
+      console.log('使用主窗口位置创建设置窗口:', { newX, newY })
+      
+      return await createSetWindow({
+        x: newX,
+        y: newY,
+        width: 400,
+        height: 600
+      })
+    } catch (error) {
+      console.error('创建收藏夹窗口错误:', error)
+      return await createSetWindow() // 创建默认位置的窗口
+    }
+  }
+}
 
 /**
  * 获取所有窗口信息
@@ -425,6 +512,8 @@ if (typeof window !== 'undefined') {
   window.toggleClipboardWindow = toggleClipboardWindow;
   window.toggleMenuWindow = toggleMenuWindow;
   window.toggleFavoritesWindow = toggleFavoritesWindow;
+  window.toggleSetWindow = toggleSetWindow;
   window.updateMenuWindowPosition = updateMenuWindowPosition;
   window.hasMenuWindow = hasMenuWindow;
+
 }

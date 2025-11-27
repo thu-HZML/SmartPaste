@@ -94,12 +94,14 @@ const openFavorites = async () => {
   }
 }
 
-const openTimeline = () => {
-  console.log('打开项目时间轴')
-}
-
-const openSettings = () => {
+const openSettings = async () => {
   console.log('打开设置')
+  try {
+    await toggleSetWindow()
+    console.log(' 设置窗口已打开')
+  } catch (error) {
+    console.error('打开设置窗口失败:', error)
+  }
 }
 
 const openCloud = () => {
