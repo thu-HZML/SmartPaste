@@ -107,8 +107,8 @@ export async function toggleMenuWindow() {
       return await createMenuWindow({
         x: newX,
         y: newY,
-        width: 400, // 菜单窗口宽度
-        height: 600 // 菜单窗口高度
+        width: 300, // 菜单窗口宽度
+        height: 400 // 菜单窗口高度
       })
     } catch (error) {
       console.error('使用主窗口位置创建菜单窗口错误:', error)
@@ -268,6 +268,99 @@ export async function toggleClipboardWindow() {
 }
 
 /**
+ * 创建收藏夹窗口
+ * @param {Object} options 窗口配置
+ */
+export async function createFavoritesWindow(options = {}) {
+  const windowId = 'clipboard'
+  
+  try {
+    const { x = 100, y = 100, width = 400, height = 600 } = options
+    
+    const webview = new WebviewWindow(windowId, {
+      url: '/clipboardapp?category=favorite', // 直接跳转到剪贴板页面的收藏界面
+      title: '收藏夹',
+      width,
+      height,
+      x,
+      y,
+      resizable: true,
+      minimizable: true,
+      maximizable: false,
+      decorations: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hiddenTitle: true,
+      focus: true
+    })
+    
+    webview.once('tauri://created', () => {
+      console.log('收藏夹窗口创建成功:', windowId)
+      windowInstances.set(windowId, webview)
+    })
+    
+    webview.once('tauri://error', (e) => {
+      console.error('收藏夹窗口创建失败:', e)
+    })
+    
+    // 监听窗口关闭
+    webview.listen('tauri://destroyed', () => {
+      console.log('收藏夹窗口已关闭:', windowId)
+      windowInstances.delete(windowId)
+    })
+    
+    return webview
+  } catch (error) {
+    console.error('创建收藏夹窗口错误:', error)
+  }
+}
+
+/**
+ * 获取或切换收藏夹窗口
+ */
+export async function toggleFavoritesWindow() {
+  // 查找已存在的收藏夹窗口
+  const favoritesWindows = Array.from(windowInstances.entries())
+    .filter(([key]) => key.startsWith('clipboard'))
+  
+  if (favoritesWindows.length > 0) {
+    // 如果存在收藏夹窗口，关闭它们
+    for (const [windowId, window] of favoritesWindows) {
+      try {
+        await window.close()
+        windowInstances.delete(windowId)
+      } catch (error) {
+        console.error('关闭收藏夹窗口失败:', error)
+      }
+    }
+    return null
+  } else {
+    // 如果不存在，创建新窗口
+    try {
+      // 使用全局存储的主窗口位置
+      const { x, y, width, height } = mainWindowPosition
+      
+      // 计算新窗口位置（在桌宠右侧）
+      const newX = x + width + 10
+      const newY = y
+      
+      console.log('使用主窗口位置创建收藏夹窗口:', { newX, newY })
+      
+      return await createFavoritesWindow({
+        x: newX,
+        y: newY,
+        width: 400,
+        height: 600
+      })
+    } catch (error) {
+      console.error('创建收藏夹窗口错误:', error)
+      return await createFavoritesWindow() // 创建默认位置的窗口
+    }
+  }
+}
+
+
+/**
  * 获取所有窗口信息
  */
 export function getAllWindows() {
@@ -331,6 +424,7 @@ export async function closeAllMenuWindows() {
 if (typeof window !== 'undefined') {
   window.toggleClipboardWindow = toggleClipboardWindow;
   window.toggleMenuWindow = toggleMenuWindow;
+  window.toggleFavoritesWindow = toggleFavoritesWindow;
   window.updateMenuWindowPosition = updateMenuWindowPosition;
   window.hasMenuWindow = hasMenuWindow;
 }

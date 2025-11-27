@@ -14,7 +14,7 @@ mod ocr;
 mod test_performance;
 
 use app_setup::{
-    update_shortcut, update_shortcut2, AppShortcutState, AppShortcutState2, ClipboardSourceState,
+    update_shortcut, get_current_shortcut, get_all_shortcuts, AppShortcutManager, ClipboardSourceState,
 };
 use arboard::Clipboard;
 use std::fs;
@@ -213,16 +213,6 @@ fn copy_file_to_clipboard_linux(file_path: &str) -> Result<(), String> {
 
     Err("Linux系统文件复制功能受限，请确保已安装xclip".to_string())
 }
-#[tauri::command]
-fn get_current_shortcut(state: tauri::State<AppShortcutState>) -> String {
-    state.current_shortcut.lock().unwrap().clone()
-}
-
-#[tauri::command]
-fn get_current_shortcut2(state: tauri::State<AppShortcutState2>) -> String {
-    state.current_shortcut.lock().unwrap().clone()
-}
-
 /// 获取文件的系统图标（Base64 格式，不包含文件夹）
 #[tauri::command]
 async fn get_file_icon(path: String) -> Result<String, String> {
@@ -373,12 +363,7 @@ fn main() {
             MacosLauncher::LaunchAgent,
             Some(vec![]), // 可以传递启动参数，这里为空
         ))
-        .manage(AppShortcutState {
-            current_shortcut: Mutex::new(String::new()),
-        })
-        .manage(AppShortcutState2 {
-            current_shortcut: Mutex::new(String::new()),
-        })
+        .manage(AppShortcutManager::new())
         .manage(ClipboardSourceState {
             is_frontend_copy: Mutex::new(false),
         })
@@ -388,9 +373,10 @@ fn main() {
             write_file_to_clipboard,
             copy_file_to_clipboard,
             update_shortcut,
-            update_shortcut2,
             get_current_shortcut,
-            get_current_shortcut2,
+            get_all_shortcuts,
+            set_autostart,
+            is_autostart_enabled,
             get_file_icon,
             db::insert_received_text_data,
             db::insert_received_data,

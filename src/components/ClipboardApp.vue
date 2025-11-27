@@ -351,7 +351,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter,useRoute } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
@@ -376,6 +376,7 @@ import {
 } from '@heroicons/vue/24/solid'
 
 const router = useRouter()
+const route = useRoute()
 const currentWindow = getCurrentWindow();
 
 // 响应式数据
@@ -1324,6 +1325,11 @@ async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
 // 生命周期
 onMounted(async () => {
   console.log('开始初始化...')
+
+  if (route.query.category === 'favorite') {
+    activeCategory.value = 'favorite'
+    console.log('检测到收藏页面参数，跳转到收藏界面')
+  }
 
   // OCR配置
   await invoke('configure_ocr', {})

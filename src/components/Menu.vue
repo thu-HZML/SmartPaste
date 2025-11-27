@@ -3,7 +3,7 @@
     <!-- 用户信息区域 -->
     <div class="flex-row items-center user-section">
       <div class="user-avatar">
-        <Square2StackIcon class="icon-default" />
+        <UserIcon class="icon-default" />
       </div>
       <div class="flex-col user-info">
         <span class="user-name">用户123</span>
@@ -24,11 +24,11 @@
         </div>
         <span class="menu-text">收藏夹</span>
       </div>
-      <div class="menu-item" @click="openTimeline">
+      <div class="menu-item" @click="openAIAssistant">
         <div class="menu-icon">
-          <ChartBarIcon class="icon-default" />
+          <img src="../assets/deepseek.svg" alt="AI助手" class="svg-icon" />
         </div>
-        <span class="menu-text">项目时间轴</span>
+        <span class="menu-text">AI助手</span>
       </div>
     </div>
 
@@ -46,31 +46,19 @@
         </div>
         <span class="menu-text">云端</span>
       </div>
-      <div class="menu-item" @click="openAIAssistant">
-        <div class="menu-icon">
-          <img src="../assets/deepseek.svg" alt="AI助手" class="svg-icon" />
-        </div>
-        <span class="menu-text">AI助手</span>
-      </div>
-    </div>
-
-    <!-- 第三行：帮助 -->
-    <div class="flex-row menu-row">
       <div class="menu-item" @click="openHelp">
         <div class="menu-icon">
           <QuestionMarkCircleIcon class="icon-default" />
         </div>
         <span class="menu-text">帮助</span>
       </div>
-      <div class="menu-item"></div>
-      <div class="menu-item"></div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { toggleClipboardWindow } from '../utils/actions.js'
+import { toggleClipboardWindow ,toggleFavoritesWindow} from '../utils/actions.js'
 import { 
   BeakerIcon,
   Cog6ToothIcon,
@@ -80,7 +68,8 @@ import {
   ClipboardDocumentListIcon,
   QuestionMarkCircleIcon,
   Square2StackIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  UserIcon
  } from '@heroicons/vue/24/outline'
 
 const currentWindow = getCurrentWindow()
@@ -95,8 +84,14 @@ const openHistory = async () => {
   }
 }
 
-const openFavorites = () => {
+const openFavorites = async () => {
   console.log('打开收藏夹')
+  try {
+    await toggleFavoritesWindow()
+    console.log('⭐ 收藏夹窗口已打开')
+  } catch (error) {
+    console.error('打开收藏夹窗口失败:', error)
+  }
 }
 
 const openTimeline = () => {
@@ -133,7 +128,6 @@ const openHelp = () => {
 
 /* 用户信息区域 */
 .user-section {
-  margin-bottom: 2rem;
   padding: 1rem 1.5rem;
   background: #f8f9fa;
   border-radius: 0.75rem;
@@ -170,16 +164,16 @@ const openHelp = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.5rem 0.5rem;
+  padding: 1rem 0.5rem;
   border-radius: 0.75rem;
   cursor: pointer;
   transition: all 0.3s ease;
   flex: 1;
-  margin: 0 0.5rem;
+  margin: 0 0.25rem;
   background: #f8f9fa;
   border: none;
   box-shadow: none;
-  min-height: 7rem;
+  min-height: 3rem;
 }
 
 .menu-item:hover {
