@@ -14,36 +14,33 @@ mod ocr;
 mod test_performance;
 
 use app_setup::{
-    update_shortcut, get_current_shortcut, get_all_shortcuts, AppShortcutManager, ClipboardSourceState,
+    get_all_shortcuts, get_current_shortcut, update_shortcut, AppShortcutManager,
+    ClipboardSourceState,
 };
 use arboard::Clipboard;
+use base64::{engine::general_purpose, Engine as _};
+use image::{ImageFormat, RgbaImage};
+use std::ffi::OsStr;
 use std::fs;
+use std::io::Cursor;
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
-use std::ffi::OsStr;
-use std::io::Cursor;
-use std::os::windows::ffi::OsStrExt;
-use base64::{engine::general_purpose, Engine as _};
-use image::{ImageFormat, RgbaImage};
-use windows::core::{PCWSTR};
-use windows::Win32::Foundation::{HWND};
-use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{
-    DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC,BITMAP, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
+    BI_RGB, DIB_RGB_COLORS,
 };
+use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyIcon, GetIconInfo, HICON, ICONINFO,
-};
+use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
 }
-
-
 
 #[tauri::command]
 fn write_to_clipboard(
@@ -225,11 +222,9 @@ async fn get_file_icon(path: String) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
         // 调用 unsafe 的帮助函数来处理 Win32 API
-        let icon_base64 = tauri::async_runtime::spawn_blocking(move || {
-            extract_icon_base64(&path)
-        })
-        .await
-        .map_err(|e| format!("Task join error: {}", e))??;
+        let icon_base64 = tauri::async_runtime::spawn_blocking(move || extract_icon_base64(&path))
+            .await
+            .map_err(|e| format!("Task join error: {}", e))??;
 
         Ok(format!("data:image/png;base64,{}", icon_base64))
     }
@@ -240,7 +235,6 @@ async fn get_file_icon(path: String) -> Result<String, String> {
     }
 }
 
-
 #[cfg(target_os = "windows")]
 fn extract_icon_base64(path: &str) -> Result<String, String> {
     unsafe {
@@ -248,11 +242,11 @@ fn extract_icon_base64(path: &str) -> Result<String, String> {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
-        
+
         let mut shfi = SHFILEINFOW::default();
         let result = SHGetFileInfoW(
             PCWSTR(wide_path.as_ptr()),
-            FILE_FLAGS_AND_ATTRIBUTES(0), 
+            FILE_FLAGS_AND_ATTRIBUTES(0),
             Some(&mut shfi),
             std::mem::size_of::<SHFILEINFOW>() as u32,
             SHGFI_ICON | SHGFI_LARGEICON,
@@ -263,7 +257,9 @@ fn extract_icon_base64(path: &str) -> Result<String, String> {
         }
 
         let hicon = shfi.hIcon;
-        let _icon_guard = ScopeGuard(hicon, |h| { let _ = DestroyIcon(h); });
+        let _icon_guard = ScopeGuard(hicon, |h| {
+            let _ = DestroyIcon(h);
+        });
 
         hicon_to_png_base64(hicon)
     }
@@ -272,23 +268,29 @@ fn extract_icon_base64(path: &str) -> Result<String, String> {
 #[cfg(target_os = "windows")]
 unsafe fn hicon_to_png_base64(hicon: HICON) -> Result<String, String> {
     let mut icon_info = ICONINFO::default();
-    GetIconInfo(hicon, &mut icon_info)
-        .map_err(|e| format!("GetIconInfo 失败: {}", e))?;
-    
-    let _color_bmp_guard = ScopeGuard(icon_info.hbmColor, |h| { let _ = DeleteObject(h); });
-    let _mask_bmp_guard = ScopeGuard(icon_info.hbmMask, |h| { let _ = DeleteObject(h); });
+    GetIconInfo(hicon, &mut icon_info).map_err(|e| format!("GetIconInfo 失败: {}", e))?;
+
+    let _color_bmp_guard = ScopeGuard(icon_info.hbmColor, |h| {
+        let _ = DeleteObject(h);
+    });
+    let _mask_bmp_guard = ScopeGuard(icon_info.hbmMask, |h| {
+        let _ = DeleteObject(h);
+    });
 
     let hdc_screen = GetDC(HWND(std::ptr::null_mut()));
-    let _dc_guard = ScopeGuard(hdc_screen, |h| { let _ = ReleaseDC(HWND(std::ptr::null_mut()), h); });
-    
+    let _dc_guard = ScopeGuard(hdc_screen, |h| {
+        let _ = ReleaseDC(HWND(std::ptr::null_mut()), h);
+    });
+
     let mut bmp: BITMAP = std::mem::zeroed();
-    
+
     // GetObjectW 参数转换
     if GetObjectW(
-        windows::Win32::Graphics::Gdi::HGDIOBJ(icon_info.hbmColor.0), 
-        std::mem::size_of::<BITMAP>() as i32, 
-        Some(&mut bmp as *mut _ as *mut _)
-    ) == 0 {
+        windows::Win32::Graphics::Gdi::HGDIOBJ(icon_info.hbmColor.0),
+        std::mem::size_of::<BITMAP>() as i32,
+        Some(&mut bmp as *mut _ as *mut _),
+    ) == 0
+    {
         return Err("GetObjectW 失败".to_string());
     }
 
@@ -300,11 +302,11 @@ unsafe fn hicon_to_png_base64(hicon: HICON) -> Result<String, String> {
         bmiHeader: BITMAPINFOHEADER {
             biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
             biWidth: width,
-            biHeight: -height, 
+            biHeight: -height,
             biPlanes: 1,
-            biBitCount: 32, 
+            biBitCount: 32,
             // BI_RGB 是 BI_COMPRESSION 类型，需要 .0 取出 u32
-            biCompression: BI_RGB.0, 
+            biCompression: BI_RGB.0,
             ..Default::default()
         },
         ..Default::default()
@@ -320,7 +322,8 @@ unsafe fn hicon_to_png_base64(hicon: HICON) -> Result<String, String> {
         Some(pixels.as_mut_ptr() as *mut _),
         &mut bi,
         DIB_RGB_COLORS,
-    ) == 0 {
+    ) == 0
+    {
         return Err("GetDIBits 失败".to_string());
     }
 
@@ -332,12 +335,12 @@ unsafe fn hicon_to_png_base64(hicon: HICON) -> Result<String, String> {
         chunk[2] = b;
     }
 
-    let img_buffer = RgbaImage::from_raw(width as u32, height as u32, pixels)
-        .ok_or("无法构建图像缓冲区")?;
+    let img_buffer =
+        RgbaImage::from_raw(width as u32, height as u32, pixels).ok_or("无法构建图像缓冲区")?;
 
     let mut png_data = Vec::new();
     let mut cursor = Cursor::new(&mut png_data);
-    
+
     // 使用 ImageFormat::Png
     img_buffer
         .write_to(&mut cursor, ImageFormat::Png)
@@ -391,7 +394,7 @@ fn main() {
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
             db::get_favorite_data_count,
-            db::search_text_content,
+            db::search_data,
             db::add_notes_by_id,
             db::filter_data_by_type,
             db::create_new_folder,

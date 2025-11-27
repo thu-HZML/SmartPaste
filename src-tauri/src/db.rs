@@ -505,7 +505,7 @@ pub fn get_favorite_data_count() -> Result<usize, String> {
 /// - "text", "ocr", "path" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配
 /// - "timestamp" 类型：待搜索的时间范围，格式为 "start_timestamp,end_timestamp"，在 timestamp 字段中进行范围匹配
 /// # Returns
-/// String - 包含匹配数据记录的 JSON 字符串
+/// String - 包含匹配数据记录的 JSON 字符串，或者错误信息（如格式错误等）
 #[tauri::command]
 pub fn search_data(search_type: &str, query: &str) -> Result<String, String> {
     let db_path = get_db_path();

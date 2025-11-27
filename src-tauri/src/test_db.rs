@@ -234,27 +234,193 @@ fn test_set_favorite_status_by_id() {
 }
 
 #[test]
-fn test_search_text_content() {
+fn test_search_data_comprehensive() {
     let _g = test_lock();
     set_test_db_path();
     clear_db_file();
 
-    let item1 = make_item("search-1", "text", "hello world");
-    let item2 = make_item("search-2", "text", "goodbye world");
-    let item3 = make_item("search-3", "image", "/tmp/img.png");
+    // 准备测试数据：不同类型的数据项
+    let text1 = make_item("search-1", "text", "hello world");
+    let text2 = make_item("search-2", "text", "rust programming");
+    let image1 = make_item("search-3", "image", "/path/to/image.png");
+    let file1 = make_item("search-4", "file", "/path/to/document.pdf");
 
-    insert_received_db_data(item1.clone()).unwrap();
-    insert_received_db_data(item2.clone()).unwrap();
-    insert_received_db_data(item3.clone()).unwrap();
+    // 插入数据并等待一小段时间以确保时间戳不同
+    insert_received_db_data(text1.clone()).expect("insert text1 failed");
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    insert_received_db_data(text2.clone()).expect("insert text2 failed");
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    insert_received_db_data(image1.clone()).expect("insert image1 failed");
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    insert_received_db_data(file1.clone()).expect("insert file1 failed");
 
-    let results_json = search_text_content("world").expect("search failed");
-    let results: Vec<ClipboardItem> =
-        serde_json::from_str(&results_json).expect("parse search results");
+    // ==================== 测试文本内容搜索 ====================
 
-    let ids: Vec<String> = results.into_iter().map(|it| it.id).collect();
-    assert!(ids.contains(&item1.id));
-    assert!(ids.contains(&item2.id));
-    assert!(!ids.contains(&item3.id)); // image type should not be included
+    // 搜索 "world" - 应该只匹配 text1
+    let result_world = search_data("text", "world").expect("search world failed");
+    let items_world: Vec<ClipboardItem> =
+        serde_json::from_str(&result_world).expect("parse world results");
+    let ids_world: Vec<String> = items_world.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_world.len(), 1, "expected 1 item for 'world'");
+    assert!(ids_world.contains(&text1.id), "should contain text1");
+    assert!(!ids_world.contains(&text2.id), "should not contain text2");
+
+    // 搜索 "path" - 应该匹配 image1 和 file1 (它们的 content 包含 path)
+    let result_path = search_data("text", "path").expect("search path failed");
+    let items_path: Vec<ClipboardItem> =
+        serde_json::from_str(&result_path).expect("parse path results");
+    let ids_path: Vec<String> = items_path.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_path.len(), 2, "expected 2 items for 'path'");
+    assert!(ids_path.contains(&image1.id), "should contain image1");
+    assert!(ids_path.contains(&file1.id), "should contain file1");
+    assert!(!ids_path.contains(&text1.id), "should not contain text1");
+    assert!(!ids_path.contains(&text2.id), "should not contain text2");
+
+    // 搜索不存在的关键词 - 应该返回空数组
+    let result_empty = search_data("text", "nonexistent").expect("search nonexistent failed");
+    let items_empty: Vec<ClipboardItem> =
+        serde_json::from_str(&result_empty).expect("parse empty results");
+    assert!(
+        items_empty.is_empty(),
+        "expected empty results for nonexistent keyword"
+    );
+
+    // ==================== 测试 OCR 搜索 ====================
+
+    let result_ocr = search_data("ocr", "hello").expect("search ocr failed");
+    let items_ocr: Vec<ClipboardItem> =
+        serde_json::from_str(&result_ocr).expect("parse ocr results");
+    // OCR 搜索应该通过 content 字段进行（因为实现中使用的是相同的 LIKE 查询）
+    let ids_ocr: Vec<String> = items_ocr.iter().map(|it| it.id.clone()).collect();
+    assert!(
+        ids_ocr.contains(&text1.id),
+        "ocr search should find text1 with 'hello'"
+    );
+
+    // ==================== 测试路径搜索 ====================
+
+    let result_path_search = search_data("path", "document").expect("search path failed");
+    let items_path_search: Vec<ClipboardItem> =
+        serde_json::from_str(&result_path_search).expect("parse path search");
+    let ids_path_search: Vec<String> = items_path_search.iter().map(|it| it.id.clone()).collect();
+    assert!(
+        ids_path_search.contains(&file1.id),
+        "path search should find file1"
+    );
+    assert_eq!(
+        ids_path_search.len(),
+        1,
+        "path search should only find 1 item"
+    );
+
+    // ==================== 测试时间戳范围搜索 ====================
+
+    // 获取所有数据以确定时间戳范围
+    let all_data_json = get_all_data().expect("get all data failed");
+    let all_data: Vec<ClipboardItem> =
+        serde_json::from_str(&all_data_json).expect("parse all data");
+
+    let min_timestamp = all_data.iter().map(|it| it.timestamp).min().unwrap();
+    let max_timestamp = all_data.iter().map(|it| it.timestamp).max().unwrap();
+    let mid_timestamp = (min_timestamp + max_timestamp) / 2;
+
+    // 搜索全部时间范围 - 应该返回所有 4 个项目
+    let timestamp_query_all = format!("{},{}", min_timestamp - 1000, max_timestamp + 1000);
+    let result_timestamp_all =
+        search_data("timestamp", &timestamp_query_all).expect("search timestamp all failed");
+    let items_timestamp_all: Vec<ClipboardItem> =
+        serde_json::from_str(&result_timestamp_all).expect("parse timestamp all results");
+    assert_eq!(
+        items_timestamp_all.len(),
+        4,
+        "expected all 4 items in full time range"
+    );
+
+    // 搜索部分时间范围 - 应该返回部分项目
+    let timestamp_query_partial = format!("{},{}", min_timestamp - 1000, mid_timestamp);
+    let result_timestamp_partial = search_data("timestamp", &timestamp_query_partial)
+        .expect("search timestamp partial failed");
+    let items_timestamp_partial: Vec<ClipboardItem> =
+        serde_json::from_str(&result_timestamp_partial).expect("parse timestamp partial results");
+    assert!(
+        items_timestamp_partial.len() >= 1 && items_timestamp_partial.len() <= 4,
+        "expected some items in partial time range"
+    );
+
+    // 测试无效的时间戳格式 - 应该返回错误
+    let result_invalid_format = search_data("timestamp", "invalid-format");
+    assert!(
+        result_invalid_format.is_err(),
+        "expected error for invalid timestamp format"
+    );
+    assert!(
+        result_invalid_format
+            .unwrap_err()
+            .contains("Invalid timestamp range format"),
+        "expected specific error message"
+    );
+
+    // 测试单个时间戳（缺少逗号） - 应该返回错误
+    let result_single_timestamp = search_data("timestamp", "12345");
+    assert!(
+        result_single_timestamp.is_err(),
+        "expected error for single timestamp"
+    );
+
+    // 测试非数字时间戳 - 应该返回错误
+    let result_non_numeric = search_data("timestamp", "abc,def");
+    assert!(
+        result_non_numeric.is_err(),
+        "expected error for non-numeric timestamps"
+    );
+    assert!(
+        result_non_numeric
+            .unwrap_err()
+            .contains("Invalid start timestamp"),
+        "expected specific error message for non-numeric"
+    );
+
+    // ==================== 测试边界情况 ====================
+
+    // 空搜索关键词 - 应该返回所有包含空字符串的项（实际上是所有项）
+    let result_empty_query = search_data("text", "").expect("search empty query failed");
+    let items_empty_query: Vec<ClipboardItem> =
+        serde_json::from_str(&result_empty_query).expect("parse empty query results");
+    assert_eq!(
+        items_empty_query.len(),
+        4,
+        "empty query should match all items"
+    );
+
+    // 特殊字符搜索 - 测试 SQL 注入防护
+    let result_special =
+        search_data("text", "'; DROP TABLE data; --").expect("search special chars failed");
+    let items_special: Vec<ClipboardItem> =
+        serde_json::from_str(&result_special).expect("parse special chars results");
+    assert!(
+        items_special.is_empty(),
+        "SQL injection attempt should return empty results"
+    );
+
+    // 区分大小写测试（SQLite LIKE 默认不区分大小写）
+    let result_case = search_data("text", "HELLO").expect("search uppercase failed");
+    let items_case: Vec<ClipboardItem> =
+        serde_json::from_str(&result_case).expect("parse case results");
+    let ids_case: Vec<String> = items_case.iter().map(|it| it.id.clone()).collect();
+    assert!(
+        ids_case.contains(&text1.id),
+        "case-insensitive search should find 'hello'"
+    );
+
+    // 模糊匹配测试 - 部分关键词
+    let result_partial = search_data("text", "prog").expect("search partial failed");
+    let items_partial: Vec<ClipboardItem> =
+        serde_json::from_str(&result_partial).expect("parse partial results");
+    let ids_partial: Vec<String> = items_partial.iter().map(|it| it.id.clone()).collect();
+    assert!(
+        ids_partial.contains(&text2.id),
+        "partial match should find 'programming'"
+    );
 }
 
 #[test]
