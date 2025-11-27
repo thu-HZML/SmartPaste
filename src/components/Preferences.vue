@@ -101,18 +101,6 @@
         <div v-if="activeNav === 'shortcuts'" class="panel-section">
           <h2>快捷键设置</h2>
           
-          <div class="setting-item" v-for="(displayName, shortcutType) in shortcutDisplayNames" :key="shortcutType">
-            <div class="setting-info">
-              <h3>{{ displayName }}</h3>
-              <p>快速{{ displayName.replace('显示/隐藏', '').replace('清空', '') }}功能</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording(shortcutType)">
-                {{ settings.shortcuts[shortcutType] || '点击设置' }}
-              </div>
-            </div>
-          </div>
-          
           <div class="hint">
             <p>提示：点击快捷键输入框，然后按下您想要设置的组合键</p>
             <p>按 ESC 键可取消设置</p>
