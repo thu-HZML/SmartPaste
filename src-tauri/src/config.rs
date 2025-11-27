@@ -570,6 +570,23 @@ fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Resul
     }
 }
 
+/// 供 Rust 内部调用的配置更新函数（不支持 Autostart）
+pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(), String> {
+    let config_key = match parse_config_key(key) {
+        Some(k) => k,
+        None => return Err(format!("Invalid config key: {}", key)),
+    };
+
+    match update_simple_config_item(&config_key, value) {
+        Ok(true) => {
+            let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
+            save_config(cfg_clone)
+        }
+        Ok(false) => Err(format!("Config key '{}' requires AppHandle context", key)),
+        Err(e) => Err(e),
+    }
+}
+
 /// 按传入参数修改配置信息。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// key: &str - 配置项名称
