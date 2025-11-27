@@ -22,7 +22,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_autostart::ManagerExt;
 use std::ffi::OsStr;
 use std::io::Cursor;
 use std::os::windows::ffi::OsStrExt;
@@ -44,42 +43,7 @@ fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
 }
 
-/// 设置或取消应用的开机自启。作为 Tauri command 暴露给前端调用。
-/// # Param
-/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
-/// enable: bool - true表示启用开机自启，false表示禁用。
-/// # Returns
-/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
-#[tauri::command]
-async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
-    let autolaunch = app.autolaunch();
 
-    if enable {
-        autolaunch
-            .enable()
-            .map_err(|e| format!("启用开机自启失败: {}", e))?;
-    } else {
-        autolaunch
-            .disable()
-            .map_err(|e| format!("禁用开机自启失败: {}", e))?;
-    }
-
-    Ok(())
-}
-
-/// 检查应用是否已设置为开机自启。作为 Tauri command 暴露给前端调用。
-/// # Param
-/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
-/// # Returns
-/// Result<bool, String> - 操作成功则返回 Ok(bool)，其中 true 表示已启用自启，false 表示未启用。失败则返回包含错误信息的 Err。
-#[tauri::command]
-async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
-    let autolaunch = app.autolaunch();
-
-    autolaunch
-        .is_enabled()
-        .map_err(|e| format!("检查自启状态失败: {}", e))
-}
 
 #[tauri::command]
 fn write_to_clipboard(
@@ -427,8 +391,6 @@ fn main() {
             update_shortcut2,
             get_current_shortcut,
             get_current_shortcut2,
-            set_autostart,
-            is_autostart_enabled,
             get_file_icon,
             db::insert_received_text_data,
             db::insert_received_data,
@@ -462,7 +424,8 @@ fn main() {
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
-            config::set_config_autostart,
+            config::set_autostart,
+            config::is_autostart_enabled,
             config::set_tray_icon_visible,
             config::set_minimize_to_tray,
             config::set_auto_save,
