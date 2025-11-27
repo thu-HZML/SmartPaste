@@ -4,11 +4,30 @@
     <header class="app-header">
       <div class="search-container">
         <div class="search-bar">
-          <svg class="search-icon" width="20" height="20" viewBox="0 0 100 100">
+          <!-- 时间区间搜索的额外输入框 -->
+          <div v-if="searchType === 'time'" class="time-range-inputs">
+            <div class="time-input-group">
+              <label>开始时间:</label>
+              <input 
+                type="datetime-local" 
+                v-model="startTime"
+                class="time-input"
+              >
+            </div>
+            <div class="time-input-group">
+              <label>结束时间:</label>
+              <input 
+                type="datetime-local" 
+                v-model="endTime"
+                class="time-input"
+              >
+            </div>
+          </div>
+          <svg v-if="searchType !== 'time'" class="search-icon" width="20" height="20" viewBox="0 0 100 100">
             <circle cx="40" cy="40" r="30" fill="none" stroke="#3498db" stroke-width="6"/>
             <line x1="65" y1="65" x2="85" y2="85" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
           </svg>
-          <input 
+          <input v-if="searchType !== 'time'"
             type="text" 
             v-model="searchQuery"
             placeholder="搜索剪贴板内容..." 
@@ -22,26 +41,6 @@
               <option value="path">路径</option>
               <option value="time">时间区间</option>
             </select>
-          </div>
-        </div>
-
-        <!-- 时间区间搜索的额外输入框 -->
-        <div v-if="searchType === 'time'" class="time-range-inputs">
-          <div class="time-input-group">
-            <label>开始时间:</label>
-            <input 
-              type="datetime-local" 
-              v-model="startTime"
-              class="time-input"
-            >
-          </div>
-          <div class="time-input-group">
-            <label>结束时间:</label>
-            <input 
-              type="datetime-local" 
-              v-model="endTime"
-              class="time-input"
-            >
           </div>
         </div>
       </div>
@@ -92,7 +91,10 @@
     </header>
 
     <!-- 剪贴板记录列表 -->
-    <main class="app-main">
+    <main :class="{
+      'app-main-time': searchType === 'time',
+      'app-main': searchType !== 'time'
+    }">
       <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
       <div v-if="['all', 'text', 'image', 'file', 'folder'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
@@ -506,6 +508,13 @@ watch(searchType, (newType) => {
   }
 })
 
+// 监听时间变化
+watch([startTime, endTime], async() => {
+  if (searchType.value === 'time' && startTime.value && endTime.value) {
+    await handleSearch('')
+  }
+})
+
 // 监听 searchQuery 变化
 watch(searchQuery, async (newQuery) => {
   await handleSearch(newQuery)
@@ -522,7 +531,7 @@ const handleSearch = async (query) => {
   clearTimeout(searchTimeout)
   
   // 空查询立即返回
-  if (query.trim() === '') {
+  if (query.trim() === '' && searchType.value !== 'time') {
     await getAllHistory()
     searchLoading.value = false
     return
@@ -563,11 +572,43 @@ const handleCategoryChange = async (category) => {
 }
 
 // 搜索过滤
-const performSearch = async (query) => { 
+const performSearch = async (query) => {
   try {
-    const result = await invoke('search_text_content', { 
-      query: query.trim() 
-    })
+    let result = ''
+    
+    switch (searchType.value) {
+      case 'text':
+        result = await invoke('search_text_content', { 
+          query: query.trim() 
+        })
+        break
+      case 'ocr':
+        result = await invoke('search_ocr_content', { 
+          query: query.trim() 
+        })
+        break
+      case 'path':
+        result = await invoke('search_path_content', { 
+          query: query.trim() 
+        })
+        break
+      case 'time':
+        if (startTime.value && endTime.value) {
+          const startTimestamp = new Date(startTime.value).getTime()
+          const endTimestamp = new Date(endTime.value).getTime()
+          result = await invoke('search_time_range', { 
+            startTime: startTimestamp,
+            endTime: endTimestamp
+          })
+        } else {
+          result = '[]'
+        }
+        break
+      default:
+        result = await invoke('search_text_content', { 
+          query: query.trim() 
+        })
+    }
     
     filteredHistory.value = JSON.parse(result)
 
@@ -575,6 +616,7 @@ const performSearch = async (query) => {
     await optimizeHistoryItems(filteredHistory)
   } catch (err) {
     console.error('搜索失败:', err)
+    showMessage('搜索失败: ' + err)
   } finally {
     searchLoading.value = false
   }
@@ -1158,6 +1200,11 @@ const startDragging = async (event) => {
   if (event.target.tagName === 'svg' || event.target.tagName === 'path' || event.target.closest('svg')) {
     return
   }
+
+  // 防止在选择框上触发拖动
+  if (event.target.tagName === 'SELECT' || event.target.closest('select')) {
+    return
+  }
   
   // 防止在模态框上触发拖动
   if (event.target.closest('.modal')) {
@@ -1394,6 +1441,17 @@ async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
   }
 }
 
+// 辅助函数：格式化日期时间为datetime-local输入格式
+const formatDateTimeLocal = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
 // 生命周期
 onMounted(async () => {
 
@@ -1513,6 +1571,7 @@ body {
 .search-bar {
   display: flex;
   flex-direction: row;
+  justify-content: space-between;
   align-items: center;
   position: relative;
   margin: 0 auto;
@@ -1547,7 +1606,7 @@ body {
 
 /* 新增搜索类型选择器样式 */
 .search-type-selector {
-  margin-left: 8px;
+  margin-left: 4px;
   flex-shrink: 0;
 }
 
@@ -1561,7 +1620,7 @@ body {
   color: #333;
   cursor: pointer;
   transition: all 0.2s;
-  min-width: 120px;
+  min-width: 80px;
 }
 
 .search-type-select:hover {
@@ -1576,9 +1635,8 @@ body {
 /* 时间区间搜索输入框样式 */
 .time-range-inputs {
   display: flex;
-  gap: 12px;
-  margin-top: 8px;
-  padding: 0 4px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .time-input-group {
@@ -1744,6 +1802,14 @@ body {
   padding: 8px 10px;
   margin: 0 auto;
   margin-top: 96px; /* 顶部搜索栏高度 + 工具栏高度 */
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.app-main-time {
+  padding: 8px 10px;
+  margin: 0 auto;
+  margin-top: 130px; /* 顶部搜索栏高度 + 工具栏高度 */
   overflow-x: hidden;
   max-width: 100%;
 }
