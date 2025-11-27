@@ -838,11 +838,11 @@ const settings = useSettingsStore()
 
 // 快捷键显示名称映射
 const shortcutDisplayNames = {
-  toggleWindow: '显示/隐藏主窗口',
-  pasteWindow: '显示/隐藏剪贴板', 
-  AIWindow: '显示/隐藏AI助手',
-  quickPaste: '快速粘贴',
-  clearHistory: '清空剪贴板历史'
+  global_shortcut: '显示/隐藏主窗口',
+  global_shortcut_2: '显示/隐藏剪贴板', 
+  global_shortcut_3: '显示/隐藏AI助手',
+  global_shortcut_4: '快速粘贴',
+  global_shortcut_5: '清空剪贴板历史'
 }
 
 // 同步状态相关数据
@@ -907,7 +907,6 @@ onMounted(async () => {
     lastSyncTime.value = parseInt(savedTime);
   }
   await checkAutostartStatus()
-  await loadAllShortcuts()
 
   // 初始化窗口大小
   try {
@@ -1138,8 +1137,6 @@ const setShortcut = async (newShortcutStr, shortcutType) => {
     successMsg.value = `${shortcutDisplayNames[shortcutType]} 快捷键设置成功！`
     console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
 
-    // 重新加载当前快捷键
-    await loadAllShortcuts()
   } catch (err) {
     errorMsg.value = `设置失败: ${err}`
     console.error('❌ 设置快捷键失败:', err)
@@ -1157,18 +1154,6 @@ const setShortcut = async (newShortcutStr, shortcutType) => {
   }, 3000)
 }
 
-// 辅助函数：获取快捷键显示名称
-const getShortcutDisplayName = (shortcutType) => {
-  const nameMap = {
-    'toggleWindow': '显示/隐藏主窗口',
-    'asteWindow': '显示/隐藏剪贴板',
-    'quickPaste': '快速粘贴', 
-    'clearHistory': '清空剪贴板历史'
-  };
-  return nameMap[shortcutType] || shortcutType;
-}
-
-
 // 取消录制（可选）
 const cancelRecording = () => {
   shortcutManager.isRecording = false
@@ -1178,24 +1163,6 @@ const cancelRecording = () => {
   showMessage('已取消快捷键设置')
 }
 
-const loadAllShortcuts = async () => {
-  try {
-    const allShortcuts = await invoke('get_all_shortcuts')
-    Object.assign(settings.shortcuts, allShortcuts)
-    console.log('所有快捷键加载完成:', allShortcuts)
-  } catch (error) {
-    console.error('加载快捷键失败:', error)
-    // 设置默认值
-    const defaultShortcuts = {
-      toggleWindow: 'Shift+D',
-      pasteWindow: 'Alt+Shift+C', 
-      AIWindow: 'Ctrl+Shift+A',
-      quickPaste: 'Ctrl+Shift+V',
-      clearHistory: 'Ctrl+Shift+Delete'
-    }
-    Object.assign(settings.shortcuts, defaultShortcuts)
-  }
-}
 
 // 剪贴板参数设置相关函数
 // 最大历史记录数量
