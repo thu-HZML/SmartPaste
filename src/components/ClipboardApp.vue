@@ -1295,7 +1295,8 @@ const copySelectedItems = async () => {
     })
 
     if (filePaths) {
-      await invoke('write_files_to_clipboard', { text: copyString })
+      console.log('准备复制的文件路径:', filePaths)
+      await invoke('write_files_to_clipboard', { filePaths: filePaths })
       showMessage(`已成功复制 ${successCount} 个文件项目`)
     } else {
       showMessage('没有找到可复制的文本内容')
