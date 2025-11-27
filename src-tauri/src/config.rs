@@ -1,7 +1,4 @@
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::HashMap;
 use std::{
     fs,
     io::Write,
@@ -492,6 +489,87 @@ pub fn get_config_json() -> String {
 
 // 优化：统合所有配置信息修改函数逻辑为以下通用模式，避免重复代码
 
+/// 保存配置到文件
+pub fn save_config(config: Config) -> Result<(), String> {
+    let config_path = get_config_path();
+    let data = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(config_path, data).map_err(|e| e.to_string())
+}
+
+/// 内部辅助函数：更新除 Autostart 外的简单配置项
+/// 返回 Ok(true) 表示已处理并更新内存
+/// 返回 Ok(false) 表示该 key (如 Autostart) 需要特殊处理，未更新
+/// 返回 Err 表示类型错误或其他错误
+fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Result<bool, String> {
+    macro_rules! update_cfg {
+        ($field:ident, $type:ty) => {{
+            match serde_json::from_value::<$type>(value) {
+                Ok(v) => {
+                    if let Some(lock) = CONFIG.get() {
+                        let mut cfg = lock.write().unwrap();
+                        cfg.$field = v;
+                    }
+                    Ok(true)
+                }
+                Err(_) => Err(format!("Invalid type for config key")),
+            }
+        }};
+    }
+
+    match key {
+        ConfigKey::Autostart => Ok(false),
+        ConfigKey::TrayIconVisible => update_cfg!(tray_icon_visible, bool),
+        ConfigKey::MinimizeToTray => update_cfg!(minimize_to_tray, bool),
+        ConfigKey::AutoSave => update_cfg!(auto_save, bool),
+        ConfigKey::RetentionDays => update_cfg!(retention_days, u32),
+        ConfigKey::GlobalShortcut => update_cfg!(global_shortcut, String),
+        ConfigKey::GlobalShortcut2 => update_cfg!(global_shortcut_2, String),
+        ConfigKey::GlobalShortcut3 => update_cfg!(global_shortcut_3, String),
+        ConfigKey::GlobalShortcut4 => update_cfg!(global_shortcut_4, String),
+        ConfigKey::GlobalShortcut5 => update_cfg!(global_shortcut_5, String),
+        ConfigKey::MaxHistoryItems => update_cfg!(max_history_items, u32),
+        ConfigKey::IgnoreShortTextLen => update_cfg!(ignore_short_text_len, u32),
+        ConfigKey::IgnoreBigFileMb => update_cfg!(ignore_big_file_mb, u32),
+        ConfigKey::IgnoredApps => update_cfg!(ignored_apps, Vec<String>),
+        ConfigKey::AutoClassify => update_cfg!(auto_classify, bool),
+        ConfigKey::OcrAutoRecognition => update_cfg!(ocr_auto_recognition, bool),
+        ConfigKey::DeleteConfirmation => update_cfg!(delete_confirmation, bool),
+        ConfigKey::KeepFavoritesOnDelete => update_cfg!(keep_favorites_on_delete, bool),
+        ConfigKey::AutoSort => update_cfg!(auto_sort, bool),
+        ConfigKey::AiEnabled => update_cfg!(ai_enabled, bool),
+        ConfigKey::AiService => update_cfg!(ai_service, Option<String>),
+        ConfigKey::AiApiKey => update_cfg!(ai_api_key, Option<String>),
+        ConfigKey::AiAutoTag => update_cfg!(ai_auto_tag, bool),
+        ConfigKey::AiAutoSummary => update_cfg!(ai_auto_summary, bool),
+        ConfigKey::AiTranslation => update_cfg!(ai_translation, bool),
+        ConfigKey::AiWebSearch => update_cfg!(ai_web_search, bool),
+        ConfigKey::SensitiveFilter => update_cfg!(sensitive_filter, bool),
+        ConfigKey::FilterPasswords => update_cfg!(filter_passwords, bool),
+        ConfigKey::FilterBankCards => update_cfg!(filter_bank_cards, bool),
+        ConfigKey::FilterIdCards => update_cfg!(filter_id_cards, bool),
+        ConfigKey::FilterPhoneNumbers => update_cfg!(filter_phone_numbers, bool),
+        ConfigKey::PrivacyRetentionDays => update_cfg!(privacy_retention_days, u32),
+        ConfigKey::PrivacyRecords => update_cfg!(privacy_records, Vec<String>),
+        ConfigKey::StoragePath => update_cfg!(storage_path, Option<String>),
+        ConfigKey::AutoBackup => update_cfg!(auto_backup, bool),
+        ConfigKey::BackupFrequency => update_cfg!(backup_frequency, String),
+        ConfigKey::LastBackupPath => update_cfg!(last_backup_path, Option<String>),
+        ConfigKey::CloudSyncEnabled => update_cfg!(cloud_sync_enabled, bool),
+        ConfigKey::SyncFrequency => update_cfg!(sync_frequency, String),
+        ConfigKey::SyncContentType => update_cfg!(sync_content_type, String),
+        ConfigKey::EncryptCloudData => update_cfg!(encrypt_cloud_data, bool),
+        ConfigKey::SyncOnlyWifi => update_cfg!(sync_only_wifi, bool),
+        ConfigKey::Username => update_cfg!(username, Option<String>),
+        ConfigKey::Email => update_cfg!(email, Option<String>),
+        ConfigKey::Bio => update_cfg!(bio, Option<String>),
+        ConfigKey::AvatarPath => update_cfg!(avatar_path, Option<String>),
+        ConfigKey::OcrProvider => update_cfg!(ocr_provider, Option<String>),
+        ConfigKey::OcrLanguages => update_cfg!(ocr_languages, Option<Vec<String>>),
+        ConfigKey::OcrConfidenceThreshold => update_cfg!(ocr_confidence_threshold, Option<f32>),
+        ConfigKey::OcrTimeoutSecs => update_cfg!(ocr_timeout_secs, Option<u64>),
+    }
+}
+
 /// 按传入参数修改配置信息。作为 Tauri Command 暴露给前端调用。
 /// # Param
 /// key: &str - 配置项名称
@@ -499,7 +577,57 @@ pub fn get_config_json() -> String {
 /// # Returns
 /// String - 修改结果信息，若成功返回 "config updated"，否则返回错误信息（类型不匹配等）
 #[tauri::command]
-pub fn set_config_item(key: &str, value: serde_json::Value) -> String {}
+pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Value) -> String {
+    let config_key = match parse_config_key(key) {
+        Some(k) => k,
+        None => return format!("Invalid config key: {}", key),
+    };
+
+    // 尝试使用通用逻辑更新
+    match update_simple_config_item(&config_key, value.clone()) {
+        Ok(true) => {
+            // 已更新内存，直接保存
+            let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
+            match save_config(cfg_clone) {
+                Ok(_) => "config updated".to_string(),
+                Err(e) => format!("failed to save config: {}", e),
+            }
+        }
+        Ok(false) => {
+            // 返回 false 说明是 Autostart，需要特殊处理
+            if config_key == ConfigKey::Autostart {
+                match serde_json::from_value::<bool>(value) {
+                    Ok(enable) => {
+                        let autolaunch = app.autolaunch();
+                        let res = if enable {
+                            autolaunch.enable()
+                        } else {
+                            autolaunch.disable()
+                        };
+                        match res {
+                            Ok(_) => {
+                                if let Some(lock) = CONFIG.get() {
+                                    let mut cfg = lock.write().unwrap();
+                                    cfg.autostart = enable;
+                                }
+                                let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
+                                match save_config(cfg_clone) {
+                                    Ok(_) => "config updated".to_string(),
+                                    Err(e) => format!("failed to save config: {}", e),
+                                }
+                            }
+                            Err(e) => format!("Failed to change autostart: {}", e),
+                        }
+                    }
+                    Err(_) => format!("Invalid type for key '{}'", key),
+                }
+            } else {
+                format!("Unhandled config key: {}", key)
+            }
+        }
+        Err(e) => e,
+    }
+}
 
 // /// 设置数据存储路径
 // /// # Param
@@ -1300,3 +1428,72 @@ pub fn set_config_item(key: &str, value: serde_json::Value) -> String {}
 //     }
 //     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_update_simple_config_item() {
+        // 确保配置已初始化
+        let _ = init_config();
+
+        // 1. 测试布尔值更新 (TrayIconVisible)
+        let key = ConfigKey::TrayIconVisible;
+        // 先设置为 true
+        update_simple_config_item(&key, json!(true)).unwrap();
+        assert_eq!(
+            CONFIG.get().unwrap().read().unwrap().tray_icon_visible,
+            true
+        );
+
+        // 设置为 false
+        let res = update_simple_config_item(&key, json!(false));
+        assert_eq!(res, Ok(true));
+        assert_eq!(
+            CONFIG.get().unwrap().read().unwrap().tray_icon_visible,
+            false
+        );
+
+        // 2. 测试数值更新 (MaxHistoryItems)
+        let key = ConfigKey::MaxHistoryItems;
+        let res = update_simple_config_item(&key, json!(999));
+        assert_eq!(res, Ok(true));
+        assert_eq!(CONFIG.get().unwrap().read().unwrap().max_history_items, 999);
+
+        // 3. 测试字符串更新 (GlobalShortcut)
+        let key = ConfigKey::GlobalShortcut;
+        let res = update_simple_config_item(&key, json!("Ctrl+Alt+K"));
+        assert_eq!(res, Ok(true));
+        assert_eq!(
+            CONFIG.get().unwrap().read().unwrap().global_shortcut,
+            "Ctrl+Alt+K"
+        );
+
+        // 4. 测试 Option 类型更新 (AiApiKey)
+        let key = ConfigKey::AiApiKey;
+        let res = update_simple_config_item(&key, json!("sk-123456"));
+        assert_eq!(res, Ok(true));
+        assert_eq!(
+            CONFIG.get().unwrap().read().unwrap().ai_api_key,
+            Some("sk-123456".to_string())
+        );
+
+        let res = update_simple_config_item(&key, json!(null));
+        assert_eq!(res, Ok(true));
+        assert_eq!(CONFIG.get().unwrap().read().unwrap().ai_api_key, None);
+
+        // 5. 测试类型错误
+        let key = ConfigKey::MaxHistoryItems;
+        let res = update_simple_config_item(&key, json!("not a number"));
+        assert!(res.is_err());
+        // 确保值未改变
+        assert_eq!(CONFIG.get().unwrap().read().unwrap().max_history_items, 999);
+
+        // 6. 测试 Autostart (应返回 Ok(false))
+        let key = ConfigKey::Autostart;
+        let res = update_simple_config_item(&key, json!(true));
+        assert_eq!(res, Ok(false));
+    }
+}
