@@ -4,16 +4,44 @@
     <header class="app-header">
       <div class="search-container">
         <div class="search-bar">
-          <svg class="search-icon" width="20" height="20" viewBox="0 0 100 100">
+          <!-- 时间区间搜索的额外输入框 -->
+          <div v-if="searchType === 'time'" class="time-range-inputs">
+            <div class="time-input-group">
+              <label>开始时间:</label>
+              <input 
+                type="datetime-local" 
+                v-model="startTime"
+                class="time-input"
+              >
+            </div>
+            <div class="time-input-group">
+              <label>结束时间:</label>
+              <input 
+                type="datetime-local" 
+                v-model="endTime"
+                class="time-input"
+              >
+            </div>
+          </div>
+          <svg v-if="searchType !== 'time'" class="search-icon" width="20" height="20" viewBox="0 0 100 100">
             <circle cx="40" cy="40" r="30" fill="none" stroke="#3498db" stroke-width="6"/>
             <line x1="65" y1="65" x2="85" y2="85" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
           </svg>
-          <input 
+          <input v-if="searchType !== 'time'"
             type="text" 
             v-model="searchQuery"
             placeholder="搜索剪贴板内容..." 
             class="search-input"
           >
+          <!-- 新增搜索类型下拉框 -->
+          <div class="search-type-selector">
+            <select v-model="searchType" class="search-type-select">
+              <option value="text">纯文本</option>
+              <option value="ocr">OCR</option>
+              <option value="path">路径</option>
+              <option value="time">时间区间</option>
+            </select>
+          </div>
         </div>
       </div>
       
@@ -63,7 +91,10 @@
     </header>
 
     <!-- 剪贴板记录列表 -->
-    <main class="app-main">
+    <main :class="{
+      'app-main-time': searchType === 'time',
+      'app-main': searchType !== 'time'
+    }">
       <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
       <div v-if="['all', 'text', 'image', 'file', 'folder'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
@@ -411,10 +442,15 @@ const canDeleteWindow = ref(true)
 let isDragging = null
 const test = ref('')
 
-// 多选相关数据
+// 多选相关变量
 const multiSelectMode = ref(false)
 const selectedItems = ref([]) // 存储选中的历史记录
 const showMultiCopyBtn = ref(false) // 控制复制按钮显示
+
+// 搜索相关变量
+const searchType = ref('text') // 默认纯文本搜索
+const startTime = ref('')
+const endTime = ref('')
 
 // 计算属性
 const selectedItemsCount = computed(() => selectedItems.value.length)
@@ -440,19 +476,47 @@ const filteredHistory = ref([])
 const initialSelectedFolders = ref([]) // 存储当前记录被收藏进的收藏夹
 const iconCache = ref({}) // 用于缓存已加载的图标
 
-/*
-// 计算属性
-const displayHistory = computed(() => {
-  if (activeCategory.value === 'folder') {
-    return folders.value
-  } else {
-    return filteredHistory.value
+// 计算属性：根据搜索类型动态改变placeholder
+const searchPlaceholder = computed(() => {
+  switch (searchType.value) {
+    case 'text':
+      return '搜索剪贴板内容...'
+    case 'ocr':
+      return '搜索图片OCR文字内容...'
+    case 'path':
+      return '搜索文件路径...'
+    case 'time':
+      return '请选择时间区间...'
+    default:
+      return '搜索剪贴板内容...'
   }
 })
-*/
+
+// 监听搜索类型变化
+watch(searchType, (newType) => {
+  // 切换搜索类型时清空搜索框
+  searchQuery.value = ''
+  // 如果是时间搜索，初始化时间
+  if (newType === 'time') {
+    const now = new Date()
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    startTime.value = formatDateTimeLocal(oneWeekAgo)
+    endTime.value = formatDateTimeLocal(now)
+  } else {
+    startTime.value = ''
+    endTime.value = ''
+  }
+})
+
+// 监听时间变化
+watch([startTime, endTime], async() => {
+  if (searchType.value === 'time' && startTime.value && endTime.value) {
+    await handleSearch('')
+  }
+})
 
 // 监听 searchQuery 变化
-watch(searchQuery, async(newQuery) => {
+watch(searchQuery, async (newQuery) => {
   await handleSearch(newQuery)
 })
 
@@ -467,7 +531,7 @@ const handleSearch = async (query) => {
   clearTimeout(searchTimeout)
   
   // 空查询立即返回
-  if (query.trim() === '') {
+  if (query.trim() === '' && searchType.value !== 'time') {
     await getAllHistory()
     searchLoading.value = false
     return
@@ -508,11 +572,46 @@ const handleCategoryChange = async (category) => {
 }
 
 // 搜索过滤
-const performSearch = async (query) => { 
+const performSearch = async (query) => {
   try {
-    const result = await invoke('search_text_content', { 
-      query: query.trim() 
-    })
+    let result = ''
+    
+    switch (searchType.value) {
+      case 'text':
+        result = await invoke('search_data', { 
+          searchType: 'text',
+          query: query.trim() 
+        })
+        break
+      case 'ocr':
+        result = await invoke('search_data_by_ocr_text', { 
+          query: query.trim() 
+        })
+        break
+      case 'path':
+        result = await invoke('search_data', { 
+          searchType: 'path',
+          query: query.trim() 
+        })
+        break
+      case 'time':
+        if (startTime.value && endTime.value) {
+          const startTimestamp = new Date(startTime.value).getTime()
+          const endTimestamp = new Date(endTime.value).getTime()
+          const timeRangeQuery = `${startTimestamp},${endTimestamp}`
+          result = await invoke('search_data', { 
+            searchType: 'timestamp',
+            query: timeRangeQuery
+          })
+        } else {
+          result = '[]'
+        }
+        break
+      default:
+        result = await invoke('search_text_content', { 
+          query: query.trim() 
+        })
+    }
     
     filteredHistory.value = JSON.parse(result)
 
@@ -520,6 +619,7 @@ const performSearch = async (query) => {
     await optimizeHistoryItems(filteredHistory)
   } catch (err) {
     console.error('搜索失败:', err)
+    showMessage('搜索失败: ' + err)
   } finally {
     searchLoading.value = false
   }
@@ -1103,6 +1203,11 @@ const startDragging = async (event) => {
   if (event.target.tagName === 'svg' || event.target.tagName === 'path' || event.target.closest('svg')) {
     return
   }
+
+  // 防止在选择框上触发拖动
+  if (event.target.tagName === 'SELECT' || event.target.closest('select')) {
+    return
+  }
   
   // 防止在模态框上触发拖动
   if (event.target.closest('.modal')) {
@@ -1230,6 +1335,8 @@ const copySelectedItems = async () => {
     let errorCount = 0
     let copyString = ''
 
+    let filePaths = []
+
     selectedItems.value.forEach(item => {
       if (item.item_type === 'text') {
         copyString += item.content + '\n'
@@ -1241,8 +1348,23 @@ const copySelectedItems = async () => {
       await invoke('write_to_clipboard', { text: copyString })
       showMessage(`已成功复制 ${successCount} 个文本项目`)
     } else {
-      showMessage('没有找到可复制的文本内容')
+      // 多选文件
+      selectedItems.value.forEach(item => {
+        if (item.item_type === 'file' || item.item_type === 'image' || item.item_type === 'folder') {
+          filePaths.push(item.content)
+          successCount++
+        }     
+      })
+
+      if (filePaths) {
+        console.log('准备复制的文件路径:', filePaths)
+        await invoke('write_files_to_clipboard', { filePaths: filePaths })
+        showMessage(`已成功复制 ${successCount} 个文件项目`)
+      } else {
+        showMessage('没有找到可复制的内容')
+      }
     }
+
     // 复制完成后退出多选模式
     exitMultiSelectMode()
     
@@ -1320,6 +1442,17 @@ async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
       throw new Error(`Failed to get icon after 5 retries: ${error}`)
     }
   }
+}
+
+// 辅助函数：格式化日期时间为datetime-local输入格式
+const formatDateTimeLocal = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  
+  return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
 // 生命周期
@@ -1441,6 +1574,8 @@ body {
 .search-bar {
   display: flex;
   flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
   position: relative;
   margin: 0 auto;
 }
@@ -1454,7 +1589,7 @@ body {
 
 /* 搜索框样式 */
 .search-input {
-  width: 100%;
+  flex: 1;
   padding: 6px 10px 6px 40px;
   border: 1px solid #e1e8ed;
   border-radius: 8px;
@@ -1468,6 +1603,73 @@ body {
 }
 
 .search-input:focus {
+  border-color: #3282f6;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+}
+
+/* 新增搜索类型选择器样式 */
+.search-type-selector {
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.search-type-select {
+  padding: 6px 8px;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 80px;
+}
+
+.search-type-select:hover {
+  border-color: #b7c8fe;
+}
+
+.search-type-select:focus {
+  border-color: #3282f6;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+}
+
+/* 时间区间搜索输入框样式 */
+.time-range-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.time-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.time-input-group label {
+  font-size: 12px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.time-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #e1e8ed;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.time-input:hover {
+  border-color: #b7c8fe;
+}
+
+.time-input:focus {
   border-color: #3282f6;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
 }
@@ -1603,6 +1805,14 @@ body {
   padding: 8px 10px;
   margin: 0 auto;
   margin-top: 96px; /* 顶部搜索栏高度 + 工具栏高度 */
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.app-main-time {
+  padding: 8px 10px;
+  margin: 0 auto;
+  margin-top: 130px; /* 顶部搜索栏高度 + 工具栏高度 */
   overflow-x: hidden;
   max-width: 100%;
 }
