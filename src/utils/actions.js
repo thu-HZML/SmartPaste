@@ -107,8 +107,8 @@ export async function toggleMenuWindow() {
       return await createMenuWindow({
         x: newX,
         y: newY,
-        width: 400, // 菜单窗口宽度
-        height: 600 // 菜单窗口高度
+        width: 300, // 菜单窗口宽度
+        height: 400 // 菜单窗口高度
       })
     } catch (error) {
       console.error('使用主窗口位置创建菜单窗口错误:', error)
