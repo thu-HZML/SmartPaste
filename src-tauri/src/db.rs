@@ -571,7 +571,8 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<String, String> {
 
 /// 按类型筛选数据。作为 Tauri command 暴露给前端调用。
 /// # Param
-/// item_type: &str - 数据类型（如 "text", "image" 等）
+/// item_type: &str - 数据类型（如 "text", "image" 等）。
+/// *(当输入 "folder" 或 "file" 时，会同时返回 folder 和 file 类型的数据)*
 /// # Returns
 /// String - 包含筛选后数据记录的 JSON 字符串
 #[tauri::command]
@@ -580,27 +581,46 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let mut stmt = conn
-        .prepare(
+    let (sql, params) = if item_type == "folder" || item_type == "file" {
+        // 当类型为 folder 或 file 时，同时返回两种类型的数据
+        (
+            "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+             FROM data 
+             WHERE item_type IN ('folder', 'file')",
+            vec![]
+        )
+    } else {
+        // 其他类型按原来的逻辑处理
+        (
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE item_type = ?1",
+            vec![item_type]
         )
+    };
+
+    let mut stmt = conn
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
-    let clipboard_iter = stmt
-        .query_map(params![item_type], |row| {
-            Ok(ClipboardItem {
-                id: row.get(0)?,
-                item_type: row.get(1)?,
-                content: row.get(2)?,
-                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
-                is_favorite: row.get::<_, i32>(4)? != 0,
-                notes: row.get(5)?,
-                timestamp: row.get(6)?,
-            })
+    let row_to_clipboard_item = |row: &rusqlite::Row| -> rusqlite::Result<ClipboardItem> {
+        Ok(ClipboardItem {
+            id: row.get(0)?,
+            item_type: row.get(1)?,
+            content: row.get(2)?,
+            size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+            is_favorite: row.get::<_, i32>(4)? != 0,
+            notes: row.get(5)?,
+            timestamp: row.get(6)?,
         })
-        .map_err(|e| e.to_string())?;
+    };
+
+    let clipboard_iter = if params.is_empty() {
+        stmt.query_map([], row_to_clipboard_item)
+    } else {
+        stmt.query_map(rusqlite::params![params[0]], row_to_clipboard_item)
+    }
+    .map_err(|e| e.to_string())?;
 
     let mut results = Vec::new();
     for item in clipboard_iter {
