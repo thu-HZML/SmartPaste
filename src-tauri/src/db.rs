@@ -496,13 +496,14 @@ pub fn get_favorite_data_count() -> Result<usize, String> {
 
     Ok(count)
 }
-
 /// 搜索。作为 Tauri command 暴露给前端调用。
 /// 根据传入的搜索关键词，以及传入的搜索类型，对所有 content 字段进行模糊搜索，返回匹配的记录列表。
 /// # Param
 /// search_type: &str - 搜索类型 ("text", "ocr", "path", "timestamp")
 /// query: &str - 搜索关键词
-/// - "text", "ocr", "path" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配
+/// - "text" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配，只返回 text 类型数据
+/// - "ocr" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配，只返回 image 类型数据
+/// - "path" 类型：待搜索的字符串关键词，在 content 字段中进行模糊匹配，返回 file、folder、image 类型数据
 /// - "timestamp" 类型：待搜索的时间范围，格式为 "start_timestamp,end_timestamp"，在 timestamp 字段中进行范围匹配
 /// # Returns
 /// String - 包含匹配数据记录的 JSON 字符串，或者错误信息（如格式错误等）
@@ -533,6 +534,93 @@ pub fn search_data(search_type: &str, query: &str) -> Result<String, String> {
 
             let clipboard_iter = stmt
                 .query_map(params![start, end], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+        "text" => {
+            let like_pattern = format!("%{}%", query);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE content LIKE ?1 AND item_type = 'text'",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![like_pattern], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+        "ocr" => {
+            let like_pattern = format!("%{}%", query);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE content LIKE ?1 AND item_type = 'image'",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![like_pattern], |row| {
+                    Ok(ClipboardItem {
+                        id: row.get(0)?,
+                        item_type: row.get(1)?,
+                        content: row.get(2)?,
+                        size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                        is_favorite: row.get::<_, i32>(4)? != 0,
+                        notes: row.get(5)?,
+                        timestamp: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for item in clipboard_iter {
+                results.push(item.map_err(|e| e.to_string())?);
+            }
+        }
+        "path" => {
+            let like_pattern = format!("%{}%", query);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+                     FROM data 
+                     WHERE content LIKE ?1 AND item_type IN ('file', 'folder', 'image')",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let clipboard_iter = stmt
+                .query_map(params![like_pattern], |row| {
                     Ok(ClipboardItem {
                         id: row.get(0)?,
                         item_type: row.get(1)?,

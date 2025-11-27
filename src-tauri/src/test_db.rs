@@ -244,6 +244,7 @@ fn test_search_data_comprehensive() {
     let text2 = make_item("search-2", "text", "rust programming");
     let image1 = make_item("search-3", "image", "/path/to/image.png");
     let file1 = make_item("search-4", "file", "/path/to/document.pdf");
+    let folder1 = make_item("search-5", "folder", "/path/to/myfolder");
 
     // 插入数据并等待一小段时间以确保时间戳不同
     insert_received_db_data(text1.clone()).expect("insert text1 failed");
@@ -253,8 +254,11 @@ fn test_search_data_comprehensive() {
     insert_received_db_data(image1.clone()).expect("insert image1 failed");
     std::thread::sleep(std::time::Duration::from_millis(10));
     insert_received_db_data(file1.clone()).expect("insert file1 failed");
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    insert_received_db_data(folder1.clone()).expect("insert folder1 failed");
 
-    // ==================== 测试文本内容搜索 ====================
+    // ==================== 测试 "text" 类型搜索 ====================
+    // 只搜索 item_type = 'text' 的数据
 
     // 搜索 "world" - 应该只匹配 text1
     let result_world = search_data("text", "world").expect("search world failed");
@@ -264,17 +268,16 @@ fn test_search_data_comprehensive() {
     assert_eq!(ids_world.len(), 1, "expected 1 item for 'world'");
     assert!(ids_world.contains(&text1.id), "should contain text1");
     assert!(!ids_world.contains(&text2.id), "should not contain text2");
+    assert!(!ids_world.contains(&image1.id), "should not contain image1");
 
-    // 搜索 "path" - 应该匹配 image1 和 file1 (它们的 content 包含 path)
-    let result_path = search_data("text", "path").expect("search path failed");
-    let items_path: Vec<ClipboardItem> =
-        serde_json::from_str(&result_path).expect("parse path results");
-    let ids_path: Vec<String> = items_path.iter().map(|it| it.id.clone()).collect();
-    assert_eq!(ids_path.len(), 2, "expected 2 items for 'path'");
-    assert!(ids_path.contains(&image1.id), "should contain image1");
-    assert!(ids_path.contains(&file1.id), "should contain file1");
-    assert!(!ids_path.contains(&text1.id), "should not contain text1");
-    assert!(!ids_path.contains(&text2.id), "should not contain text2");
+    // 搜索 "programming" - 应该只匹配 text2
+    let result_prog = search_data("text", "programming").expect("search programming failed");
+    let items_prog: Vec<ClipboardItem> =
+        serde_json::from_str(&result_prog).expect("parse programming results");
+    let ids_prog: Vec<String> = items_prog.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_prog.len(), 1, "expected 1 item for 'programming'");
+    assert!(ids_prog.contains(&text2.id), "should contain text2");
+    assert!(!ids_prog.contains(&text1.id), "should not contain text1");
 
     // 搜索不存在的关键词 - 应该返回空数组
     let result_empty = search_data("text", "nonexistent").expect("search nonexistent failed");
@@ -285,32 +288,60 @@ fn test_search_data_comprehensive() {
         "expected empty results for nonexistent keyword"
     );
 
-    // ==================== 测试 OCR 搜索 ====================
+    // ==================== 测试 "ocr" 类型搜索 ====================
+    // 只搜索 item_type = 'image' 的数据的 content 字段
 
-    let result_ocr = search_data("ocr", "hello").expect("search ocr failed");
+    let result_ocr = search_data("ocr", "image").expect("search ocr failed");
     let items_ocr: Vec<ClipboardItem> =
         serde_json::from_str(&result_ocr).expect("parse ocr results");
-    // OCR 搜索应该通过 content 字段进行（因为实现中使用的是相同的 LIKE 查询）
     let ids_ocr: Vec<String> = items_ocr.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_ocr.len(), 1, "expected 1 image item for 'image'");
     assert!(
-        ids_ocr.contains(&text1.id),
-        "ocr search should find text1 with 'hello'"
+        ids_ocr.contains(&image1.id),
+        "ocr search should find image1"
+    );
+    assert!(
+        !ids_ocr.contains(&text1.id),
+        "ocr search should not find text items"
+    );
+    assert!(
+        !ids_ocr.contains(&file1.id),
+        "ocr search should not find file items"
     );
 
-    // ==================== 测试路径搜索 ====================
+    // ==================== 测试 "path" 类型搜索 ====================
+    // 搜索 item_type IN ('file', 'folder', 'image') 的数据
 
     let result_path_search = search_data("path", "document").expect("search path failed");
     let items_path_search: Vec<ClipboardItem> =
         serde_json::from_str(&result_path_search).expect("parse path search");
     let ids_path_search: Vec<String> = items_path_search.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_path_search.len(), 1, "path search should find 1 item");
     assert!(
         ids_path_search.contains(&file1.id),
         "path search should find file1"
     );
-    assert_eq!(
-        ids_path_search.len(),
-        1,
-        "path search should only find 1 item"
+    assert!(
+        !ids_path_search.contains(&text1.id),
+        "path search should not find text items"
+    );
+
+    // 搜索 "path" - 应该匹配 image1, file1, folder1
+    let result_path_all = search_data("path", "path").expect("search path keyword failed");
+    let items_path_all: Vec<ClipboardItem> =
+        serde_json::from_str(&result_path_all).expect("parse path all results");
+    let ids_path_all: Vec<String> = items_path_all.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_path_all.len(), 3, "expected 3 items containing 'path'");
+    assert!(ids_path_all.contains(&image1.id), "should contain image1");
+    assert!(ids_path_all.contains(&file1.id), "should contain file1");
+    assert!(ids_path_all.contains(&folder1.id), "should contain folder1");
+    assert!(
+        !ids_path_all.contains(&text1.id),
+        "should not contain text1"
+    );
+    assert!(
+        !ids_path_all.contains(&text2.id),
+        "should not contain text2"
     );
 
     // ==================== 测试时间戳范围搜索 ====================
@@ -324,7 +355,7 @@ fn test_search_data_comprehensive() {
     let max_timestamp = all_data.iter().map(|it| it.timestamp).max().unwrap();
     let mid_timestamp = (min_timestamp + max_timestamp) / 2;
 
-    // 搜索全部时间范围 - 应该返回所有 4 个项目
+    // 搜索全部时间范围 - 应该返回所有 5 个项目
     let timestamp_query_all = format!("{},{}", min_timestamp - 1000, max_timestamp + 1000);
     let result_timestamp_all =
         search_data("timestamp", &timestamp_query_all).expect("search timestamp all failed");
@@ -332,8 +363,8 @@ fn test_search_data_comprehensive() {
         serde_json::from_str(&result_timestamp_all).expect("parse timestamp all results");
     assert_eq!(
         items_timestamp_all.len(),
-        4,
-        "expected all 4 items in full time range"
+        5,
+        "expected all 5 items in full time range"
     );
 
     // 搜索部分时间范围 - 应该返回部分项目
@@ -343,7 +374,7 @@ fn test_search_data_comprehensive() {
     let items_timestamp_partial: Vec<ClipboardItem> =
         serde_json::from_str(&result_timestamp_partial).expect("parse timestamp partial results");
     assert!(
-        items_timestamp_partial.len() >= 1 && items_timestamp_partial.len() <= 4,
+        items_timestamp_partial.len() >= 1 && items_timestamp_partial.len() <= 5,
         "expected some items in partial time range"
     );
 
@@ -382,15 +413,18 @@ fn test_search_data_comprehensive() {
 
     // ==================== 测试边界情况 ====================
 
-    // 空搜索关键词 - 应该返回所有包含空字符串的项（实际上是所有项）
+    // 空搜索关键词 (text 类型) - 应该返回所有 text 类型的项
     let result_empty_query = search_data("text", "").expect("search empty query failed");
     let items_empty_query: Vec<ClipboardItem> =
         serde_json::from_str(&result_empty_query).expect("parse empty query results");
     assert_eq!(
         items_empty_query.len(),
-        4,
-        "empty query should match all items"
+        2,
+        "empty query should match all text items"
     );
+    let ids_empty: Vec<String> = items_empty_query.iter().map(|it| it.id.clone()).collect();
+    assert!(ids_empty.contains(&text1.id), "should contain text1");
+    assert!(ids_empty.contains(&text2.id), "should contain text2");
 
     // 特殊字符搜索 - 测试 SQL 注入防护
     let result_special =
@@ -407,6 +441,7 @@ fn test_search_data_comprehensive() {
     let items_case: Vec<ClipboardItem> =
         serde_json::from_str(&result_case).expect("parse case results");
     let ids_case: Vec<String> = items_case.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_case.len(), 1, "expected 1 match for case-insensitive");
     assert!(
         ids_case.contains(&text1.id),
         "case-insensitive search should find 'hello'"
@@ -417,10 +452,24 @@ fn test_search_data_comprehensive() {
     let items_partial: Vec<ClipboardItem> =
         serde_json::from_str(&result_partial).expect("parse partial results");
     let ids_partial: Vec<String> = items_partial.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(ids_partial.len(), 1, "expected 1 match for partial");
     assert!(
         ids_partial.contains(&text2.id),
         "partial match should find 'programming'"
     );
+
+    // ==================== 测试默认类型（未知搜索类型）====================
+    // 应该搜索所有类型的 content 字段
+
+    let result_default = search_data("unknown_type", "path").expect("search default type failed");
+    let items_default: Vec<ClipboardItem> =
+        serde_json::from_str(&result_default).expect("parse default results");
+    let ids_default: Vec<String> = items_default.iter().map(|it| it.id.clone()).collect();
+    // 应该匹配所有包含 "path" 的项（image1, file1, folder1）
+    assert_eq!(ids_default.len(), 3, "default search should find 3 items");
+    assert!(ids_default.contains(&image1.id), "should contain image1");
+    assert!(ids_default.contains(&file1.id), "should contain file1");
+    assert!(ids_default.contains(&folder1.id), "should contain folder1");
 }
 
 #[test]
