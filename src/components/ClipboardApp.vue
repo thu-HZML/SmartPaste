@@ -50,10 +50,6 @@
             <LockOpenIcon v-if="canDeleteWindow" class="icon-settings" />
             <LockClosedIcon v-else class="icon-settings" />
           </button>
-          <!-- 项目时间轴按钮 -->
-          <button class="icon-btn" @click="showProjectTime">         
-            <ChartBarIcon class="icon-settings" />
-          </button>
           <!-- 打开设置按钮 -->
           <button class="icon-btn" @click="openSettings">         
             <Cog6ToothIcon class="icon-settings" />
@@ -128,14 +124,14 @@
                   @click="editItem(item)"
                   title="编辑"
                 >
-                  <ClipboardIcon class="icon-default" />
+                  <PencilSquareIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
                   @click="noteItem(item)"
                   title="备注"
                 >
-                  <PencilSquareIcon class="icon-default" />
+                  <ClipboardDocumentListIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
@@ -146,27 +142,25 @@
                 </button>
               </div>
             </div>
-            <div class="item-content"> 
-              <transition name="fade" mode="out-in">               
-                  <div v-if="item.is_focus || !item.notes" class="item-text">
-
-                    <!-- 显示文本 -->
-                    <div v-if="item.item_type === 'text'" :title="item.content">
-                      {{ item.content }}
-                    </div>
-                    
-                    <!-- 显示图片 -->
-                    <div v-else-if="item.item_type === 'image'" class="image-container">
-                      <img 
-                        v-if="item.content"
-                        :src="convertFileSrc(item.content)" 
-                        :alt="'图片: ' + getFileName(item.content)"
-                        class="preview-image"
-                        @error="handleImageError"
-                      />
-                      <div v-else class="loading">加载中...</div>
-                      <div class="image-filename">{{ getFileName(item.content) }}</div>
-                    </div>
+            <div class="item-content">            
+              <div v-if="item.is_focus || !item.notes" class="item-text">
+                <!-- 显示文本 -->
+                <div v-if="item.item_type === 'text'" :title="item.content">
+                  {{ item.content }}
+                </div>
+                
+                <!-- 显示图片 -->
+                <div v-else-if="item.item_type === 'image'" class="image-container">
+                  <img 
+                    v-if="item.content"
+                    :src="convertFileSrc(item.content)" 
+                    :alt="'图片: ' + getFileName(item.content)"
+                    class="preview-image"
+                    @error="handleImageError"
+                  />
+                  <div v-else class="loading">加载中...</div>
+                  <div class="image-filename">{{ getFileName(item.content) }}</div>
+                </div>
 
                     <!-- 显示文件 -->
                     <div v-else-if="['file', 'folder'].includes(item.item_type)" class="file-container">
@@ -178,15 +172,15 @@
                       <div class="file-name">{{ getFileName(item.content) }}</div>
                     </div>
 
-                    <!-- 未知类型 -->
-                    <div v-else :title="item.content">
-                      {{ item.content }}
-                    </div>
-                  </div>
-                  <div v-else class="item-text">
-                    {{ item.notes }}
-                  </div>
-              </transition> 
+                <!-- 未知类型 -->
+                <div v-else :title="item.content">
+                  {{ item.content }}
+                </div>
+              </div>
+              <div v-else class="item-text">
+                <ClipboardDocumentListIcon class="icon-notes" />
+                {{ item.notes }}
+              </div>
             </div>    
           </div>
         </div>
@@ -352,44 +346,6 @@
         </div>
       </div>    
     </div>
-    <!-- 项目时间轴模态框 -->
-    <div v-if="showProjectTimeModal" class="modal">
-      <div class="modal-content">
-        <h3>项目时间轴</h3>
-        <div class="folders-container">         
-          <div class="history-list">  
-            <!-- 新建时间轴 -->
-            <div class="search-bar">           
-              <input 
-                type="text" 
-                v-model="folderQuery"
-                placeholder="新建项目：请输入名称" 
-                class="toast-input"
-              >
-              <button @click="addFolderToast" class="btn-create">创建</button>
-            </div>    
-            <!-- 普通收藏夹 -->
-            <div 
-              v-for="(item, index) in folders" 
-              :key="index" 
-              class="folder-item-toast"
-              tabindex="0"
-              @click="selectFolder(item)"        
-            >
-              <div class="folder-content-toast">
-                <div class="custom-folder-icon" :class="{ 'selected': item.isSelected }"></div>
-                <span class="folder-name" :title="item.name">{{ item.name }}</span>
-                <span class="content-count">{{ item.numItems }}个内容</span>                      
-              </div>
-            </div>  
-          </div>       
-        </div>       
-        <div class="modal-actions">
-          <button @click="cancelAddToFolder" class="btn btn-secondary">取消</button>
-          <button @click="addToFolder" class="btn btn-primary">确认</button>
-        </div>
-      </div>    
-    </div>
   </div>
 </template>
 
@@ -406,15 +362,13 @@ import {
   ArrowPathIcon,
   LockClosedIcon,
   StarIcon,
-  ClipboardIcon,
   PencilSquareIcon,
   ClipboardDocumentListIcon,
   TrashIcon,
   Square2StackIcon,
   FolderPlusIcon,
   FolderIcon,
-  LockOpenIcon,
-  ChartBarIcon
+  LockOpenIcon
  } from '@heroicons/vue/24/outline'
 import { 
   StarIcon as StarIconSolid,
@@ -437,7 +391,6 @@ const showFolderModal = ref(false)
 const showFoldersModal = ref(false)
 const showOcrModal = ref(false)
 const showDeleteModal = ref(false)
-const showProjectTimeModal = ref(false)
 const editingText = ref('')
 const editingItem = ref(null)
 const notingText = ref('')
@@ -973,13 +926,6 @@ const handleImageError = (event) => {
   console.error('图片加载失败:', event.target.src)
 }
 
-// 检查是否是文档文件
-const isDocumentFile = (path) => {
-  if (!path) return false
-  const docExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md']
-  return docExtensions.some(ext => path.toLowerCase().endsWith(ext))
-}
-
 // 显示创建收藏夹模态框
 const showFolder = () => {
   showFolderModal.value = true
@@ -1375,11 +1321,6 @@ async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
   }
 }
 
-// 弹出"项目时间轴"模态框
-const showProjectTime = () => {
-  showProjectTimeModal.value = true
-}
-
 // 生命周期
 onMounted(async () => {
   console.log('开始初始化...')
@@ -1604,6 +1545,14 @@ body {
   width: 2rem;
   height: 2rem;
   position: relative; 
+  color: #595959;
+}
+
+.icon-notes {
+  width: 1rem;
+  height: 1rem;
+  position: relative;
+  top: 3px; 
   color: #595959;
 }
 
@@ -2116,22 +2065,6 @@ body {
 .toast-input:focus {
   border-color: #3282f6;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
-}
-
-/* 淡入淡出动画效果 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.1s ease, transform 0.1s ease;
-}
-
-.fade-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
 }
 
 /* 响应式设计 */
