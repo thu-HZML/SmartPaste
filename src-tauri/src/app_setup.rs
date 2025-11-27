@@ -1,23 +1,26 @@
 use crate::clipboard::ClipboardItem;
-use crate::db;
 use crate::config::{self, CONFIG};
+use crate::db;
+use crate::ocr;
 use chrono::Utc;
+use image::buffer::EnumeratePixelsMut;
 use image::ColorType;
+use serde_json::Value;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
-use std::path::Path; 
-use std::str::FromStr; 
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{App, AppHandle, Manager, State, WebviewWindow,Emitter};
+use tauri::{App, AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use uuid::Uuid;
 use tauri_plugin_global_shortcut::{
     GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState,
 };
+use uuid::Uuid;
 pub struct ClipboardSourceState {
     pub is_frontend_copy: Mutex<bool>,
 }
@@ -396,14 +399,13 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         let mut last_file_paths: Vec<PathBuf> = Vec::new();
 
         let mut is_first_run = true;
-        let mut frontend_ignore_countdown = 0; 
+        let mut frontend_ignore_countdown = 0;
 
         let app_dir = app_handle.path().app_data_dir().unwrap();
         let files_dir = app_dir.join("files");
         fs::create_dir_all(&files_dir).unwrap();
 
         loop {
-        
             {
                 let state = app_handle.state::<ClipboardSourceState>();
                 let mut flag = state.is_frontend_copy.lock().unwrap();
@@ -413,7 +415,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     println!("前端触发复制，启动忽略倒计时...");
                 }
             }
-            
+
             // 只要倒计时大于0，就认为是前端复制状态
             let is_frontend_copy = frontend_ignore_countdown > 0;
             if frontend_ignore_countdown > 0 {
@@ -421,19 +423,25 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
             }
 
             if is_first_run {
-                 if let Ok(text) = app_handle.clipboard().read_text() {
-                    if !text.is_empty() { last_text = text; }
-                 }
-                 if let Ok(image) = app_handle.clipboard().read_image() {
+                if let Ok(text) = app_handle.clipboard().read_text() {
+                    if !text.is_empty() {
+                        last_text = text;
+                    }
+                }
+                if let Ok(image) = app_handle.clipboard().read_image() {
                     let current = image.rgba().to_vec();
-                    if !current.is_empty() { last_image_bytes = current; }
-                 }
-                 if let Ok(paths) = clipboard_files::read() {
-                     if !paths.is_empty() { last_file_paths = paths; }
-                 }
-                 is_first_run = false;
-                 thread::sleep(Duration::from_millis(1000));
-                 continue;
+                    if !current.is_empty() {
+                        last_image_bytes = current;
+                    }
+                }
+                if let Ok(paths) = clipboard_files::read() {
+                    if !paths.is_empty() {
+                        last_file_paths = paths;
+                    }
+                }
+                is_first_run = false;
+                thread::sleep(Duration::from_millis(1000));
+                continue;
             }
 
             // --- 图片监控 ---
@@ -462,7 +470,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         .is_ok()
                         {
                             let new_item = ClipboardItem {
-                                id: image_id,
+                                id: image_id.clone(),
                                 item_type: "image".to_string(),
                                 content: dest_path.to_str().unwrap().to_string(),
                                 size: fs::metadata(&dest_path).ok().map(|m| m.len()),
@@ -470,10 +478,38 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                 notes: "".to_string(),
                                 timestamp: Utc::now().timestamp_millis(),
                             };
-                            
+
                             if let Err(e) = db::insert_received_db_data(new_item) {
                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                             } else {
+                                // OCR识别（异步）
+                                let ocr_path = dest_path.clone().to_str().unwrap().to_string();
+                                let ocr_item_id = image_id.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    match ocr::ocr_image(ocr_path).await {
+                                        Ok(res) => {
+                                            // 识别成功，保存结果到数据库
+                                            let ocr_text =
+                                                match serde_json::from_str::<Vec<Value>>(&res) {
+                                                    Ok(json_array) => json_array
+                                                        .iter()
+                                                        .filter_map(|v| {
+                                                            v.get("text").and_then(|t| t.as_str())
+                                                        })
+                                                        .collect::<Vec<&str>>()
+                                                        .join("\n"),
+                                                    Err(_) => res.clone(),
+                                                };
+                                            if let Err(e) =
+                                                db::insert_ocr_text(&ocr_item_id, &ocr_text)
+                                            {
+                                                eprintln!("❌ 保存OCR结果到数据库失败: {:?}", e);
+                                            }
+                                        }
+                                        Err(err) => eprintln!("OCR error: {}", err),
+                                    }
+                                });
+
                                 // 通知前端
                                 if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.emit("clipboard-updated", "");
@@ -482,7 +518,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         }
                     }
                 }
-            } 
+            }
             // --- 文件监控 ---
             else if let Ok(paths) = clipboard_files::read() {
                 if !paths.is_empty() && paths != last_file_paths {
@@ -491,12 +527,12 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     last_text.clear();
                     last_image_bytes.clear();
 
-
                     if is_frontend_copy {
                         println!("忽略前端触发的文件变更");
                     } else {
                         let mut has_new_files = false;
-                        const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
+                        const IMAGE_EXTENSIONS: &[&str] =
+                            &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
                         for path in paths {
                             // 1. 判断类型：如果是目录则为 "folder"，否则按扩展名判断
@@ -506,7 +542,9 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                 path.extension()
                                     .and_then(|ext| ext.to_str())
                                     .map(|ext_str| {
-                                        if IMAGE_EXTENSIONS.contains(&ext_str.to_lowercase().as_str()) {
+                                        if IMAGE_EXTENSIONS
+                                            .contains(&ext_str.to_lowercase().as_str())
+                                        {
                                             "image".to_string()
                                         } else {
                                             "file".to_string()
@@ -536,7 +574,8 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                 match copy_result {
                                     Ok(bytes_copied) => {
                                         has_new_files = true;
-                                        
+
+                                        // ✅ 直接使用复制时计算出的大小
                                         let size = Some(bytes_copied);
 
                                         let new_item = ClipboardItem {
@@ -549,27 +588,92 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                             timestamp: Utc::now().timestamp_millis(),
                                         };
 
+                                        // 先保存 id 与路径副本，new_item 会被 move 到 insert_received_db_data
+                                        let item_id_for_icon = new_item.id.clone();
+                                        let dest_path_for_icon = new_item.content.clone();
+
+                                        // 记录数据库插入开始时间
+                                        let db_insert_start = Instant::now();
+
                                         if let Err(e) = db::insert_received_db_data(new_item) {
                                             eprintln!("❌ 保存数据到数据库失败: {:?}", e);
+                                        } else {
+                                            println!(
+                                                "[Main] 数据库插入耗时: {:?}",
+                                                db_insert_start.elapsed()
+                                            );
+
+                                            // 记录调度时间
+                                            let schedule_time = Instant::now();
+
+                                            // 异步提取系统图标并存入 extended_data.icon_data
+                                            tauri::async_runtime::spawn(async move {
+                                                // 记录开始时间
+                                                let task_start = Instant::now();
+                                                println!(
+                                                    "[Async] 图标获取任务启动延迟： {:?}",
+                                                    task_start.duration_since(schedule_time)
+                                                );
+
+                                                // 记录图标提取开始时间
+                                                let icon_extract_start = Instant::now();
+
+                                                match crate::get_file_icon(
+                                                    dest_path_for_icon.clone(),
+                                                )
+                                                .await
+                                                {
+                                                    Ok(data_uri) => {
+                                                        println!(
+                                                            "[Async] 图标提取耗时: {:?}",
+                                                            icon_extract_start.elapsed()
+                                                        );
+
+                                                        // 记录图标插入数据库开始时间
+                                                        let db_icon_insert_start = Instant::now();
+
+                                                        if let Err(err) = db::insert_icon_data(
+                                                            &item_id_for_icon,
+                                                            &data_uri,
+                                                        ) {
+                                                            eprintln!(
+                                                                "❌ insert_icon_data 失败: {:?}",
+                                                                err
+                                                            );
+                                                        }
+                                                        println!(
+                                                            "[Async] 图标数据插入耗时: {:?}",
+                                                            db_icon_insert_start.elapsed()
+                                                        );
+                                                        println!(
+                                                            "[Async] 图标任务总耗时: {:?}",
+                                                            task_start.elapsed()
+                                                        );
+                                                    }
+                                                    Err(err) => {
+                                                        eprintln!("⚠️ get_file_icon 失败: {}", err);
+                                                    }
+                                                }
+                                            });
                                         }
-                                    },
+                                    }
                                     Err(e) => {
                                         eprintln!("❌ 复制 {:?} 失败: {}", path, e);
                                     }
                                 }
-                            } 
+                            }
                         }
 
                         if has_new_files {
+                            let emit_start = Instant::now();
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let _ = window.emit("clipboard-updated", "");
                             }
+                            println!("[Main] 事件发送耗时: {:?}", emit_start.elapsed());
                         }
                     }
                 }
-            }
-
-            else if let Ok(text) = app_handle.clipboard().read_text() {
+            } else if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() && text != last_text {
                     println!("检测到新的文本内容");
                     last_text = text.clone();
@@ -577,7 +681,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     last_file_paths.clear();
 
                     if is_frontend_copy {
-                         println!("忽略前端触发的文本变更");
+                        println!("忽略前端触发的文本变更");
                     } else {
                         let size = Some(text.chars().count() as u64);
                         let new_item = ClipboardItem {
@@ -589,7 +693,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             notes: "".to_string(),
                             timestamp: Utc::now().timestamp_millis(),
                         };
-                        
+
                         if let Err(e) = db::insert_received_db_data(new_item) {
                             eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
                         } else {
@@ -627,7 +731,7 @@ fn toggle_window_visibility(window: &WebviewWindow) {
 fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<u64> {
     fs::create_dir_all(&dst)?;
     let mut total_size: u64 = 0;
-    
+
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;

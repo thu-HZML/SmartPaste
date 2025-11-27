@@ -27,15 +27,34 @@
           >
             {{ category.name }}
           </button>
+          <button 
+            v-if="activeCategory === 'folder'" 
+            :class="['category-btn', { active: true }]"
+          >
+            内容
+          </button>
         </div>
         
         <div class="toolbar-actions">
-          <button class="icon-btn" @click="togglePinnedView">
-            <LockClosedIcon class="icon-settings" />
+          <!-- 多选复制按钮 -->
+          <button 
+            v-if="showMultiCopyBtn" 
+            class="icon-btn" 
+            @click="copySelectedItems"
+            title="复制选中的项目"
+          >
+            <Square2StackIconSolid class="icon-settings" />
           </button>
+          <!-- 固定视图按钮 -->
+          <button class="icon-btn" @click="togglePinnedView">
+            <LockOpenIcon v-if="canDeleteWindow" class="icon-settings" />
+            <LockClosedIcon v-else class="icon-settings" />
+          </button>
+          <!-- 打开设置按钮 -->
           <button class="icon-btn" @click="openSettings">         
             <Cog6ToothIcon class="icon-settings" />
           </button>
+          <!-- 清空按钮 -->
           <button class="icon-btn" @click="showDeleteAll">           
             <TrashIcon class="icon-settings" />
           </button>
@@ -46,7 +65,7 @@
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
       <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
-      <div v-if="['all', 'image', 'video', 'file', 'folder'].includes(activeCategory)">
+      <div v-if="['all', 'text', 'image', 'file', 'folder'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
           <p v-if="searchQuery">未找到匹配的记录</p>
           <p v-else>暂无剪贴板记录</p>
@@ -58,7 +77,9 @@
             v-for="(item, index) in filteredHistory" 
             :key="index" 
             class="history-item"
+            :class="{ 'selected': item.is_selected }"
             tabindex="0"
+            @click="handleItemClick(item, $event)"
             @mouseenter="item.is_focus = true"
             @mouseleave="item.is_focus = false"
           >
@@ -72,6 +93,9 @@
 
               <!-- 右上方按钮组 -->
               <div class="item-actions-top">
+                <div v-if="item.selectionOrder" class="selection-order-badge">
+                  {{ item.selectionOrder }}
+                </div>
                 <button 
                   v-if="item.item_type === 'image'"
                   class="icon-btn-small" 
@@ -100,14 +124,14 @@
                   @click="editItem(item)"
                   title="编辑"
                 >
-                  <ClipboardIcon class="icon-default" />
+                  <PencilSquareIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
                   @click="noteItem(item)"
                   title="备注"
                 >
-                  <PencilSquareIcon class="icon-default" />
+                  <ClipboardDocumentListIcon class="icon-default" />
                 </button>
                 <button 
                   class="icon-btn-small" 
@@ -118,30 +142,28 @@
                 </button>
               </div>
             </div>
-            <div class="item-content"> 
-              <transition name="fade" mode="out-in">               
-                  <div v-if="item.is_focus || !item.notes" class="item-text">
-
-                    <!-- 显示文本 -->
-                    <div v-if="item.item_type === 'text'" :title="item.content">
-                      {{ item.content }}
-                    </div>
-                    
-                    <!-- 显示图片 -->
-                    <div v-else-if="item.item_type === 'image'" class="image-container">
-                      <img 
-                        v-if="item.content"
-                        :src="convertFileSrc(item.content)" 
-                        :alt="'图片: ' + getFileName(item.content)"
-                        class="preview-image"
-                        @error="handleImageError"
-                      />
-                      <div v-else class="loading">加载中...</div>
-                      <div class="image-filename">{{ getFileName(item.content) }}</div>
-                    </div>
+            <div class="item-content">            
+              <div v-if="item.is_focus || !item.notes" class="item-text">
+                <!-- 显示文本 -->
+                <div v-if="item.item_type === 'text'" :title="item.content">
+                  {{ item.content }}
+                </div>
+                
+                <!-- 显示图片 -->
+                <div v-else-if="item.item_type === 'image'" class="image-container">
+                  <img 
+                    v-if="item.content"
+                    :src="convertFileSrc(item.content)" 
+                    :alt="'图片: ' + getFileName(item.content)"
+                    class="preview-image"
+                    @error="handleImageError"
+                  />
+                  <div v-else class="loading">加载中...</div>
+                  <div class="image-filename">{{ getFileName(item.content) }}</div>
+                </div>
 
                     <!-- 显示文件 -->
-                    <div v-else-if="item.item_type === 'file'" class="file-container">
+                    <div v-else-if="['file', 'folder'].includes(item.item_type)" class="file-container">
                       <img 
                         :src="item.iconData"
                         class="file-icon"
@@ -150,15 +172,15 @@
                       <div class="file-name">{{ getFileName(item.content) }}</div>
                     </div>
 
-                    <!-- 未知类型 -->
-                    <div v-else :title="item.content">
-                      {{ item.content }}
-                    </div>
-                  </div>
-                  <div v-else class="item-text">
-                    {{ item.notes }}
-                  </div>
-              </transition> 
+                <!-- 未知类型 -->
+                <div v-else :title="item.content">
+                  {{ item.content }}
+                </div>
+              </div>
+              <div v-else class="item-text">
+                <ClipboardDocumentListIcon class="icon-notes" />
+                {{ item.notes }}
+              </div>
             </div>    
           </div>
         </div>
@@ -179,10 +201,9 @@
             v-for="(item, index) in folders" 
             :key="index" 
             class="folder-item"
-            tabindex="0"
-            @click="showFolderContent(item)"
+            tabindex="0"            
           >
-            <div class="folder-content">
+            <div class="folder-content" @click="showFolderContent(item)">
               <FolderIcon class="icon-folder" />
               <span class="folder-name" :title="item.name">{{ item.name }}</span>
               <span class="content-count">{{ item.num_items }}</span> 
@@ -341,16 +362,17 @@ import {
   ArrowPathIcon,
   LockClosedIcon,
   StarIcon,
-  ClipboardIcon,
   PencilSquareIcon,
   ClipboardDocumentListIcon,
   TrashIcon,
   Square2StackIcon,
   FolderPlusIcon,
-  FolderIcon
+  FolderIcon,
+  LockOpenIcon
  } from '@heroicons/vue/24/outline'
 import { 
-  StarIcon as StarIconSolid
+  StarIcon as StarIconSolid,
+  Square2StackIcon as Square2StackIconSolid
 } from '@heroicons/vue/24/solid'
 
 const router = useRouter()
@@ -360,6 +382,8 @@ const currentWindow = getCurrentWindow();
 // 响应式数据
 const searchQuery = ref('')
 const activeCategory = ref('all')
+
+// 提示框&模态框
 const showToast = ref(false)
 const toastMessage = ref('')
 const showEditModal = ref(false)
@@ -374,12 +398,26 @@ const notingText = ref('')
 const notingItem = ref(null)
 const ocrText = ref('')
 const folderNotingText = ref('')
+
+// 指向性数据
 const currentFolder = ref(null)
-const searchLoading = ref(false)
 const currentItem = ref(null)
 const folderQuery = ref('')
 const unlistenFocusChanged = ref(null) // 存储取消监听的函数
+
+// 状态显示
+const searchLoading = ref(false)
+const canDeleteWindow = ref(true)
+let isDragging = null
 const test = ref('')
+
+// 多选相关数据
+const multiSelectMode = ref(false)
+const selectedItems = ref([]) // 存储选中的历史记录
+const showMultiCopyBtn = ref(false) // 控制复制按钮显示
+
+// 计算属性
+const selectedItemsCount = computed(() => selectedItems.value.length)
 
 // 防抖定时器
 let searchTimeout = null
@@ -387,14 +425,11 @@ let searchTimeout = null
 // 双击定时器
 let clickTimeout = null
 
-// 存储是否在拖动
-let isDragging = null
-
 // 分类选项
 const categories = ref([
   { id: 'all', name: '全部' },
+  { id: 'text', name: '文本' },
   { id: 'image', name: '图片' },
-  { id: 'video', name: '视频' },
   { id: 'file', name: '文件' },
   { id: 'favorite', name: '收藏' }
 ])
@@ -440,18 +475,17 @@ const handleSearch = async (query) => {
   
   searchLoading.value = true
   
-  // 设置新的定时器（300ms 防抖）
+  // 设置新的定时器（100ms 防抖）
   searchTimeout = setTimeout(async () => {
     await performSearch(query)
-  }, 300)
+  }, 100)
 }
 
 // 分类逻辑
 const handleCategoryChange = async (category) => {
-  if (['image', 'video', 'file'].includes(category)) {
+  if (['image', 'text', 'file'].includes(category)) {
     searchLoading.value = true
     await performClassify(category)
-    return
   }
   else if (category.trim() === 'all'){
     searchLoading.value = true
@@ -459,12 +493,17 @@ const handleCategoryChange = async (category) => {
   }
   else if (category.trim() === 'favorite'){
     searchLoading.value = true
-    console.log('默认收藏夹内容个数：', folders.value[0].num_items)
     await getAllFolders()
+    const result = await invoke('get_favorite_data_count')
+    folders.value[0].num_items = result
   }
   else if (category.trim() === 'folder') {
     await performFolder()
-    return
+  }
+
+  if (multiSelectMode.value) {
+    // 退出多选状态
+    exitMultiSelectMode()
   }
 }
 
@@ -476,6 +515,9 @@ const performSearch = async (query) => {
     })
     
     filteredHistory.value = JSON.parse(result)
+
+    // 为数组添加前端额外字段
+    await optimizeHistoryItems(filteredHistory)
   } catch (err) {
     console.error('搜索失败:', err)
   } finally {
@@ -490,6 +532,9 @@ const performClassify = async (currentCategory) => {
       itemType: currentCategory.trim() 
     })    
     filteredHistory.value = JSON.parse(result)
+
+    // 为数组添加前端额外字段
+    await optimizeHistoryItems(filteredHistory)
   } catch (err) {
     console.error('分类失败:', err)
   } finally {
@@ -499,7 +544,6 @@ const performClassify = async (currentCategory) => {
 
 // 收藏夹过滤
 const performFolder = async () => { 
-  console.log('开始筛选收藏夹')
   if (currentFolder.value.name === '默认收藏夹') {
     console.log('进入默认收藏夹')
     try {
@@ -507,7 +551,9 @@ const performFolder = async () => {
         isFavorite: true
       })    
       filteredHistory.value = JSON.parse(result)
-      console.log('收藏夹数量:', folders.value[0].num_items)
+
+      // 为数组添加前端额外字段
+      await optimizeHistoryItems(filteredHistory)
     } catch (err) {
       console.error('默认收藏夹获取失败:', err)
     }
@@ -519,6 +565,9 @@ const performFolder = async () => {
         folderName: currentFolder.value.name
       })    
       filteredHistory.value = JSON.parse(result)
+
+      // 为数组添加前端额外字段
+      await optimizeHistoryItems(filteredHistory)
     } catch (err) {
       console.error('获取收藏夹内容失败:', err)
     } finally {
@@ -543,6 +592,7 @@ const setActiveCategory = (categoryId) => {
 
 // 切换固定视图
 const togglePinnedView = () => {
+  canDeleteWindow.value = !canDeleteWindow.value
   showMessage('切换固定视图')
 }
 
@@ -715,9 +765,9 @@ const cancelNote = () => {
 
 // 显示OCR内容
 const showOCR = async (item) => {
-  const ocrString = await invoke('ocr_image', { filePath: item.content })
+  const ocrString = await invoke('get_ocr_text_by_item_id', { itemId: item.id })
   console.log(ocrString)
-  ocrText.value = JSON.parse(ocrString)[0].text
+  ocrText.value = ocrString
   showOcrModal.value = true
 }
 
@@ -822,15 +872,9 @@ const getAllHistory = async () => {
   try {
     const jsonString = await invoke('get_all_data')
     filteredHistory.value = JSON.parse(jsonString)
-    // 为现有数组中的每个对象添加 is_focus 字段
-    filteredHistory.value = filteredHistory.value.map(item => ({
-      ...item,
-      is_focus: false,
-      iconData: null // 初始化为null
-    }))
 
-    // 为文件类型的项目加载图标
-    await loadIconsForFiles()
+    // 为数组添加前端额外字段
+    await optimizeHistoryItems(filteredHistory)
   } catch (error) {
     console.error('调用失败:', error)
   }
@@ -881,13 +925,6 @@ const getFileName = (path) => {
 // 图片加载错误处理
 const handleImageError = (event) => {
   console.error('图片加载失败:', event.target.src)
-}
-
-// 检查是否是文档文件
-const isDocumentFile = (path) => {
-  if (!path) return false
-  const docExtensions = ['.pdf', '.doc', '.docx', '.txt', '.md']
-  return docExtensions.some(ext => path.toLowerCase().endsWith(ext))
 }
 
 // 显示创建收藏夹模态框
@@ -1041,50 +1078,13 @@ const cancelAddToFolder = () => {
 const setupClipboardRelay = async () => {
   const unlisten = await listen('clipboard-updated', async (event) => {
     console.log('接受后端更新消息')
-    console.log('通过中转收到剪贴板事件:', event.payload)
+
     // 刷新历史记录
     handleSearch(searchQuery.value)
     handleCategoryChange(activeCategory.value)
   })
   
   return unlisten
-}
-
-// 新增：为文件类型的项目加载图标
-const loadIconsForFiles = async () => {
-  const fileItems = filteredHistory.value.filter(item => item.item_type === 'file')
-  
-  for (const item of fileItems) {
-    try {
-      // 如果缓存中已有，直接使用
-      if (iconCache.value[item.content]) {
-        item.iconData = iconCache.value[item.content]
-      } else {
-        const iconBase64 = await loadIcon(item.content)
-        if (iconBase64) {
-          item.iconData = iconBase64
-          iconCache.value[item.content] = iconBase64 // 缓存图标
-        }
-      }
-    } catch (error) {
-      console.error('加载图标失败:', error)
-      item.iconData = null
-    }
-  }
-}
-
-// 修改 loadIcon 函数，确保返回正确的数据
-const loadIcon = async (filePath) => {
-  if (!filePath) return null
-  
-  try {
-    const iconBase64 = await invoke('get_file_icon', { path: filePath });
-    console.log("获取图标成功:", filePath);
-    return iconBase64;
-  } catch (error) {
-    console.error("获取图标失败:", error, filePath);
-    return null;
-  }
 }
 
 // 使用 Tauri API 开始拖动窗口
@@ -1108,7 +1108,22 @@ const startDragging = async (event) => {
   if (event.target.closest('.modal')) {
     return
   }
+
+  // 新增：防止在收藏夹项目上触发拖动
+  if (event.target.closest('.folder-item')) {
+    return
+  }
   
+  // 新增：防止在收藏夹内容区域上触发拖动
+  if (event.target.closest('.folder-content')) {
+    return
+  }
+
+  // 新增：防止在历史记录上触发拖动
+  if (event.target.closest('.history-item')) {
+    return
+  }
+
   try {
     isDragging = true
     await currentWindow.startDragging()
@@ -1133,7 +1148,7 @@ const setupWindowListeners = async () => {
   // 监听窗口失去焦点事件
   unlistenFocusChanged.value = await currentWindow.onFocusChanged(async ({ payload: focused }) => {
     if (!focused) {   
-      if (isDragging) {
+      if (isDragging || !canDeleteWindow.value) {
         console.log('检测到正在拖动，不关闭窗口')
         return
       }
@@ -1152,6 +1167,158 @@ const removeWindowListeners = () => {
     unlistenFocusChanged.value()
     unlistenFocusChanged.value = null
     console.log('已移除窗口焦点监听器')
+  }
+}
+
+// 更新序号
+const updateSelectionOrder = () => {
+  // 按选中顺序重新排序并分配序号
+  selectedItems.value.forEach((item, index) => {
+    item.selectionOrder = index + 1
+  })
+}
+
+// 处理项目点击（支持Shift多选）
+const handleItemClick = (item, event) => {
+  if (event.shiftKey && multiSelectMode.value) {
+    // Shift多选逻辑
+    const existingIndex = selectedItems.value.findIndex(selected => selected.id === item.id)
+    
+    if (existingIndex !== -1) {
+      // 如果已经选中，则移除
+      item.is_selected = false
+      selectedItems.value.splice(existingIndex, 1)
+      item.selectionOrder = 0 // 清除序号
+    } else {
+      // 如果未选中，则添加
+      item.is_selected = true
+      selectedItems.value.push(item)
+    }
+    
+    // 更新复制按钮显示状态
+    showMultiCopyBtn.value = selectedItems.value.length > 0
+
+    // 更新所有选中项的序号
+    updateSelectionOrder()
+
+    event.stopPropagation()
+  } else if (event.shiftKey && !multiSelectMode.value) {
+    // 第一次按Shift点击，进入多选模式
+    multiSelectMode.value = true
+    item.is_selected = true
+    selectedItems.value.push(item)
+    showMultiCopyBtn.value = true
+    showMessage('已进入多选模式，继续按Shift点击可选择多个项目')
+
+    item.selectionOrder = 1 // 第一个项目序号为1
+
+    event.stopPropagation()
+  } else {
+    exitMultiSelectMode()
+  }
+}
+
+// 复制所有选中的项目
+const copySelectedItems = async () => {
+  if (selectedItems.value.size === 0) {
+    showMessage('请先选择要复制的项目')
+    return
+  }
+
+  try {
+    let successCount = 0
+    let errorCount = 0
+    let copyString = ''
+
+    selectedItems.value.forEach(item => {
+      if (item.item_type === 'text') {
+        copyString += item.content + '\n'
+        successCount++
+      }     
+    })
+
+    if (copyString.trim() !== '') {
+      await invoke('write_to_clipboard', { text: copyString })
+      showMessage(`已成功复制 ${successCount} 个文本项目`)
+    } else {
+      showMessage('没有找到可复制的文本内容')
+    }
+    // 复制完成后退出多选模式
+    exitMultiSelectMode()
+    
+  } catch (error) {
+    console.error('复制选中项目失败:', error)
+    showMessage('复制失败，请重试')
+  }
+}
+
+// 退出多选模式
+const exitMultiSelectMode = () => {
+  multiSelectMode.value = false
+  console.log('多选复制内容为：',selectedItems)
+  selectedItems.value.forEach(item => {
+    item.is_selected = false    
+    item.selectionOrder = 0
+  })
+  selectedItems.value = []
+  showMultiCopyBtn.value = false
+}
+
+// 为历史记录数组添加前端额外字段并获取图标数据
+async function optimizeHistoryItems(historyRef, options = {}) {
+  const { defaultFocus = false, defaultSelected = false } = options
+  const array = historyRef.value
+  
+  // 批量处理基础字段
+  for (let i = 0; i < array.length; i++) {
+    const item = array[i]
+    item.is_focus = defaultFocus
+    item.is_selected = defaultSelected
+  }
+
+  // 并行获取图标数据（带重试功能）
+  const fileItems = array.filter(item => item.item_type === 'file' || item.item_type === 'folder')
+  const promises = fileItems.map(item => 
+    fetchIconWithRetryRecursive(item.id, 5) // 最多重试5次
+      .then(iconString => {
+        item.iconData = iconString
+      })
+      .catch(error => {
+        console.error(`Failed to get icon for ${item.id} after retries:`, error)
+        item.iconData = null
+      })
+  )   
+  await Promise.all(promises)
+}
+
+// 递归版本的带重试功能的图标获取函数
+async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
+  try {
+    const iconString = await invoke('get_icon_data_by_item_id', { itemId })
+    
+    // 如果获取到的图标数据不为空，直接返回
+    if (iconString && iconString.trim() !== '') {
+      return iconString
+    }
+    // 如果为空且还有重试次数，等待100ms后递归调用
+    if (retriesLeft > 0) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      return fetchIconWithRetryRecursive(itemId, retriesLeft - 1)
+    } else {
+      // 达到最大重试次数，返回空字符串
+      console.warn(`Icon data for ${itemId} is empty after 5 retries.`)
+      return ''
+    }
+  } catch (error) {
+    // 如果发生错误且还有重试次数，等待100ms后递归调用
+    if (retriesLeft > 0) {
+      console.warn(`Failed to get icon for ${itemId}, retrying... (${5 - retriesLeft + 1}/5)`)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      return fetchIconWithRetryRecursive(itemId, retriesLeft - 1)
+    } else {
+      // 达到最大重试次数，抛出错误
+      throw new Error(`Failed to get icon after 5 retries: ${error}`)
+    }
   }
 }
 
@@ -1290,6 +1457,10 @@ body {
   padding: 8px 10px;
   background: #ffffff;
   align-items: center;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .category-buttons {
@@ -1383,6 +1554,14 @@ body {
   color: #595959;
 }
 
+.icon-notes {
+  width: 1rem;
+  height: 1rem;
+  position: relative;
+  top: 3px; 
+  color: #595959;
+}
+
 /* OCR标签 */
 .content-OCR {
   border: 1px solid #3282f6;
@@ -1447,6 +1626,10 @@ body {
   transition: all 0.2s ease;
   position: relative;
   max-width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .history-item:hover {
@@ -1456,12 +1639,35 @@ body {
 .history-item:focus {
   border-color: #3282f6;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+  outline: none;
+}
+
+/* 多选模式样式 */
+.history-item.selected {
+  border-color: #3282f6;
+  background-color: #e4edfd;
 }
 
 /* 信息框架 */
 .item-info {
   display: flex;
   justify-content: space-between;
+}
+
+/* 多选序号 */
+.selection-order-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: #3282f6;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+  margin-right: 8px;
+  flex-shrink: 0;
 }
 
 /* 元信息样式 */
@@ -1865,22 +2071,6 @@ body {
 .toast-input:focus {
   border-color: #3282f6;
   box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
-}
-
-/* 淡入淡出动画效果 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.1s ease, transform 0.1s ease;
-}
-
-.fade-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
 }
 
 /* 响应式设计 */

@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     sync::{OnceLock, RwLock},
 };
-
+use tauri_plugin_autostart::ManagerExt;
 /// 系统配置结构体，包含通用设置、剪贴板参数、AI、隐私、备份、云同步和用户信息等配置项。
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Config {
@@ -21,7 +21,7 @@ pub struct Config {
     /// 历史记录保留天数（天）
     pub retention_days: u32,
     /// 主界面快捷键
-    #[serde(default = "default_shortcut")] 
+    #[serde(default = "default_shortcut")]
     pub global_shortcut: String,
     /// 第二界面快捷键
     #[serde(default = "default_shortcut_2")]
@@ -119,6 +119,16 @@ pub struct Config {
     pub bio: Option<String>,
     /// 头像文件路径
     pub avatar_path: Option<String>,
+
+    // --- OCR 设置 ---
+    /// OCR 提供商标识（例如 "tesseract"、"google" 等）
+    pub ocr_provider: Option<String>,
+    /// OCR 语言列表（例如 ["eng", "chi"]）
+    pub ocr_languages: Option<Vec<String>>,
+    /// OCR 置信度阈值（0.0 - 1.0）
+    pub ocr_confidence_threshold: Option<f32>,
+    /// OCR 超时时间（秒）
+    pub ocr_timeout_secs: Option<u64>,
 }
 // 辅助函数，防止旧 config.json 缺少字段导致解析失败
 fn default_shortcut() -> String { "Alt+Shift+V".to_string() }
@@ -189,6 +199,12 @@ impl Default for Config {
             email: None,       // 邮箱：无
             bio: None,         // 用户简介：无
             avatar_path: None, // 头像路径：无
+
+            // OCR
+            ocr_provider: None,             // OCR 提供商：无（使用默认值）
+            ocr_languages: None,            // OCR 语言列表：无（使用默认值）
+            ocr_confidence_threshold: None, // OCR 置信度阈值：无（使用默认值）
+            ocr_timeout_secs: None,         // OCR 超时时间：无（使用默认值）
         }
     }
 }
@@ -294,7 +310,7 @@ pub fn set_global_shortcut_internal(shortcut: String) {
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
         cfg.global_shortcut = shortcut;
-    } 
+    }
     // 写锁在这里自动释放
 
     // 第二步：先获取读锁拿到配置副本，然后释放读锁
@@ -302,7 +318,7 @@ pub fn set_global_shortcut_internal(shortcut: String) {
         lock.read().unwrap().clone()
     } else {
         return;
-    }; 
+    };
     // 读锁在这里自动释放
 
     // 第三步：调用 save_config (它内部会再次获取写锁，但现在是安全的)
@@ -395,18 +411,70 @@ pub fn set_global_shortcut_5_internal(shortcut: String) {
         eprintln!("❌ 保存配置文件失败: {}", e);
     }
 }
-// --------------- 1. 通用设置 ---------------
 
-/// 设置开机自启动。作为 Tauri Command 暴露给前端调用。
+/// 设置开机自启配置 (包含持久化保存，已处理死锁问题)
 /// # Param
-/// enabled: bool - 是否启用开机自启动
-#[tauri::command]
-pub fn set_config_autostart(enabled: bool) {
+/// enable: bool - 是否启用
+pub fn set_autostart_config(enable: bool) -> Result<(), String> {
+    // 1. 更新内存中的配置
     if let Some(lock) = CONFIG.get() {
         let mut cfg = lock.write().unwrap();
-        cfg.autostart = enabled;
+        cfg.autostart = enable;
+    } else {
+        return Err("Config not initialized".to_string());
     }
-    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+
+    // 2. 获取配置副本 (此时已释放写锁)
+    let cfg_clone = if let Some(lock) = CONFIG.get() {
+        lock.read().unwrap().clone()
+    } else {
+        return Err("Config not initialized".to_string());
+    };
+
+    // 3. 保存到文件 (save_config 内部会再次获取锁，但现在是安全的)
+    save_config(cfg_clone)
+}
+// --------------- 1. 通用设置 ---------------
+
+/// 设置或取消应用的开机自启。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
+/// enable: bool - true表示启用开机自启，false表示禁用。
+/// # Returns
+/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
+#[tauri::command]
+pub fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
+    let autolaunch = app.autolaunch();
+
+    if enable {
+        autolaunch
+            .enable()
+            .map_err(|e| format!("启用开机自启失败: {}", e))?;
+    } else {
+        autolaunch
+            .disable()
+            .map_err(|e| format!("禁用开机自启失败: {}", e))?;
+    }
+    crate::config::set_autostart_config(enable)?;
+    Ok(())
+}
+
+/// 检查应用是否已设置为开机自启。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
+/// # Returns
+/// Result<bool, String> - 操作成功则返回 Ok(bool)，其中 true 表示已启用自启，false 表示未启用。失败则返回包含错误信息的 Err。
+#[tauri::command]
+pub fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    let autolaunch = app.autolaunch();
+
+    let state = autolaunch
+        .is_enabled()
+        .map_err(|e| format!("检查自启状态失败: {}", e))?;
+    if let Err(e) = crate::config::set_autostart_config(state) {
+        eprintln!("同步开机自启状态到配置文件失败: {}", e);
+    }
+    Ok(state)
 }
 
 /// 设置系统托盘图标可见性。作为 Tauri Command 暴露给前端调用。
@@ -961,6 +1029,63 @@ pub fn set_avatar_path(avatar_path: String) {
         } else {
             Some(avatar_path)
         };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+// --------------- 9. OCR 设置 ---------------
+/// 设置 OCR 提供商。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// provider: String - OCR 提供商标识
+#[tauri::command]
+pub fn set_ocr_provider(provider: String) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ocr_provider = if provider.is_empty() {
+            None
+        } else {
+            Some(provider)
+        };
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 OCR 语言列表。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// languages: Vec<String> - OCR 语言列表
+#[tauri::command]
+pub fn set_ocr_languages(languages: Vec<String>) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        if languages.is_empty() {
+            cfg.ocr_languages = None;
+        } else {
+            cfg.ocr_languages = Some(languages);
+        }
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 OCR 置信度阈值。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// threshold: f32 - 置信度阈值（0.0 - 1.0）
+#[tauri::command]
+pub fn set_ocr_confidence_threshold(threshold: f32) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ocr_confidence_threshold = Some(threshold);
+    }
+    save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
+}
+
+/// 设置 OCR 超时时间。作为 Tauri Command 暴露给前端调用。
+/// # Param
+/// timeout_secs: u64 - 超时时间（秒）
+#[tauri::command]
+pub fn set_ocr_timeout_secs(timeout_secs: u64) {
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.ocr_timeout_secs = Some(timeout_secs);
     }
     save_config(CONFIG.get().unwrap().read().unwrap().clone()).ok();
 }
