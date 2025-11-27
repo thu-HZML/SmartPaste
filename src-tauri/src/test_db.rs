@@ -201,6 +201,104 @@ fn test_delete_data() {
 }
 
 #[test]
+fn test_filter_data_by_type_comprehensive() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 准备多种类型的数据项
+    let text1 = make_item("type-text-1", "text", "hello text");
+    let text2 = make_item("type-text-2", "text", "another text");
+    let image1 = make_item("type-img-1", "image", "/tmp/img1.png");
+    let image2 = make_item("type-img-2", "image", "/tmp/img2.jpg");
+    let folder1 = make_item("type-folder-1", "folder", "/path/to/folder1");
+    let folder2 = make_item("type-folder-2", "folder", "/path/to/folder2");
+    let file1 = make_item("type-file-1", "file", "/path/to/file1.txt");
+    let file2 = make_item("type-file-2", "file", "/path/to/file2.doc");
+
+    // 插入所有数据项
+    for item in &[
+        &text1, &text2, &image1, &image2, &folder1, &folder2, &file1, &file2,
+    ] {
+        insert_received_db_data((*item).clone()).expect("insert failed");
+    }
+
+    // 测试筛选 text 类型
+    let text_json = filter_data_by_type("text").expect("filter text failed");
+    let text_results: Vec<ClipboardItem> = serde_json::from_str(&text_json).expect("parse text");
+    let text_ids: Vec<String> = text_results.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(text_ids.len(), 2, "expected 2 text items");
+    assert!(text_ids.contains(&text1.id));
+    assert!(text_ids.contains(&text2.id));
+    assert!(!text_ids.contains(&image1.id), "should not contain image");
+    assert!(!text_ids.contains(&folder1.id), "should not contain folder");
+    assert!(!text_ids.contains(&file1.id), "should not contain file");
+
+    // 测试筛选 image 类型
+    let image_json = filter_data_by_type("image").expect("filter image failed");
+    let image_results: Vec<ClipboardItem> = serde_json::from_str(&image_json).expect("parse image");
+    let image_ids: Vec<String> = image_results.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(image_ids.len(), 2, "expected 2 image items");
+    assert!(image_ids.contains(&image1.id));
+    assert!(image_ids.contains(&image2.id));
+    assert!(!image_ids.contains(&text1.id), "should not contain text");
+    assert!(
+        !image_ids.contains(&folder1.id),
+        "should not contain folder"
+    );
+    assert!(!image_ids.contains(&file1.id), "should not contain file");
+
+    // 测试筛选 folder 类型（应同时返回 folder 和 file）
+    let folder_json = filter_data_by_type("folder").expect("filter folder failed");
+    let folder_results: Vec<ClipboardItem> =
+        serde_json::from_str(&folder_json).expect("parse folder");
+    let folder_ids: Vec<String> = folder_results.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(
+        folder_ids.len(),
+        4,
+        "expected 4 items (2 folders + 2 files)"
+    );
+    assert!(folder_ids.contains(&folder1.id));
+    assert!(folder_ids.contains(&folder2.id));
+    assert!(
+        folder_ids.contains(&file1.id),
+        "folder filter should include files"
+    );
+    assert!(
+        folder_ids.contains(&file2.id),
+        "folder filter should include files"
+    );
+    assert!(!folder_ids.contains(&text1.id), "should not contain text");
+    assert!(!folder_ids.contains(&image1.id), "should not contain image");
+
+    // 测试筛选 file 类型（应同时返回 file 和 folder）
+    let file_json = filter_data_by_type("file").expect("filter file failed");
+    let file_results: Vec<ClipboardItem> = serde_json::from_str(&file_json).expect("parse file");
+    let file_ids: Vec<String> = file_results.iter().map(|it| it.id.clone()).collect();
+    assert_eq!(file_ids.len(), 4, "expected 4 items (2 files + 2 folders)");
+    assert!(file_ids.contains(&file1.id));
+    assert!(file_ids.contains(&file2.id));
+    assert!(
+        file_ids.contains(&folder1.id),
+        "file filter should include folders"
+    );
+    assert!(
+        file_ids.contains(&folder2.id),
+        "file filter should include folders"
+    );
+    assert!(!file_ids.contains(&text1.id), "should not contain text");
+    assert!(!file_ids.contains(&image1.id), "should not contain image");
+
+    // 测试筛选不存在的类型
+    let empty_json = filter_data_by_type("nonexistent").expect("filter nonexistent failed");
+    let empty_results: Vec<ClipboardItem> = serde_json::from_str(&empty_json).expect("parse empty");
+    assert!(
+        empty_results.is_empty(),
+        "expected no results for nonexistent type"
+    );
+}
+
+#[test]
 fn test_set_favorite_status_by_id() {
     let _g = test_lock();
     set_test_db_path();
