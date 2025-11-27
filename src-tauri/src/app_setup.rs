@@ -34,15 +34,18 @@ impl AppShortcutManager {
             shortcuts: Mutex::new(std::collections::HashMap::new()),
         }
     }
-    
+
     pub fn get_shortcut(&self, shortcut_type: &str) -> Option<String> {
         self.shortcuts.lock().unwrap().get(shortcut_type).cloned()
     }
-    
+
     pub fn set_shortcut(&self, shortcut_type: &str, shortcut: String) {
-        self.shortcuts.lock().unwrap().insert(shortcut_type.to_string(), shortcut);
+        self.shortcuts
+            .lock()
+            .unwrap()
+            .insert(shortcut_type.to_string(), shortcut);
     }
-    
+
     pub fn remove_shortcut(&self, shortcut_type: &str) {
         self.shortcuts.lock().unwrap().remove(shortcut_type);
     }
@@ -70,7 +73,7 @@ lazy_static::lazy_static! {
             },
         });
         m.insert("pasteWindow", ShortcutConfig {
-            storage_key: "global_shortcut_2", 
+            storage_key: "global_shortcut_2",
             default_value: "Alt+Shift+C",
             handler: |app, shortcut| {
                 println!("🎯 执行剪贴板窗口切换，快捷键: {}", shortcut);
@@ -86,7 +89,7 @@ lazy_static::lazy_static! {
         });
         m.insert("AIWindow", ShortcutConfig {
             storage_key: "global_shortcut_3",
-            default_value: "Ctrl+Shift+A", 
+            default_value: "Ctrl+Shift+A",
             handler: |app, shortcut| {
                 println!("🤖 执行AI窗口切换，快捷键: {}", shortcut);
                 if let Some(window) = app.get_webview_window("main") {
@@ -115,7 +118,7 @@ lazy_static::lazy_static! {
             },
         });
         m.insert("clearHistory", ShortcutConfig {
-            storage_key: "global_shortcut_5", 
+            storage_key: "global_shortcut_5",
             default_value: "Ctrl+Shift+Delete",
             handler: |app, shortcut| {
                 println!("🗑️ 执行清空历史，快捷键: {}", shortcut);
@@ -157,13 +160,9 @@ fn load_shortcut_from_storage(shortcut_type: &str) -> String {
 /// 保存快捷键到 Config
 fn save_shortcut_to_storage(shortcut_type: &str, shortcut: &str) {
     if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type) {
-        match config.storage_key {
-            "global_shortcut" => config::set_global_shortcut_internal(shortcut.to_string()),
-            "global_shortcut_2" => config::set_global_shortcut_2_internal(shortcut.to_string()),
-            "global_shortcut_3" => config::set_global_shortcut_3_internal(shortcut.to_string()),
-            "global_shortcut_4" => config::set_global_shortcut_4_internal(shortcut.to_string()),
-            "global_shortcut_5" => config::set_global_shortcut_5_internal(shortcut.to_string()),
-            _ => {},
+        let value = serde_json::Value::String(shortcut.to_string());
+        if let Err(e) = config::set_config_item_internal(config.storage_key, value) {
+            eprintln!("Failed to save shortcut: {}", e);
         }
     }
 }
@@ -189,7 +188,7 @@ pub fn update_shortcut(
     state: State<AppShortcutManager>,
 ) -> Result<(), String> {
     let manager = handle.global_shortcut();
-    
+
     // 1. 获取旧的快捷键并注销
     let old_shortcut_str = state.get_shortcut(&shortcut_type).unwrap_or_default();
     if !old_shortcut_str.is_empty() {
@@ -213,7 +212,10 @@ pub fn update_shortcut(
     }
 
     // 3. 更新状态并保存
-    println!("✅ 已成功更新快捷键 {}: {}", shortcut_type, new_shortcut_str);
+    println!(
+        "✅ 已成功更新快捷键 {}: {}",
+        shortcut_type, new_shortcut_str
+    );
     state.set_shortcut(&shortcut_type, new_shortcut_str.clone());
     save_shortcut_to_storage(&shortcut_type, &new_shortcut_str);
 
@@ -225,7 +227,8 @@ pub fn get_current_shortcut(
     shortcut_type: String,
     state: State<AppShortcutManager>,
 ) -> Result<String, String> {
-    state.get_shortcut(&shortcut_type)
+    state
+        .get_shortcut(&shortcut_type)
         .ok_or_else(|| "快捷键未找到".to_string())
 }
 /// 获取所有快捷键
@@ -286,14 +289,14 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |app, shortcut, event| {
                 //println!("🔧 收到快捷键事件: {}, 状态: {:?}", shortcut, event.state());
-                
+
                 if event.state() != PluginShortcutState::Pressed {
                     return;
                 }
 
                 let shortcut_str = shortcut.to_string();
                 //println!("🔍 查找快捷键: {}", shortcut_str);
-                
+
                 let manager = app.state::<AppShortcutManager>();
                 let shortcuts = manager.shortcuts.lock().unwrap();
 
@@ -308,10 +311,13 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                 for (shortcut_type, registered_shortcut) in shortcuts.iter() {
                     let normalized_registered = normalize_shortcut_format(registered_shortcut);
                     //println!("🔍 比较: {} vs {}", normalized_received, normalized_registered);
-                    
+
                     if normalized_received == normalized_registered {
-                        println!("✅ 匹配到快捷键: {} - {}", shortcut_type, registered_shortcut);
-                        
+                        println!(
+                            "✅ 匹配到快捷键: {} - {}",
+                            shortcut_type, registered_shortcut
+                        );
+
                         // 调用对应的处理器
                         if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type.as_str()) {
                             println!("🚀 执行处理器: {}", shortcut_type);
@@ -322,7 +328,7 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                         return;
                     }
                 }
-                
+
                 println!("❌ 未找到匹配的快捷键处理器");
             })
             .build(),
@@ -354,7 +360,7 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
 
 fn normalize_shortcut_format(shortcut: &str) -> String {
     let mut normalized = shortcut.to_lowercase();
-    
+
     // 替换常见的格式差异
     normalized = normalized.replace("keya", "a");
     normalized = normalized.replace("keyb", "b");
@@ -382,13 +388,13 @@ fn normalize_shortcut_format(shortcut: &str) -> String {
     normalized = normalized.replace("keyx", "x");
     normalized = normalized.replace("keyy", "y");
     normalized = normalized.replace("keyz", "z");
-    
+
     // 统一修饰键名称
     normalized = normalized.replace("ctrl", "control");
     normalized = normalized.replace("cmd", "super");
     normalized = normalized.replace("command", "super");
     normalized = normalized.replace("meta", "super");
-    
+
     normalized
 }
 

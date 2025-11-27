@@ -529,55 +529,7 @@ fn main() {
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
-            config::set_autostart,
-            config::is_autostart_enabled,
-            config::set_tray_icon_visible,
-            config::set_minimize_to_tray,
-            config::set_auto_save,
-            config::set_retention_days,
-            config::set_max_history_items,
-            config::set_ignore_short_text,
-            config::set_ignore_big_file,
-            config::add_ignored_app,
-            config::remove_ignored_app,
-            config::clear_all_ignored_apps,
-            config::set_auto_classify,
-            config::set_ocr_auto_recognition,
-            config::set_delete_confirmation,
-            config::set_keep_favorites,
-            config::set_auto_sort,
-            config::set_ai_enabled,
-            config::set_ai_service,
-            config::set_ai_api_key,
-            config::set_ai_auto_tag,
-            config::set_ai_auto_summary,
-            config::set_ai_translation,
-            config::set_ai_web_search,
-            config::set_sensitive_filter,
-            config::set_filter_passwords,
-            config::set_filter_bank_cards,
-            config::set_filter_id_cards,
-            config::set_filter_phone_numbers,
-            config::set_privacy_retention_days,
-            config::get_privacy_records,
-            config::delete_all_privacy_records,
-            config::set_storage_path,
-            config::set_auto_backup,
-            config::set_backup_frequency,
-            config::set_last_backup_path,
-            config::set_cloud_sync_enabled,
-            config::set_sync_frequency,
-            config::set_sync_content_type,
-            config::set_encrypt_cloud_data,
-            config::set_sync_only_wifi,
-            config::set_username,
-            config::set_email,
-            config::set_bio,
-            config::set_avatar_path,
-            config::set_ocr_provider,
-            config::set_ocr_languages,
-            config::set_ocr_confidence_threshold,
-            config::set_ocr_timeout_secs,
+            config::set_config_item,
         ])
         .setup(move |app| {
             // 初始化数据库路径
@@ -602,14 +554,20 @@ fn main() {
                 // 如果配置中没有存储路径，则使用默认的 app_dir
                 if cfg.storage_path.is_none() {
                     drop(cfg); // 释放读锁
-                    config::set_storage_path(app_dir.to_string_lossy().to_string());
+                    let _ = config::set_config_item_internal(
+                        "storage_path",
+                        serde_json::Value::String(app_dir.to_string_lossy().to_string()),
+                    );
                 }
                 // 否则，使用配置中的存储路径
                 else if let Some(ref path_str) = cfg.storage_path {
                     let custom_path = PathBuf::from(path_str);
                     if custom_path.exists() && custom_path.is_dir() {
                         drop(cfg); // 释放读锁
-                        config::set_storage_path(custom_path.to_string_lossy().to_string());
+                        let _ = config::set_config_item_internal(
+                            "storage_path",
+                            serde_json::Value::String(custom_path.to_string_lossy().to_string()),
+                        );
                         db_path = custom_path.join("smartpaste.db");
                     } else {
                         eprintln!(
@@ -617,7 +575,10 @@ fn main() {
                             app_dir.to_string_lossy()
                         );
                         drop(cfg); // 释放读锁
-                        config::set_storage_path(app_dir.to_string_lossy().to_string());
+                        let _ = config::set_config_item_internal(
+                            "storage_path",
+                            serde_json::Value::String(app_dir.to_string_lossy().to_string()),
+                        );
                     }
                 }
             }
