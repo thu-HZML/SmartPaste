@@ -1,12 +1,5 @@
 <template>
   <div class="settings-container">
-    <!-- 设置头部 -->
-    <header class="settings-header">
-      <h1>设置</h1>
-      <button class="back-btn" @click="goBack">← 返回</button>
-    </header>
-
-    <!-- 设置内容区域 -->
     <div class="settings-content">
       <!-- 左侧导航栏 -->
       <nav class="settings-nav">
@@ -1021,13 +1014,14 @@ onMounted(async () => {
   }*/
 
   // await checkAutostartStatus()
-
+/*
   // 初始化窗口大小
   try {
     await currentWindow.setSize(new LogicalSize(800, 580));
   } catch (error) {
     console.error('设置窗口大小失败:', error)
   }
+    */
 })
 
 // 通用设置相关函数

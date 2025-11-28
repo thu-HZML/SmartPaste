@@ -20,7 +20,7 @@
         "skipTaskbar": true,
         "acceptFirstMouse": true,  
         "shadow": false,
-        "resizable": true,
+        "resizable": false,
         "focus": false
       }
     ],

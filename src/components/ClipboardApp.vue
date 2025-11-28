@@ -386,7 +386,7 @@ import { useRouter,useRoute } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
-import { toggleClipboardWindow } from '../utils/actions.js'
+import { toggleSetWindow } from '../utils/actions.js'
 import { useSettingsStore } from '../stores/settings'
 import { 
   BeakerIcon,
@@ -702,9 +702,8 @@ const togglePinnedView = () => {
 const openSettings = async () => {
   // 移除窗口焦点监听器
   removeWindowListeners()
-
-  router.push('/preferences')
-  showMessage('打开设置')
+  toggleSetWindow()
+  currentWindow.close()
 }
 
 // 复制历史内容
@@ -1470,7 +1469,7 @@ onMounted(async () => {
 
   // 保存当前参数状态
   const shouldShowFavorites = route.query.category === 'favorite'
-  const shouldOpenSettings = route.query.category === 'set'
+
   // 立即清除所有参数
   if (route.query.category) {
     const newQuery = { ...route.query }
@@ -1502,15 +1501,6 @@ onMounted(async () => {
   if (shouldShowFavorites) {
     activeCategory.value = 'favorite'
     console.log('跳转到收藏界面')
-  }
-
-  if (shouldOpenSettings) {
-    console.log('准备打开设置页面')
-    // 使用 setTimeout 确保在下一个事件循环中执行
-    setTimeout(() => {
-      openSettings()
-      console.log('设置页面已打开')
-    }, 50)
   }
   
   // 设置示例数据

@@ -75,18 +75,17 @@ export async function createMenuWindow(options = {}) {
  */
 export async function toggleMenuWindow() {
   // 查找已存在的菜单窗口
-  const menuWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('menu'))
+  const menuWindow = Array.from(windowInstances.entries())
+    .find(([key]) => key === 'menu')
   
-  if (menuWindows.length > 0) {
-    // 如果存在菜单窗口，关闭它们
-    for (const [windowId, window] of menuWindows) {
-      try {
-        await window.close()
-        windowInstances.delete(windowId)
-      } catch (error) {
-        console.error('关闭菜单窗口失败:', error)
-      }
+  if (menuWindow) {
+    // 如果存在菜单窗口，关闭
+    try {
+      const [windowId, window] = menuWindow
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭菜单窗口失败:', error)
     }
     return null
   } else {
@@ -120,7 +119,7 @@ export async function toggleMenuWindow() {
 // 新增：更新菜单窗口位置函数
 export async function updateMenuWindowPosition() {
   const menuWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('menu'))
+    .find(([key]) => key === 'menu')
   
   if (menuWindows.length > 0 && mainWindowPosition) {
     const { x, y, width, height } = mainWindowPosition
@@ -152,7 +151,7 @@ export function hasMenuWindow() {
  */
 export async function updateMenuWindowPositionRealTime() {
   const menuWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('menu'))
+    .find(([key]) => key === 'menu')
   
   if (menuWindows.length > 0 && mainWindowPosition) {
     const { x, y, width, height } = mainWindowPosition
@@ -224,45 +223,25 @@ export async function createClipboardWindow(options = {}) {
  */
 export async function toggleClipboardWindow() {
   // 查找已存在的剪贴板窗口
-  console.log('🔍 查找已存在的剪贴板窗口...')
-  const clipboardWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('c'))
-  console.log('正在查找')
-  console.log(clipboardWindows)
-  if (clipboardWindows.length > 0) {
-    // 如果存在剪贴板窗口，关闭它们
-    console.log('存在窗口')
-    for (const [windowId, window] of clipboardWindows) {
-      try {
-        await window.close()
-        windowInstances.delete(windowId)
-        console.log('关闭窗口成功')
-      } catch (error) {
-        console.error('关闭窗口失败:', error)
-      }
+  const clipboardWindow = Array.from(windowInstances.entries())
+    .find(([key]) => key === 'clipboard')
+
+  if (clipboardWindow) {
+    // 如果存在剪贴板窗口，关闭
+    try {
+      const [windowId, window] = clipboardWindow
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭剪贴板窗口失败:', error)
     }
     return null
   } else {
     // 如果不存在，创建新窗口
     try {
-      // 使用全局存储的主窗口位置
-      const { x, y, width, height } = mainWindowPosition
-      
-      // 计算新窗口位置（在桌宠右侧）
-      const newX = x + width + 10
-      const newY = y
-      
-      console.log('使用主窗口位置创建剪贴板窗口:', { newX, newY })
-      
-      return await createClipboardWindow({
-        x: newX,
-        y: newY,
-        width: 400,
-        height: 600
-      })
+      await createClipboardWindow() // 创建默认位置的窗口
     } catch (error) {
       console.error('创建剪贴板窗口错误:', error)
-      return await createClipboardWindow() // 创建默认位置的窗口
     }
   }
 }
@@ -320,18 +299,17 @@ export async function createFavoritesWindow(options = {}) {
  */
 export async function toggleFavoritesWindow() {
   // 查找已存在的收藏夹窗口
-  const favoritesWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('clipboard'))
+  const favoritesWindow = Array.from(windowInstances.entries())
+    .find(([key]) => key === 'clipboard')
   
-  if (favoritesWindows.length > 0) {
-    // 如果存在收藏夹窗口，关闭它们
-    for (const [windowId, window] of favoritesWindows) {
-      try {
-        await window.close()
-        windowInstances.delete(windowId)
-      } catch (error) {
-        console.error('关闭收藏夹窗口失败:', error)
-      }
+  if (favoritesWindow) {
+    // 如果存在收藏夹窗口，关闭
+    try {
+      const [windowId, window] = favoritesWindow
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭收藏夹窗口失败:', error)
     }
     return null
   } else {
@@ -359,14 +337,15 @@ export async function toggleFavoritesWindow() {
   }
 }
 
+// 创建设置窗口
 export async function createSetWindow(options = {}) {
-  const windowId = 'clipboard'
+  const windowId = 'preferences'
   
   try {
-    const { x = 100, y = 100, width = 400, height = 600 } = options
+    const { x = 100, y = 100, width = 800, height = 580 } = options
     
     const webview = new WebviewWindow(windowId, {
-      url: '/clipboardapp?category=set', // 直接跳转到剪贴板页面的收藏界面
+      url: '/preferences', // 直接跳转到剪贴板页面的收藏界面
       title: '设置',
       width,
       height,
@@ -375,7 +354,7 @@ export async function createSetWindow(options = {}) {
       resizable: true,
       minimizable: true,
       maximizable: false,
-      decorations: false,
+      decorations: true,
       alwaysOnTop: true,
       skipTaskbar: true,
       hiddenTitle: true,
@@ -408,41 +387,26 @@ export async function createSetWindow(options = {}) {
  */
 export async function toggleSetWindow() {
   // 查找已存在的设置窗口
-  const setsWindows = Array.from(windowInstances.entries())
-    .filter(([key]) => key.startsWith('clipboard'))
+  const setsWindow = Array.from(windowInstances.entries())
+    .find(([key]) => key === 'preferences')
   
-  if (setsWindows.length > 0) {
-    // 如果存在设置窗口，关闭它们
-    for (const [windowId, window] of setsWindows) {
-      try {
-        await window.close()
-        windowInstances.delete(windowId)
-      } catch (error) {
-        console.error('关闭设置窗口失败:', error)
-      }
+  if (setsWindow) {
+    // 如果存在设置窗口，关闭
+    try {
+      const [windowId, window] = setsWindow
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭设置窗口失败:', error)
     }
     return null
   } else {
     // 如果不存在，创建新窗口
     try {
-      // 使用全局存储的主窗口位置
-      const { x, y, width, height } = mainWindowPosition
-      
-      // 计算新窗口位置（在桌宠右侧）
-      const newX = x + width + 10
-      const newY = y
-      
-      console.log('使用主窗口位置创建设置窗口:', { newX, newY })
-      
-      return await createSetWindow({
-        x: newX,
-        y: newY,
-        width: 400,
-        height: 600
-      })
+      await createSetWindow() // 创建默认位置的窗口
+
     } catch (error) {
-      console.error('创建收藏夹窗口错误:', error)
-      return await createSetWindow() // 创建默认位置的窗口
+      console.error('创建设置窗口错误:', error)
     }
   }
 }
