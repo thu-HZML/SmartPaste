@@ -619,7 +619,6 @@ pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(
     }
 }
 /// 迁移数据到新的存储路径
-/// 迁移数据到新的存储路径
 fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
     println!("🚚 开始迁移数据文件从 {} 到 {}", old_path.display(), new_path.display());
     
@@ -628,10 +627,37 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
         return Err(format!("创建新存储路径失败: {}", e));
     }
 
+    // 🔥 关键修复：在迁移前先清理新路径下的现有文件
+    println!("🧹 检查并清理新路径下的现有文件...");
+    let files_to_clean = vec![
+        ("smartpaste.db", "数据库文件"),
+        ("files", "文件目录")
+    ];
+
+    for (file_name, desc) in files_to_clean {
+        let target_path = new_path.join(file_name);
+        if target_path.exists() {
+            println!("🗑️ 删除现有的 {}: {}", desc, file_name);
+            if file_name == "files" && target_path.is_dir() {
+                // 删除整个 files 文件夹
+                if let Err(e) = fs::remove_dir_all(&target_path) {
+                    return Err(format!("删除现有 {} 失败: {}", desc, e));
+                }
+            } else {
+                // 删除文件
+                if let Err(e) = fs::remove_file(&target_path) {
+                    return Err(format!("删除现有 {} 失败: {}", desc, e));
+                }
+            }
+            println!("✅ 已删除现有的 {}: {}", desc, file_name);
+        } else {
+            println!("ℹ️ 新路径下没有现有的 {}: {}", desc, file_name);
+        }
+    }
+
     let files_to_migrate = vec![
         ("smartpaste.db", "数据库文件"),
         ("files", "文件目录")
-        // 注意：config.json 不在这里迁移，我们会单独处理
     ];
 
     for (file_name, desc) in files_to_migrate {
@@ -640,13 +666,7 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
         
         if old_file_path.exists() {
             if file_name == "files" && old_file_path.is_dir() {
-                // 处理文件夹迁移
-                if new_file_path.exists() {
-                    if let Err(e) = fs::remove_dir_all(&new_file_path) {
-                        return Err(format!("清空目标文件夹失败: {}", e));
-                    }
-                }
-                
+                // 处理文件夹迁移 - 现在目标文件夹已经被清理，直接复制
                 match copy_dir_all(&old_file_path, &new_file_path) {
                     Ok(_) => println!("✅ 已迁移 {}: {}", desc, file_name),
                     Err(e) => return Err(format!("迁移 {} 失败: {}", desc, e)),
@@ -668,9 +688,19 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
 }
 
 /// 递归复制目录
+/// 递归复制目录
 fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+    // 确保目标目录存在
     if !dst.exists() {
         fs::create_dir_all(dst)?;
+    } else {
+        // 如果目标目录已存在，确保它是目录
+        if !dst.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "目标路径不是目录"
+            ));
+        }
     }
 
     for entry in fs::read_dir(src)? {
@@ -681,6 +711,7 @@ fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
         if file_type.is_dir() {
             copy_dir_all(&entry.path(), &dest_path)?;
         } else {
+            // 复制文件，如果目标文件已存在则覆盖
             fs::copy(&entry.path(), &dest_path)?;
         }
     }
