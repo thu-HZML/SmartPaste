@@ -5,6 +5,16 @@
 
 <script setup>
 // 这里可以放一些全局的逻辑
+import { onMounted } from 'vue'
+import { useSettingsStore } from './stores/settings'
+
+const settingsStore = useSettingsStore()
+
+onMounted(async () => {
+  // 应用启动时初始化配置
+  await settingsStore.initializeSettings()
+  console.log('应用配置已初始化', settingsStore.settings)
+})
 </script>
 
 <style>

@@ -2,7 +2,11 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main","menu*", "clipboard"],
+  "windows": [
+    "main",
+    "menu*",
+    "clipboard"
+  ],
   "permissions": [
     "core:default",
     "opener:default",
@@ -13,7 +17,7 @@
     "clipboard-manager:allow-read-image",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-write-image",
-    "clipboard-manager:allow-clear" ,
+    "clipboard-manager:allow-clear",
     "core:webview:allow-create-webview-window",
     "core:webview:allow-create-webview",
     "core:window:allow-create",
@@ -26,6 +30,7 @@
     "core:event:allow-emit",
     "core:event:allow-listen",
     "core:window:allow-set-focus",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "dialog:default"
   ]
 }

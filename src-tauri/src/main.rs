@@ -19,15 +19,19 @@ use app_setup::{
 };
 use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
+use clipboard_rs::{Clipboard as ClipboardRsTrait, ClipboardContext};
 use image::{ImageFormat, RgbaImage};
+use std::env;
 use std::ffi::OsStr;
 use std::fs;
+use std::io;
 use std::io::Cursor;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
+use uuid::Uuid;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{
@@ -36,16 +40,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyIcon, GetIconInfo, HICON, ICONINFO,
-};
-use std::env;
-use clipboard_rs::{
-    Clipboard as ClipboardRsTrait, 
-    ClipboardContext
-};
-use uuid::Uuid;
-use std::io;
+use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -74,7 +69,7 @@ async fn write_file_to_clipboard(
     state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
     *state.is_frontend_copy.lock().unwrap() = true;
-    
+
     // 直接复用修复后的处理逻辑，它现在支持文件夹且没有权限问题
     let final_path = process_file_for_clipboard(&file_path)?;
 
@@ -86,7 +81,7 @@ fn copy_dir_all(src: &Path, dst: &Path) -> io::Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
     }
-    
+
     // 遍历源文件夹
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -115,7 +110,7 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     // 2. 解析原始文件名
     let file_name_os = path.file_name().ok_or("无法获取名称")?;
     let file_name_str = file_name_os.to_string_lossy();
-    
+
     // 解析时间戳逻辑
     let clean_file_name = if let Some((prefix, name)) = file_name_str.split_once('-') {
         if prefix.len() == 13 && prefix.chars().all(char::is_numeric) {
@@ -131,7 +126,7 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     // 结构变为: %TEMP% / {UUID} / {CleanFileName}
     let temp_root = env::temp_dir();
     let unique_sub_dir = temp_root.join(Uuid::new_v4().to_string());
-    
+
     // 创建这个唯一的文件夹
     if let Err(e) = fs::create_dir_all(&unique_sub_dir) {
         return Err(format!("无法创建临时容器目录: {}", e));
@@ -144,7 +139,7 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     if path.is_dir() {
         // 复制文件夹
         if let Err(e) = copy_dir_all(path, &temp_target_path) {
-             return Err(format!("复制文件夹失败: {}", e));
+            return Err(format!("复制文件夹失败: {}", e));
         }
     } else {
         // 复制文件
@@ -154,8 +149,8 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     }
 
     // 5. 获取绝对路径并处理 Windows 前缀
-    let absolute_path = fs::canonicalize(&temp_target_path)
-        .map_err(|e| format!("无法获取绝对路径: {}", e))?;
+    let absolute_path =
+        fs::canonicalize(&temp_target_path).map_err(|e| format!("无法获取绝对路径: {}", e))?;
 
     #[cfg(target_os = "windows")]
     let final_path = {
@@ -176,13 +171,14 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
 // --- 核心 helper：将路径列表写入剪贴板 ---
 fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
     let ctx = ClipboardContext::new().map_err(|e| e.to_string())?;
-    
+
     // 将 PathBuf 转换为 String 列表
-    let paths_str: Vec<String> = paths.into_iter()
+    let paths_str: Vec<String> = paths
+        .into_iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect();
     ctx.set_files(paths_str).map_err(|e| e.to_string())?;
-    
+
     Ok(())
 }
 
@@ -476,6 +472,7 @@ impl<T: Copy, F: FnMut(T)> Drop for ScopeGuard<T, F> {
 
 fn main() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
