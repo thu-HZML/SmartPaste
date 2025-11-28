@@ -36,7 +36,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoStart" @change="toggleAutoStart">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.autostart" 
+                  @change="updateSetting('autostart', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -49,7 +53,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showMinimizeTrayIcon" @change="toggleMinimizeToTray">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.tray_icon_visible" 
+                  @change="updateSetting('tray_icon_visible', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -62,7 +70,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleTrayIcon">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.minimize_to_tray" 
+                  @change="updateSetting('minimize_to_tray', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -75,7 +87,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoSave" @change="toggleAutoSave">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.auto_save" 
+                  @change="updateSetting('auto_save', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -87,7 +103,11 @@
               <p>自动删除超过指定天数的历史记录</p>
             </div>
             <div class="setting-control">
-              <select v-model="settings.retentionDays" class="select-input" @change="updateRetentionDays">
+              <select 
+                v-model="settings.retention_days" 
+                @change="updateSetting('retention_days', Number($event.target.value))" 
+                class="select-input"
+              >
                 <option value=7>7天</option>
                 <option value=30>30天</option>
                 <option value=90>90天</option>
@@ -119,10 +139,11 @@
             <div class="setting-control">
               <input 
                 type="number" 
-                v-model="settings.maxHistoryItems" 
+                v-model="settings.max_history_items" 
                 min="10" 
                 max="1000" 
                 class="number-input"
+                @change="updateSetting('max_history_items', Number($event.target.value))" 
               >
             </div>
           </div>
@@ -135,10 +156,11 @@
             <div class="setting-control">
               <input 
                 type="number" 
-                v-model="settings.ignoreShortText" 
+                v-model="settings.ignore_short_text_len" 
                 min="0" 
                 max="50" 
                 class="number-input"
+                @change="updateSetting('ignore_short_text_len', Number($event.target.value))" 
               >
               <span class="unit">字符</span>
             </div>
@@ -152,55 +174,13 @@
             <div class="setting-control">
               <input 
                 type="number" 
-                v-model="settings.ignoreBigFile" 
+                v-model="settings.ignore_big_file_mb" 
                 min="5" 
                 max="100" 
                 class="number-input"
+                @change="updateSetting('ignore_big_file_mb', Number($event.target.value))"
               >
               <span class="unit">MB</span>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>忽略特定应用</h3>
-              <p>不记录来自这些应用的剪贴板内容</p>
-            </div>
-            <div class="setting-control">
-              <div class="tag-input-container">
-                <div 
-                  v-for="(app, index) in settings.ignoredApps" 
-                  :key="index" 
-                  class="tag"
-                >
-                  {{ app }}
-                  <span @click="removeIgnoredApp(index)" class="tag-remove">×</span>
-                </div>
-                <input 
-                  type="text" 
-                  v-model="newIgnoredApp" 
-                  placeholder="输入应用名称" 
-                  @keyup.enter="addIgnoredApp"
-                  class="tag-input"
-                >
-              </div>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>文本预览长度</h3>
-              <p>在列表中显示的文本预览长度</p>
-            </div>
-            <div class="setting-control">
-              <input 
-                type="number" 
-                v-model="settings.previewLength" 
-                min="20" 
-                max="200" 
-                class="number-input"
-              >
-              <span class="unit">字符</span>
             </div>
           </div>
 
@@ -211,7 +191,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleAutoClassify">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.auto_classify" 
+                  @change="updateSetting('auto_classify', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -224,7 +208,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleOCRAutoRecognition">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.ocr_auto_recognition" 
+                  @change="updateSetting('ocr_auto_recognition', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -237,7 +225,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="deleteConfirmationWithMessage">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.delete_confirmation" 
+                  @change="updateSetting('delete_confirmation', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -250,7 +242,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleKeepFavorites">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.keep_favorites_on_delete" 
+                  @change="updateSetting('keep_favorites_on_delete', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -263,7 +259,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleAutoSort">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.auto_sort" 
+                  @change="updateSetting('auto_sort', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -282,7 +282,11 @@
               <p>选择OCR识别服务提供者</p>
             </div>
             <div class="setting-control">
-              <select v-model="settings.ocrProvider" class="select-input" @change="updateOCRProvider">
+              <select 
+                v-model="settings.ocr_provider" 
+                @change="updateSetting('ocr_provider', $event.target.value)" 
+                class="select-input"
+              >
                 <option value="auto">默认</option>
                 <option value="tesseract">Tesseract</option>
                 <option value="windows">Windows OCR</option>
@@ -301,22 +305,46 @@
             <div class="setting-control">
               <div class="checkbox-group">
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.ocrLanguages" value="chi_sim" @change="updateOCRLanguages"> 简体中文
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.ocr_languages && settings.ocr_languages.includes('chi_sim')" 
+                    @change="toggleOCRLanguage('chi_sim', $event.target.checked)"
+                  > 简体中文
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.ocrLanguages" value="eng" @change="updateOCRLanguages"> 英语
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.ocr_languages && settings.ocr_languages.includes('eng')" 
+                    @change="toggleOCRLanguage('eng', $event.target.checked)"
+                  > 英语
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.ocrLanguages" value="jpn" @change="updateOCRLanguages"> 日语
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.ocr_languages && settings.ocr_languages.includes('jpn')" 
+                    @change="toggleOCRLanguage('jpn', $event.target.checked)"
+                  > 日语
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.ocrLanguages" value="kor" @change="updateOCRLanguages"> 韩语
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.ocr_languages && settings.ocr_languages.includes('kor')" 
+                    @change="toggleOCRLanguage('kor', $event.target.checked)"
+                  > 韩语
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.ocrLanguages" value="fra" @change="updateOCRLanguages"> 法语
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.ocr_languages && settings.ocr_languages.includes('fra')" 
+                    @change="toggleOCRLanguage('fra', $event.target.checked)"
+                  > 法语
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.ocrLanguages" value="deu" @change="updateOCRLanguages"> 德语
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.ocr_languages && settings.ocr_languages.includes('deu')" 
+                    @change="toggleOCRLanguage('deu', $event.target.checked)"
+                  > 德语
                 </label>
               </div>
             </div>
@@ -331,14 +359,14 @@
               <div class="slider-container">
                 <input 
                   type="range" 
-                  v-model="settings.ocrConfidenceThreshold" 
+                  :value="settings.ocr_confidence_threshold" 
                   min="0" 
                   max="100" 
                   step="1" 
                   class="slider-input"
-                  @change="updateOCRConfidenceThreshold"
+                  @input="updateSetting('ocr_confidence_threshold', Number($event.target.value))"
                 >
-                <span class="slider-value">{{ settings.ocrConfidenceThreshold }}%</span>
+                <span class="slider-value">{{ settings.ocr_confidence_threshold }}%</span>
               </div>
             </div>
           </div>
@@ -351,11 +379,11 @@
             <div class="setting-control">
               <input 
                 type="number" 
-                v-model="settings.ocrTimeoutSecs" 
+                v-model="settings.ocr_timeout_secs" 
                 min="5" 
                 max="120" 
                 class="number-input"
-                @change="updateOCRTimeout"
+                @change="updateSetting('ocr_timeout_secs', Number($event.target.value))"
               >
               <span class="unit">秒</span>
             </div>
@@ -373,20 +401,28 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.aiEnabled" @change="toggleAIEnabled">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.ai_enabled" 
+                  @change="updateSetting('ai_enabled', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
 
-          <div v-if="settings.aiEnabled" class="ai-settings">
+          <div v-if="settings.ai_enabled" class="ai-settings">
             <div class="setting-item">
               <div class="setting-info">
                 <h3>选择AI服务</h3>
                 <p>选择使用的AI服务提供商</p>
               </div>
               <div class="setting-control">
-                <select v-model="settings.aiService" class="select-input" @change="updateAIService">
+                <select 
+                  v-model="settings.ai_service" 
+                  @change="updateSetting('ai_service', $event.target.value)" 
+                  class="select-input"
+                >
                   <option value="openai">OpenAI</option>
                   <option value="claude">Claude</option>
                   <option value="gemini">Gemini</option>
@@ -402,7 +438,13 @@
                 <p>设置AI服务的API密钥</p>
               </div>
               <div class="setting-control">
-                <input type="password" v-model="settings.aiApiKey" @blur="updateAIApiKey" class="text-input" placeholder="输入API密钥">
+                <input 
+                  type="password" 
+                  v-model="settings.ai_api_key" 
+                  @blur="updateSetting('ai_api_key', $event.target.value)"
+                  class="text-input" 
+                  placeholder="输入API密钥"
+                >
               </div>
             </div>
 
@@ -414,16 +456,32 @@
               <div class="setting-control">
                 <div class="checkbox-group">
                   <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiAutoTag"  @change="toggleAIAutoTag"> 自动打Tag
+                    <input 
+                      type="checkbox" 
+                      :checked="settings.ai_auto_tag" 
+                      @change="updateSetting('ai_auto_tag', $event.target.checked)"
+                    > 自动打Tag
                   </label>
                   <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiAutoSummary" @change="toggleAIAutoSummary"> 自动总结
+                    <input 
+                      type="checkbox" 
+                      :checked="settings.ai_auto_summary" 
+                      @change="updateSetting('ai_auto_summary', $event.target.checked)"
+                    > 自动总结
                   </label>
                   <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiTranslation" @change="toggleAITranslation"> 翻译
+                    <input 
+                      type="checkbox" 
+                      :checked="settings.ai_translation" 
+                      @change="updateSetting('ai_translation', $event.target.checked)"
+                    > 翻译
                   </label>
                   <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiWebSearch" @change="toggleAIWebSearch"> 联网搜索
+                    <input 
+                      type="checkbox" 
+                      :checked="settings.ai_web_search" 
+                      @change="updateSetting('ai_web_search', $event.target.checked)"
+                    > 联网搜索
                   </label>
                 </div>
               </div>
@@ -452,13 +510,17 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.sensitiveFilter" @change="toggleSensitiveFilter">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.sensitive_filter" 
+                  @change="updateSetting('sensitive_filter', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
 
-          <div v-if="settings.sensitiveFilter" class="setting-item">
+          <div v-if="settings.sensitive_filter" class="setting-item">
             <div class="setting-info">
               <h3>过滤类型</h3>
               <p>选择要过滤的敏感信息类型</p>
@@ -466,16 +528,32 @@
             <div class="setting-control">
               <div class="checkbox-group">
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterPasswords" @change="toggleFilterPasswords"> 密码
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_passwords" 
+                    @change="updateSetting('filter_passwords', $event.target.checked)"
+                  > 密码
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterBankCards" @change="toggleFilterBankCards"> 银行卡号
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_bank_cards" 
+                    @change="updateSetting('filter_bank_cards', $event.target.checked)"
+                  > 银行卡号
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterIDCards"  @change="toggleFilterIDCards"> 身份证号
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_id_cards" 
+                    @change="updateSetting('filter_id_cards', $event.target.checked)"
+                  > 身份证号
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterPhoneNumbers" @change="toggleFilterPhoneNumbers"> 手机号
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_phone_numbers" 
+                    @change="updateSetting('filter_phone_numbers', $event.target.checked)"
+                  > 手机号
                 </label>
               </div>
             </div>
@@ -487,7 +565,7 @@
               <p>查看和管理标记为隐私的记录</p>
             </div>
             <div class="setting-control">
-              <button class="btn btn-secondary" @click="viewPrivacyRecords">查看隐私记录</button>
+              <button class="btn btn-secondary">查看隐私记录</button>
             </div>
           </div>
 
@@ -497,7 +575,11 @@
               <p>自动删除超过指定天数的隐私记录</p>
             </div>
             <div class="setting-control">
-              <select v-model="settings.privacyRetentionDays" class="select-input"  @change="updatePrivacyRetentionDays">
+              <select 
+                v-model="settings.privacy_retention_days" 
+                @change="updateSetting('privacy_retention_days', Number($event.target.value))" 
+                class="select-input"
+              >
                 <option value="1">1天</option>
                 <option value="7">7天</option>
                 <option value="30">30天</option>
@@ -512,7 +594,7 @@
               <p>永久删除所有标记为隐私的记录</p>
             </div>
             <div class="setting-control">
-              <button class="btn btn-danger" @click="deleteAllPrivacyRecords">删除所有隐私记录</button>
+              <button class="btn btn-danger">删除所有隐私记录</button>
             </div>
           </div>
         </div>
@@ -531,17 +613,17 @@
                 <div class="path-input-group">
                   <input 
                     type="text" 
-                    v-model="settings.dataStoragePath" 
+                    :value="settings.storage_path" 
                     class="text-input path-input" 
                     readonly
-                    :title="settings.dataStoragePath || '未设置存储路径'"
+                    :title="settings.storage_path || '未设置存储路径'"
                     placeholder="点击右侧按钮选择路径"
                   >
                   <button class="btn btn-secondary path-btn" @click="changeStoragePath">
-                    {{ settings.dataStoragePath ? '更改路径' : '选择路径' }}
+                    {{ settings.storage_path ? '更改路径' : '选择路径' }}
                   </button>
                 </div>
-                <div v-if="!settings.dataStoragePath" class="path-hint">
+                <div v-if="!settings.storage_path" class="path-hint">
                   <small>请选择数据存储路径</small>
                 </div>
               </div>
@@ -555,19 +637,27 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoBackup" @change="toggleAutoBackup">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.auto_backup" 
+                  @change="updateSetting('auto_backup', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
 
-          <div v-if="settings.autoBackup" class="setting-item">
+          <div v-if="settings.auto_backup" class="setting-item">
             <div class="setting-info">
               <h3>备份频率</h3>
               <p>自动备份的频率</p>
             </div>
             <div class="setting-control">
-              <select v-model="settings.backupFrequency" class="select-input" @change="updateBackupFrequency">>
+              <select 
+                v-model="settings.backup_frequency" 
+                @change="updateSetting('backup_frequency', $event.target.value)" 
+                class="select-input"
+              >
                 <option value="daily">每天</option>
                 <option value="weekly">每周</option>
                 <option value="monthly">每月</option>
@@ -638,20 +728,28 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.cloudSync">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.cloud_sync_enabled" 
+                  @change="updateSetting('cloud_sync_enabled', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
           
-          <div v-if="settings.cloudSync" class="cloud-settings">
+          <div v-if="settings.cloud_sync_enabled" class="cloud-settings">
             <div class="setting-item">
               <div class="setting-info">
                 <h3>同步频率</h3>
                 <p>自动同步剪贴板历史的频率</p>
               </div>
               <div class="setting-control">
-                <select v-model="settings.syncFrequency" class="select-input">
+                <select 
+                  v-model="settings.sync_frequency" 
+                  @change="updateSetting('sync_frequency', $event.target.value)" 
+                  class="select-input"
+                >
                   <option value="realtime">实时同步</option>
                   <option value="5min">每5分钟</option>
                   <option value="15min">每15分钟</option>
@@ -666,7 +764,11 @@
                 <p>同步(仅文本 / 包含图片 / 包含文件)</p>
               </div>
               <div class="setting-control">
-                <select v-model="settings.syncContantType" class="select-input">
+                <select 
+                  v-model="settings.sync_content_type" 
+                  @change="updateSetting('sync_content_type', $event.target.value)" 
+                  class="select-input"
+                >
                   <option value="onlytxt">仅文本</option>
                   <option value="containphoto">包含图片</option>
                   <option value="containfile">包含文件</option>
@@ -681,7 +783,11 @@
               </div>
               <div class="setting-control">
                 <label class="toggle-switch">
-                  <input type="checkbox" v-model="settings.encryptCloudData">
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.encrypt_cloud_data" 
+                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
+                  >
                   <span class="slider"></span>
                 </label>
               </div>
@@ -694,7 +800,11 @@
               </div>
               <div class="setting-control">
                 <label class="toggle-switch">
-                  <input type="checkbox" v-model="settings.syncOnlyWifi">
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.sync_only_wifi" 
+                    @change="updateSetting('sync_only_wifi', $event.target.checked)"
+                  >
                   <span class="slider"></span>
                 </label>
               </div>
@@ -725,22 +835,35 @@
             <div class="user-details">
               <div class="form-group">
                 <label>用户名</label>
-                <input type="text" v-model="userInfo.username" class="text-input">
+                <input 
+                  type="text" 
+                  :value="settings.username" 
+                  @input="settings.username = $event.target.value"
+                  @blur="updateSetting('username', $event.target.value)"
+                  class="text-input"
+                >
               </div>
               
               <div class="form-group">
                 <label>电子邮箱</label>
-                <input type="email" v-model="userInfo.email" class="text-input">
+                <input 
+                  type="text" 
+                  :value="settings.email" 
+                  @input="settings.email = $event.target.value"
+                  @blur="updateSetting('email', $event.target.value)"
+                  class="text-input"
+                >
               </div>
               
               <div class="form-group">
                 <label>个人简介</label>
-                <textarea v-model="userInfo.bio" class="textarea-input" rows="3"></textarea>
-              </div>
-              
-              <div class="form-actions">
-                <button class="btn btn-primary" @click="saveUserInfo">保存更改</button>
-                <button class="btn btn-secondary" @click="resetUserInfo">重置</button>
+                <textarea 
+                  :value="settings.bio" 
+                  @input="settings.bio = $event.target.value"
+                  @blur="updateSetting('bio', $event.target.value)"
+                  class="textarea-input" 
+                  rows="3"
+                ></textarea>
               </div>
             </div>
           </div>
@@ -768,6 +891,7 @@ import { ref, reactive, onMounted,computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { open } from '@tauri-apps/plugin-dialog';
 import { useSettingsStore } from '../stores/settings'
 import { 
   Cog6ToothIcon,
@@ -822,7 +946,7 @@ const navItems = ref([
 ])
 
 // 设置数据
-const settings = useSettingsStore()
+const settings = useSettingsStore().settings
 
 // 快捷键显示名称映射
 const shortcutDisplayNames = {
@@ -886,6 +1010,7 @@ const showMessage = (message) => {
 // 生命周期
 onMounted(async () => {
   // 加载保存的设置
+  /*
   const savedSettings = localStorage.getItem('clipboardSettings')
   if (savedSettings) {
     Object.assign(settings, JSON.parse(savedSettings))
@@ -893,8 +1018,9 @@ onMounted(async () => {
   const savedTime = localStorage.getItem('lastSyncTime');
   if (savedTime) {
     lastSyncTime.value = parseInt(savedTime);
-  }
-  await checkAutostartStatus()
+  }*/
+
+  // await checkAutostartStatus()
 
   // 初始化窗口大小
   try {
@@ -907,6 +1033,7 @@ onMounted(async () => {
 // 通用设置相关函数
 // 启动时自动运行
 // 检查自启状态
+/*
 const checkAutostartStatus = async () => {
   try {
     const isEnabled = await invoke('is_autostart_enabled')
@@ -980,7 +1107,7 @@ const updateRetentionDays = async () => {
     console.error('设置保留时间失败:', error)
     showMessage(`设置失败: ${error}`)
   }
-}
+}*/
 
 // 快捷键设置相关函数
 // 开始录制快捷键
@@ -1151,7 +1278,7 @@ const cancelRecording = () => {
   showMessage('已取消快捷键设置')
 }
 
-
+/*
 // 剪贴板参数设置相关函数
 // 最大历史记录数量
 const updateMaxHistoryItems = async () => {
@@ -1184,272 +1311,82 @@ const updateIgnoreBigFile = async () => {
     console.error('设置忽略大文件失败:', error)
     showMessage(`设置失败: ${error}`)
   }
-}
-
-// 添加忽略应用
-const addIgnoredApp = async () => {
-  if (newIgnoredApp.value.trim() && !settings.ignoredApps.includes(newIgnoredApp.value.trim())) {
-    const newApp = newIgnoredApp.value.trim()
-    settings.ignoredApps.push(newApp)
-    newIgnoredApp.value = ''
-    
-    try {
-      await invoke('add_ignored_app', { appName: newApp })
-      showMessage(`已添加忽略应用: ${newApp}`)
-    } catch (error) {
-      console.error('添加忽略应用失败:', error)
-      settings.ignoredApps.pop() // 回滚
-      showMessage(`添加失败: ${error}`)
-    }
-  }
-}
-
-// 移除忽略应用
-const removeIgnoredApp = async (index) => {
-  const removedApp = settings.ignoredApps[index]
-  settings.ignoredApps.splice(index, 1)
-  
-  try {
-    await invoke('remove_ignored_app', { appName: removedApp })
-    showMessage(`已移除忽略应用: ${removedApp}`)
-  } catch (error) {
-    console.error('移除忽略应用失败:', error)
-    settings.ignoredApps.splice(index, 0, removedApp) // 回滚
-    showMessage(`移除失败: ${error}`)
-  }
-}
-
-// 文本预览长度
-const updatePreviewLength = async () => {
-  try {
-    await invoke('set_preview_length', { length: settings.previewLength })
-    showMessage(`文本预览长度已设置为 ${settings.previewLength} 字符`)
-  } catch (error) {
-    console.error('设置预览长度失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 清空所有忽略应用
-const clearAllIgnoredApps = async () => {
-  if (settings.ignoredApps.length === 0) {
-    showMessage('没有可清空的忽略应用')
-    return
-  }
-  
-  if (confirm('确定要清空所有忽略应用吗？')) {
-    const oldApps = [...settings.ignoredApps]
-    settings.ignoredApps = []
-    
-    try {
-      await invoke('clear_all_ignored_apps')
-      showMessage('已清空所有忽略应用')
-    } catch (error) {
-      console.error('清空忽略应用失败:', error)
-      settings.ignoredApps = oldApps // 回滚
-      showMessage(`清空失败: ${error}`)
-    }
-  }
-}
-//自动分类开关
-const toggleAutoClassify = async () => {
-  try {
-    await invoke('set_auto_classify', { enabled: settings.autoClassify })
-    showMessage(settings.autoClassify ? '已启用自动分类' : '已禁用自动分类')
-  } catch (error) {
-    console.error('设置自动分类失败:', error)
-    settings.autoClassify = !settings.autoClassify
-    showMessage(`设置失败: ${error}`)
-  }
-}
-//OCR自动识别
-const toggleOCRAutoRecognition = async () => {
-  try {
-    await invoke('set_ocr_auto_recognition', { enabled: settings.ocrAutoRecognition })
-    showMessage(settings.ocrAutoRecognition ? '已启用OCR自动识别' : '已禁用OCR自动识别')
-  } catch (error) {
-    console.error('设置OCR自动识别失败:', error)
-    settings.ocrAutoRecognition = !settings.ocrAutoRecognition
-    showMessage(`设置失败: ${error}`)
-  }
-}
-//删除确认
-const deleteConfirmationWithMessage = computed({
-  get: () => settings.deleteConfirmation,
-  set: (value) => {
-    settings.deleteConfirmation = value
-    showMessage(value ? '已启用删除确认' : '已禁用删除确认')
-  }
-})
-/*const toggleDeleteConfirmation = async () => {
-  try {
-    await invoke('set_delete_confirmation', { enabled: settings.deleteConfirmation })
-    showMessage(settings.deleteConfirmation ? '已启用删除确认' : '已禁用删除确认')
-  } catch (error) {
-    console.error('设置删除确认失败:', error)
-    settings.deleteConfirmation = !settings.deleteConfirmation
-    showMessage(`设置失败: ${error}`)
-  }
 }*/
-//收藏保留
-const toggleKeepFavorites = async () => {
+
+// 统一的设置更新函数
+const updateSetting = async (key, value) => {
+  const oldValue = settings[key];
+  
   try {
-    await invoke('set_keep_favorites', { enabled: settings.keepFavorites })
-    showMessage(settings.keepFavorites ? '已启用收藏保留' : '已禁用收藏保留')
+    // 更新前端状态
+    settings[key] = value;
+    
+    // 调用后端统一接口
+    await invoke('set_config_item', { key, value });
+    
+    // 显示成功消息
+    showMessage('设置已更新');
   } catch (error) {
-    console.error('设置收藏保留失败:', error)
-    settings.keepFavorites = !settings.keepFavorites
-    showMessage(`设置失败: ${error}`)
+    console.error(`设置 ${key} 失败:`, error);
+    // 出错时回滚状态
+    settings[key] = oldValue;
+    showMessage(`设置失败: ${error}`);
   }
-}
-//自动排序
-const toggleAutoSort = async () => {
+};
+
+// 多选框辅助函数：切换OCR语言选择
+const toggleOCRLanguage = async (language, isChecked) => {
+  let updatedLanguages;
+  
+  if (isChecked) {
+    // 添加语言到数组
+    updatedLanguages = [...settings.ocr_languages, language];
+  } else {
+    // 从数组中移除语言
+    updatedLanguages = settings.ocr_languages.filter(lang => lang !== language);
+  }
+  
   try {
-    await invoke('set_auto_sort', { enabled: settings.autoSort })
-    showMessage(settings.autoSort ? '已启用自动排序' : '已禁用自动排序')
+    await updateSetting('ocr_languages', updatedLanguages);
+    showMessage('OCR语言设置已更新');
   } catch (error) {
-    console.error('设置自动排序失败:', error)
-    settings.autoSort = !settings.autoSort
-    showMessage(`设置失败: ${error}`)
+    console.error('更新OCR语言失败:', error);
+    showMessage(`更新失败: ${error}`);
   }
-}
+};
 
-
-// OCR设置相关方法
-const updateOCRProvider = async () => {
+// 修改存储路径函数
+const changeStoragePath = async () => {
   try {
-    await invoke('set_ocr_provider', { provider: settings.ocrProvider })
-    showMessage(`OCR提供者已设置为 ${getOCRProviderName(settings.ocrProvider)}`)
+    // 打开目录选择对话框
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      title: '选择数据存储路径',
+      defaultPath: settings.storage_path || undefined
+    });
+
+    // 如果用户选择了路径
+    if (selectedPath) {
+      // 更新前端状态
+      settings.storage_path = selectedPath;
+      
+      // 调用后端函数更新设置
+      await updateSetting('storage_path', selectedPath);
+      
+      showMessage('存储路径已更新');
+    }
   } catch (error) {
-    console.error('设置OCR提供者失败:', error)
-    showMessage(`设置失败: ${error}`)
+    console.error('选择存储路径失败:', error);
+    showMessage(`选择路径失败: ${error}`);
   }
-}
+};
 
-const updateOCRLanguages = async () => {
-  try {
-    await invoke('set_ocr_languages', { languages: settings.ocrLanguages })
-    showMessage(`OCR语言已更新`)
-  } catch (error) {
-    console.error('设置OCR语言失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateOCRConfidenceThreshold = async () => {
-  try {
-    await invoke('set_ocr_confidence_threshold', { threshold: settings.ocrConfidenceThreshold / 100 })
-    showMessage(`置信度阈值已设置为 ${settings.ocrConfidenceThreshold}%`)
-  } catch (error) {
-    console.error('设置置信度阈值失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateOCRTimeout = async () => {
-  try {
-    await invoke('set_ocr_timeout', { timeoutSecs: settings.ocrTimeoutSecs })
-    showMessage(`OCR超时时间已设置为 ${settings.ocrTimeoutSecs} 秒`)
-  } catch (error) {
-    console.error('设置OCR超时时间失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 辅助函数：获取OCR提供者名称
-const getOCRProviderName = (provider) => {
-  const providerMap = {
-    'auto': '默认',
-    'tesseract': 'Tesseract',
-    'windows': 'Windows OCR',
-    'baidu': '百度OCR',
-    'google': 'Google Vision',
-    'custom': '自定义'
-  }
-  return providerMap[provider] || provider
-}
-
-
-// AI Agent 设置相关方法
-const toggleAIEnabled = async () => {
-  try {
-    await invoke('set_ai_enabled', { enabled: settings.aiEnabled })
-    showMessage(settings.aiEnabled ? '已启用AI助手' : '已禁用AI助手')
-  } catch (error) {
-    console.error('设置AI助手失败:', error)
-    settings.aiEnabled = !settings.aiEnabled
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateAIService = async () => {
-  try {
-    await invoke('set_ai_service', { service: settings.aiService })
-    showMessage(`AI服务已设置为 ${getAIServiceName(settings.aiService)}`)
-  } catch (error) {
-    console.error('设置AI服务失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateAIApiKey = async () => {
-  try {
-    await invoke('set_ai_api_key', { apiKey: settings.aiApiKey })
-    showMessage('API密钥已保存')
-  } catch (error) {
-    console.error('设置API密钥失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAIAutoTag = async () => {
-  try {
-    await invoke('set_ai_auto_tag', { enabled: settings.aiAutoTag })
-    showMessage(settings.aiAutoTag ? '已启用自动打Tag' : '已禁用自动打Tag')
-  } catch (error) {
-    console.error('设置自动打Tag失败:', error)
-    settings.aiAutoTag = !settings.aiAutoTag
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAIAutoSummary = async () => {
-  try {
-    await invoke('set_ai_auto_summary', { enabled: settings.aiAutoSummary })
-    showMessage(settings.aiAutoSummary ? '已启用自动总结' : '已禁用自动总结')
-  } catch (error) {
-    console.error('设置自动总结失败:', error)
-    settings.aiAutoSummary = !settings.aiAutoSummary
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAITranslation = async () => {
-  try {
-    await invoke('set_ai_translation', { enabled: settings.aiTranslation })
-    showMessage(settings.aiTranslation ? '已启用翻译功能' : '已禁用翻译功能')
-  } catch (error) {
-    console.error('设置翻译功能失败:', error)
-    settings.aiTranslation = !settings.aiTranslation
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAIWebSearch = async () => {
-  try {
-    await invoke('set_ai_web_search', { enabled: settings.aiWebSearch })
-    showMessage(settings.aiWebSearch ? '已启用联网搜索' : '已禁用联网搜索')
-  } catch (error) {
-    console.error('设置联网搜索失败:', error)
-    settings.aiWebSearch = !settings.aiWebSearch
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
+// 删除AI对话历史
 const clearAiHistory = async () => {
   if (confirm('确定要清空所有AI对话历史吗？此操作不可恢复。')) {
     try {
-      await invoke('clear_ai_history')
+      // await invoke('clear_ai_history')
       showMessage('AI对话历史已清空')
     } catch (error) {
       console.error('清空AI历史失败:', error)
@@ -1458,133 +1395,10 @@ const clearAiHistory = async () => {
   }
 }
 
-// 安全与隐私相关方法
-const toggleSensitiveFilter = async () => {
-  try {
-    await invoke('set_sensitive_filter', { enabled: settings.sensitiveFilter })
-    showMessage(settings.sensitiveFilter ? '已启用敏感词过滤' : '已禁用敏感词过滤')
-  } catch (error) {
-    console.error('设置敏感词过滤失败:', error)
-    settings.sensitiveFilter = !settings.sensitiveFilter
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterPasswords = async () => {
-  try {
-    await invoke('set_filter_passwords', { enabled: settings.filterPasswords })
-    showMessage(settings.filterPasswords ? '已启用密码过滤' : '已禁用密码过滤')
-  } catch (error) {
-    console.error('设置密码过滤失败:', error)
-    settings.filterPasswords = !settings.filterPasswords
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterBankCards = async () => {
-  try {
-    await invoke('set_filter_bank_cards', { enabled: settings.filterBankCards })
-    showMessage(settings.filterBankCards ? '已启用银行卡号过滤' : '已禁用银行卡号过滤')
-  } catch (error) {
-    console.error('设置银行卡号过滤失败:', error)
-    settings.filterBankCards = !settings.filterBankCards
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterIDCards = async () => {
-  try {
-    await invoke('set_filter_id_cards', { enabled: settings.filterIDCards })
-    showMessage(settings.filterIDCards ? '已启用身份证号过滤' : '已禁用身份证号过滤')
-  } catch (error) {
-    console.error('设置身份证号过滤失败:', error)
-    settings.filterIDCards = !settings.filterIDCards
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterPhoneNumbers = async () => {
-  try {
-    await invoke('set_filter_phone_numbers', { enabled: settings.filterPhoneNumbers })
-    showMessage(settings.filterPhoneNumbers ? '已启用手机号过滤' : '已禁用手机号过滤')
-  } catch (error) {
-    console.error('设置手机号过滤失败:', error)
-    settings.filterPhoneNumbers = !settings.filterPhoneNumbers
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updatePrivacyRetentionDays = async () => {
-  try {
-    await invoke('set_privacy_retention_days', { days: parseInt(settings.privacyRetentionDays) })
-    showMessage(`隐私记录保留时间已设置为 ${settings.privacyRetentionDays} 天`)
-  } catch (error) {
-    console.error('设置隐私记录保留时间失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-const viewPrivacyRecords = async () => {
-  try {
-    const records = await invoke('get_privacy_records')
-    // 这里可以打开一个模态框显示隐私记录
-    showMessage(`找到 ${records.length} 条隐私记录`)
-  } catch (error) {
-    console.error('获取隐私记录失败:', error)
-    showMessage(`获取失败: ${error}`)
-  }
-}
-
-const deleteAllPrivacyRecords = async () => {
-  if (confirm('确定要永久删除所有隐私记录吗？此操作不可恢复！')) {
-    try {
-      await invoke('delete_all_privacy_records')
-      showMessage('所有隐私记录已删除')
-    } catch (error) {
-      console.error('删除隐私记录失败:', error)
-      showMessage(`删除失败: ${error}`)
-    }
-  }
-}
-
-// 数据备份相关方法
-const changeStoragePath = async () => {
-  try {
-    const newPath = await invoke('select_storage_path')
-    if (newPath) {
-      settings.dataStoragePath = newPath
-      await invoke('set_storage_path', { path: newPath })
-      showMessage('存储路径已更新')
-    }
-  } catch (error) {
-    console.error('更改存储路径失败:', error)
-    showMessage(`更改失败: ${error}`)
-  }
-}
-
-const toggleAutoBackup = async () => {
-  try {
-    await invoke('set_auto_backup', { enabled: settings.autoBackup })
-    showMessage(settings.autoBackup ? '已启用自动备份' : '已禁用自动备份')
-  } catch (error) {
-    console.error('设置自动备份失败:', error)
-    settings.autoBackup = !settings.autoBackup
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateBackupFrequency = async () => {
-  try {
-    await invoke('set_backup_frequency', { frequency: settings.backupFrequency })
-    showMessage(`备份频率已设置为 ${getBackupFrequencyName(settings.backupFrequency)}`)
-  } catch (error) {
-    console.error('设置备份频率失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
+// 导出备份函数
 const exportData = async () => {
   try {
-    const exportPath = await invoke('export_user_data')
+    // const exportPath = await invoke('export_user_data')
     showMessage(`数据已导出到: ${exportPath}`)
   } catch (error) {
     console.error('导出数据失败:', error)
@@ -1592,9 +1406,10 @@ const exportData = async () => {
   }
 }
 
+// 导入备份函数
 const importData = async () => {
   try {
-    const result = await invoke('import_user_data')
+    // const result = await invoke('import_user_data')
     if (result.success) {
       showMessage('数据导入成功')
     }
@@ -1604,9 +1419,10 @@ const importData = async () => {
   }
 }
 
+// 创建备份函数
 const createBackup = async () => {
   try {
-    const backupPath = await invoke('create_backup')
+    // const backupPath = await invoke('create_backup')
     showMessage(`备份已创建: ${backupPath}`)
   } catch (error) {
     console.error('创建备份失败:', error)
@@ -1636,18 +1452,6 @@ const getBackupFrequencyName = (frequency) => {
 }
 
 // 云端同步相关函数
-// 启用/禁用云端同步
-const toggleCloudSync = async () => {
-  try {
-    await invoke('set_cloud_sync', { enabled: settings.cloudSync })
-    showMessage(settings.cloudSync ? '已启用云端同步' : '已禁用云端同步')
-  } catch (error) {
-    console.error('设置云端同步失败:', error)
-    settings.cloudSync = !settings.cloudSync
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
 // 格式化时间显示
 const formatTime = (timestamp) => {
   if (!timestamp) return '';
@@ -1662,7 +1466,7 @@ const manualSync = async () => {
   isSyncing.value = true;
   try {
     // 调用同步API
-    await invoke('force_cloud_sync');
+    //await invoke('force_cloud_sync');
     lastSyncStatus.value = 'success';
     lastSyncTime.value = Date.now();
     
@@ -1678,34 +1482,11 @@ const manualSync = async () => {
   }
 }
 
-// 同步频率
-const updateSyncFrequency = async () => {
-  try {
-    await invoke('set_sync_frequency', { frequency: settings.syncFrequency })
-    showMessage(`同步频率已设置为 ${getFrequencyText(settings.syncFrequency)}`)
-  } catch (error) {
-    console.error('设置同步频率失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 加密同步数据
-const toggleEncryptCloudData = async () => {
-  try {
-    await invoke('set_encrypt_cloud_data', { enabled: settings.encryptCloudData })
-    showMessage(settings.encryptCloudData ? '已启用数据加密' : '已禁用数据加密')
-  } catch (error) {
-    console.error('设置数据加密失败:', error)
-    settings.encryptCloudData = !settings.encryptCloudData
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
 // 立即同步
 const syncNow = async () => {
   try {
     showMessage('正在同步...')
-    await invoke('force_cloud_sync')
+    //await invoke('force_cloud_sync')
     showMessage('云端同步完成')
   } catch (error) {
     console.error('同步失败:', error)
@@ -1716,7 +1497,7 @@ const syncNow = async () => {
 // 查看同步状态
 const checkSyncStatus = async () => {
   try {
-    const status = await invoke('get_sync_status')
+    //const status = await invoke('get_sync_status')
     showMessage(`同步状态: ${status.lastSync ? `最后同步 ${formatTime(status.lastSync)}` : '从未同步'}`)
   } catch (error) {
     console.error('获取同步状态失败:', error)
@@ -1724,37 +1505,10 @@ const checkSyncStatus = async () => {
   }
 }
 
-// 辅助函数：获取频率文本
-const getFrequencyText = (frequency) => {
-  const frequencyMap = {
-    'realtime': '实时',
-    '5min': '5分钟',
-    '15min': '15分钟', 
-    '1hour': '1小时'
-  }
-  return frequencyMap[frequency] || frequency
-}
-
-// 用户信息相关函数
-// 保存用户信息
-const saveUserInfo = async () => {
-  try {
-    await invoke('update_user_profile', {
-      username: userInfo.username,
-      email: userInfo.email,
-      bio: userInfo.bio
-    })
-    showMessage('用户信息已保存')
-  } catch (error) {
-    console.error('保存用户信息失败:', error)
-    showMessage(`保存失败: ${error}`)
-  }
-}
-
 // 更换头像
 const changeAvatar = async () => {
   try {
-    const filePath = await invoke('select_avatar_file')
+    // const filePath = await invoke('select_avatar_file')
     if (filePath) {
       await invoke('upload_user_avatar', { filePath })
       showMessage('头像更换成功')
@@ -1769,7 +1523,7 @@ const changeAvatar = async () => {
 const changePassword = async () => {
   try {
     // 这里应该打开密码修改模态框
-    const result = await invoke('open_change_password_dialog')
+    // const result = await invoke('open_change_password_dialog')
     if (result.success) {
       showMessage('密码修改成功')
     }
@@ -1783,7 +1537,7 @@ const changePassword = async () => {
 const deleteAccount = async () => {
   if (confirm('确定要删除账户吗？此操作将永久删除所有数据且不可恢复！')) {
     try {
-      await invoke('delete_user_account')
+      // await invoke('delete_user_account')
       showMessage('账户已删除')
       router.push('/')
     } catch (error) {
@@ -1792,41 +1546,6 @@ const deleteAccount = async () => {
     }
   }
 }
-
-// 导出用户数据
-const exportUserData = async () => {
-  try {
-    const exportPath = await invoke('export_user_data')
-    showMessage(`用户数据已导出到: ${exportPath}`)
-  } catch (error) {
-    console.error('导出数据失败:', error)
-    showMessage(`导出失败: ${error}`)
-  }
-}
-
-// 导入用户数据
-const importUserData = async () => {
-  try {
-    const importPath = await invoke('import_user_data')
-    showMessage('用户数据导入成功')
-    // 重新加载用户信息
-    await loadUserInfo()
-  } catch (error) {
-    console.error('导入数据失败:', error)
-    showMessage(`导入失败: ${error}`)
-  }
-}
-
-// 加载用户信息
-const loadUserInfo = async () => {
-  try {
-    const profile = await invoke('get_user_profile')
-    Object.assign(userInfo, profile)
-  } catch (error) {
-    console.error('加载用户信息失败:', error)
-  }
-}
-
 </script>
 
 <style scoped>

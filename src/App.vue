@@ -13,7 +13,7 @@ const settingsStore = useSettingsStore()
 onMounted(async () => {
   // 应用启动时初始化配置
   await settingsStore.initializeSettings()
-  console.log('应用配置已初始化')
+  console.log('应用配置已初始化', settingsStore.settings)
 })
 </script>
 

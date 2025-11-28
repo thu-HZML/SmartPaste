@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result, Result as SqlResult, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Result, Result as SqlResult};
 use std::fs;
 use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
 
 // use crate::clipboard::folder_item_to_json;
-use crate::clipboard::folder_items_to_json;
 use crate::clipboard::clipboard_item_to_json;
 use crate::clipboard::clipboard_items_to_json;
+use crate::clipboard::folder_items_to_json;
 use crate::clipboard::ClipboardItem;
 use crate::clipboard::FolderItem;
 
@@ -286,7 +286,7 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-      // ---------------------------------------------------------
+    // ---------------------------------------------------------
     // 1. 在删除记录前，先查询该记录的文件路径
     // ---------------------------------------------------------
     let query_result: SqlResult<(String, String)> = conn.query_row(
@@ -308,7 +308,7 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
                 } else {
                     println!("🗑️ 已删除关联的本地文件夹: {:?}", path);
                 }
-            } 
+            }
             // ✅ 情况 B: 如果是图片或普通文件
             else if item_type == "image" || item_type == "file" || path.is_file() {
                 // 使用 remove_file 删除单个文件
@@ -329,7 +329,6 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     let rows_affected = conn
         .execute("DELETE FROM data WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-
 
     Ok(rows_affected)
 }
@@ -521,8 +520,12 @@ pub fn search_data(search_type: &str, query: &str) -> Result<String, String> {
             if parts.len() != 2 {
                 return Err("Invalid timestamp range format".to_string());
             }
-            let start: i64 = parts[0].parse().map_err(|_| "Invalid start timestamp".to_string())?;
-            let end: i64 = parts[1].parse().map_err(|_| "Invalid end timestamp".to_string())?;
+            let start: i64 = parts[0]
+                .parse()
+                .map_err(|_| "Invalid start timestamp".to_string())?;
+            let end: i64 = parts[1]
+                .parse()
+                .map_err(|_| "Invalid end timestamp".to_string())?;
 
             let mut stmt = conn
                 .prepare(
@@ -670,7 +673,6 @@ pub fn search_data(search_type: &str, query: &str) -> Result<String, String> {
     clipboard_items_to_json(results)
 }
 
-
 // 文本搜索。作为 Tauri command 暴露给前端调用。
 // 根据传入的字符串，对所有属于 text 类的 content 字段进行模糊搜索，返回匹配的记录列表。
 // # Param
@@ -687,8 +689,8 @@ pub fn search_data(search_type: &str, query: &str) -> Result<String, String> {
 
 //     let mut stmt = conn
 //         .prepare(
-//             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
-//              FROM data 
+//             "SELECT id, item_type, content, size, is_favorite, notes, timestamp
+//              FROM data
 //              WHERE item_type = 'text' AND content LIKE ?1",
 //         )
 //         .map_err(|e| e.to_string())?;
@@ -760,7 +762,7 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE item_type IN ('folder', 'file')",
-            vec![]
+            vec![],
         )
     } else {
         // 其他类型按原来的逻辑处理
@@ -768,13 +770,11 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
              WHERE item_type = ?1",
-            vec![item_type]
+            vec![item_type],
         )
     };
 
-    let mut stmt = conn
-        .prepare(sql)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
 
     let row_to_clipboard_item = |row: &rusqlite::Row| -> rusqlite::Result<ClipboardItem> {
         Ok(ClipboardItem {
@@ -819,7 +819,7 @@ pub fn create_new_folder(name: &str) -> Result<String, String> {
     let id = Uuid::new_v4().to_string();
     conn.execute(
         "INSERT INTO folders (id, name, num_items) VALUES (?1, ?2, ?3)",
-        params![id, name, 0]
+        params![id, name, 0],
     )
     .map_err(|e| e.to_string())?;
 
@@ -858,11 +858,8 @@ pub fn delete_folder(folder_id: &str) -> Result<String, String> {
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    conn.execute(
-        "DELETE FROM folders WHERE id = ?1",
-        params![folder_id],
-    )
-    .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM folders WHERE id = ?1", params![folder_id])
+        .map_err(|e| e.to_string())?;
 
     Ok("deleted".to_string())
 }
@@ -885,7 +882,7 @@ pub fn get_all_folders() -> Result<String, String> {
             Ok(FolderItem {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                num_items:row.get::<_, i64>(2)? as u32,
+                num_items: row.get::<_, i64>(2)? as u32,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -910,11 +907,12 @@ pub fn add_item_to_folder(folder_id: &str, item_id: &str) -> Result<String, Stri
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let rows = conn.execute(
-        "INSERT OR IGNORE INTO folder_items (folder_id, item_id) VALUES (?1, ?2)",
-        params![folder_id, item_id],
-    )
-    .map_err(|e| e.to_string())?;
+    let rows = conn
+        .execute(
+            "INSERT OR IGNORE INTO folder_items (folder_id, item_id) VALUES (?1, ?2)",
+            params![folder_id, item_id],
+        )
+        .map_err(|e| e.to_string())?;
 
     if rows > 0 {
         conn.execute(
@@ -939,11 +937,12 @@ pub fn remove_item_from_folder(folder_id: &str, item_id: &str) -> Result<String,
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let rows = conn.execute(
-        "DELETE FROM folder_items WHERE folder_id = ?1 AND item_id = ?2",
-        params![folder_id, item_id],
-    )
-    .map_err(|e| e.to_string())?;
+    let rows = conn
+        .execute(
+            "DELETE FROM folder_items WHERE folder_id = ?1 AND item_id = ?2",
+            params![folder_id, item_id],
+        )
+        .map_err(|e| e.to_string())?;
 
     if rows > 0 {
         conn.execute(
@@ -1071,9 +1070,7 @@ pub fn get_ocr_text_by_item_id(item_id: &str) -> Result<String, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare(
-            "SELECT ocr_text FROM extended_data WHERE item_id = ?1",
-        )
+        .prepare("SELECT ocr_text FROM extended_data WHERE item_id = ?1")
         .map_err(|e| e.to_string())?;
 
     let ocr_text: Option<String> = stmt
@@ -1160,9 +1157,7 @@ pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare(
-            "SELECT icon_data FROM extended_data WHERE item_id = ?1",
-        )
+        .prepare("SELECT icon_data FROM extended_data WHERE item_id = ?1")
         .map_err(|e| e.to_string())?;
 
     let icon_data: Option<String> = stmt
@@ -1175,5 +1170,5 @@ pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
 
 /// # 单元测试
 #[cfg(test)]
-#[path ="test_db.rs"]
+#[path = "test_db.rs"]
 mod tests;
