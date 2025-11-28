@@ -88,10 +88,10 @@
             </div>
             <div class="setting-control">
               <select v-model="settings.retentionDays" class="select-input" @change="updateRetentionDays">
-                <option value="7">7天</option>
-                <option value="30">30天</option>
-                <option value="90">90天</option>
-                <option value="0">永久保存</option>
+                <option value=7>7天</option>
+                <option value=30>30天</option>
+                <option value=90>90天</option>
+                <option value=0>永久保存</option>
               </select>
             </div>
           </div>
@@ -100,18 +100,6 @@
         <!-- 快捷键设置 -->
         <div v-if="activeNav === 'shortcuts'" class="panel-section">
           <h2>快捷键设置</h2>
-          
-          <div class="setting-item" v-for="(displayName, shortcutType) in shortcutDisplayNames" :key="shortcutType">
-            <div class="setting-info">
-              <h3>{{ displayName }}</h3>
-              <p>快速{{ displayName.replace('显示/隐藏', '').replace('清空', '') }}功能</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording(shortcutType)">
-                {{ settings.shortcuts[shortcutType] || '点击设置' }}
-              </div>
-            </div>
-          </div>
           
           <div class="hint">
             <p>提示：点击快捷键输入框，然后按下您想要设置的组合键</p>
@@ -249,7 +237,7 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleOCRAutoRecognition">
+                <input type="checkbox" v-model="deleteConfirmationWithMessage">
                 <span class="slider"></span>
               </label>
             </div>
@@ -776,10 +764,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted,computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+import { useSettingsStore } from '../stores/settings'
 import { 
   Cog6ToothIcon,
   TvIcon,
@@ -833,74 +822,15 @@ const navItems = ref([
 ])
 
 // 设置数据
-const settings = reactive({
-  autoStart: true,
-  showTrayIcon: true,
-  showMinimizeTrayIcon:true,
-  autoSave: true,
-  retentionDays: '30',
-  maxHistoryItems: 100,
-  ignoreShortText: 3,
-  ignoreBigFile: 5,
-  ignoredApps: ['密码管理器', '银行应用'],
-  previewLength: 115,
-  cloudSync: true,
-  syncFrequency: 'realtime',
-  syncContantType: 'onlytxt',
-  syncOnlyWifi: true,
-  encryptCloudData: true,
-
-  // 剪贴板参数设置
-  autoClassify: true,
-  ocrAutoRecognition: true,
-  deleteConfirmation: true,
-  keepFavorites: true,
-  autoSort: true,
-
-  // OCR设置
-  ocrProvider: 'auto',
-  ocrLanguages: ['chi_sim', 'eng'],
-  ocrConfidenceThreshold: 80,
-  ocrTimeoutSecs: 30,
-  
-  // AI Agent 设置
-  aiEnabled: false,
-  aiService: 'openai',
-  aiApiKey: '',
-  aiAutoTag: true,
-  aiAutoSummary: true,
-  aiTranslation: true,
-  aiWebSearch: false,
-  
-  // 安全与隐私
-  sensitiveFilter: true,
-  filterPasswords: true,
-  filterBankCards: true,
-  filterIDCards: true,
-  filterPhoneNumbers: true,
-  privacyRetentionDays: '7',
-  
-  // 数据备份
-  dataStoragePath: '',
-  autoBackup: true,
-  backupFrequency: 'weekly',
-
-  shortcuts: {
-    toggleWindow: '',
-    pasteWindow: '',
-    AIWindow: '',
-    quickPaste: '',
-    clearHistory: ''
-  }
-})
+const settings = useSettingsStore()
 
 // 快捷键显示名称映射
 const shortcutDisplayNames = {
-  toggleWindow: '显示/隐藏主窗口',
-  pasteWindow: '显示/隐藏剪贴板', 
-  AIWindow: '显示/隐藏AI助手',
-  quickPaste: '快速粘贴',
-  clearHistory: '清空剪贴板历史'
+  global_shortcut: '显示/隐藏主窗口',
+  global_shortcut_2: '显示/隐藏剪贴板', 
+  global_shortcut_3: '显示/隐藏AI助手',
+  global_shortcut_4: '快速粘贴',
+  global_shortcut_5: '清空剪贴板历史'
 }
 
 // 同步状态相关数据
@@ -965,7 +895,6 @@ onMounted(async () => {
     lastSyncTime.value = parseInt(savedTime);
   }
   await checkAutostartStatus()
-  await loadAllShortcuts()
 
   // 初始化窗口大小
   try {
@@ -1196,8 +1125,6 @@ const setShortcut = async (newShortcutStr, shortcutType) => {
     successMsg.value = `${shortcutDisplayNames[shortcutType]} 快捷键设置成功！`
     console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
 
-    // 重新加载当前快捷键
-    await loadAllShortcuts()
   } catch (err) {
     errorMsg.value = `设置失败: ${err}`
     console.error('❌ 设置快捷键失败:', err)
@@ -1215,18 +1142,6 @@ const setShortcut = async (newShortcutStr, shortcutType) => {
   }, 3000)
 }
 
-// 辅助函数：获取快捷键显示名称
-const getShortcutDisplayName = (shortcutType) => {
-  const nameMap = {
-    'toggleWindow': '显示/隐藏主窗口',
-    'asteWindow': '显示/隐藏剪贴板',
-    'quickPaste': '快速粘贴', 
-    'clearHistory': '清空剪贴板历史'
-  };
-  return nameMap[shortcutType] || shortcutType;
-}
-
-
 // 取消录制（可选）
 const cancelRecording = () => {
   shortcutManager.isRecording = false
@@ -1236,24 +1151,6 @@ const cancelRecording = () => {
   showMessage('已取消快捷键设置')
 }
 
-const loadAllShortcuts = async () => {
-  try {
-    const allShortcuts = await invoke('get_all_shortcuts')
-    Object.assign(settings.shortcuts, allShortcuts)
-    console.log('所有快捷键加载完成:', allShortcuts)
-  } catch (error) {
-    console.error('加载快捷键失败:', error)
-    // 设置默认值
-    const defaultShortcuts = {
-      toggleWindow: 'Shift+D',
-      pasteWindow: 'Alt+Shift+C', 
-      AIWindow: 'Ctrl+Shift+A',
-      quickPaste: 'Ctrl+Shift+V',
-      clearHistory: 'Ctrl+Shift+Delete'
-    }
-    Object.assign(settings.shortcuts, defaultShortcuts)
-  }
-}
 
 // 剪贴板参数设置相关函数
 // 最大历史记录数量
@@ -1377,7 +1274,14 @@ const toggleOCRAutoRecognition = async () => {
   }
 }
 //删除确认
-const toggleDeleteConfirmation = async () => {
+const deleteConfirmationWithMessage = computed({
+  get: () => settings.deleteConfirmation,
+  set: (value) => {
+    settings.deleteConfirmation = value
+    showMessage(value ? '已启用删除确认' : '已禁用删除确认')
+  }
+})
+/*const toggleDeleteConfirmation = async () => {
   try {
     await invoke('set_delete_confirmation', { enabled: settings.deleteConfirmation })
     showMessage(settings.deleteConfirmation ? '已启用删除确认' : '已禁用删除确认')
@@ -1386,7 +1290,7 @@ const toggleDeleteConfirmation = async () => {
     settings.deleteConfirmation = !settings.deleteConfirmation
     showMessage(`设置失败: ${error}`)
   }
-}
+}*/
 //收藏保留
 const toggleKeepFavorites = async () => {
   try {
