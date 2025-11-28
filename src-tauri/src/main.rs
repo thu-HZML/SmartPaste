@@ -557,9 +557,20 @@ fn main() {
                 let cfg = lock.read().unwrap();
                 if let Some(ref path_str) = cfg.storage_path {
                     let custom_path = PathBuf::from(path_str);
-                    if !path_str.trim().is_empty() && custom_path.exists() {
+                    if !path_str.trim().is_empty() {
                         println!("✅ 检测到配置的存储路径: {}", path_str);
-                        data_root = custom_path.clone();
+                        
+                        // 检查自定义路径是否存在，如果不存在则创建
+                        if !custom_path.exists() {
+                            println!("📁 创建存储路径: {}", custom_path.display());
+                            if let Err(e) = std::fs::create_dir_all(&custom_path) {
+                                eprintln!("❌ 创建存储路径失败: {}", e);
+                            } else {
+                                data_root = custom_path.clone();
+                            }
+                        } else {
+                            data_root = custom_path.clone();
+                        }
                         
                         // 检查新路径下是否有配置文件
                         let new_config_path = data_root.join("config.json");
@@ -571,7 +582,20 @@ fn main() {
                             let reload_result = config::init_config();
                             println!("重新加载配置结果: {}", reload_result);
                         } else {
-                            println!("⚠️ 新路径下没有配置文件，保持使用默认配置路径");
+                            println!("ℹ️ 新路径下没有配置文件，将使用默认配置路径");
+                            // 如果新路径没有配置文件，但存储路径已设置，我们创建一个
+                            println!("📝 在新路径创建配置文件");
+                            if let Some(lock) = config::CONFIG.get() {
+                                let config_to_save = lock.read().unwrap().clone();
+                                config::set_config_path(new_config_path.clone());
+                                if let Err(e) = config::save_config(config_to_save) {
+                                    eprintln!("❌ 创建新路径配置文件失败: {}", e);
+                                    // 恢复默认路径
+                                    config::set_config_path(default_config_path.clone());
+                                } else {
+                                    println!("✅ 新路径配置文件创建成功");
+                                }
+                            }
                         }
                     }
                 }
@@ -598,8 +622,17 @@ fn main() {
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
                 println!("📍 配置中记录的存储路径: {:?}", cfg.storage_path);
-                println!("📍 应用数据目录: {}", app_default_dir.display());
                 println!("📍 最终数据根目录: {}", data_root.display());
+                
+                // 验证存储路径是否与最终数据根目录一致
+                if let Some(ref storage_path) = cfg.storage_path {
+                    let storage_path_buf = PathBuf::from(storage_path);
+                    if storage_path_buf != data_root {
+                        println!("⚠️ 警告: 配置中的存储路径与最终数据根目录不一致");
+                        println!("  配置存储路径: {}", storage_path);
+                        println!("  实际数据根目录: {}", data_root.display());
+                    }
+                }
             }
 
             // 其他现有代码保持不变...

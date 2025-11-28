@@ -840,14 +840,17 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
             let mut cfg = lock.write().unwrap();
             cfg.storage_path = Some(new_path_str.clone());
         }
+
+        // 保存配置到新路径
         let new_config_path = new_path.join("config.json");
+        let old_config_path = get_config_path();
         
         println!("💾 准备保存配置到新路径: {}", new_config_path.display());
         
         // 切换到新路径保存配置
-        let old_config_path = get_config_path();
         set_config_path(new_config_path.clone());
         
+        // 验证路径是否真的改变了
         let current_path_after_set = get_config_path();
         println!("🔍 设置配置路径后，当前配置路径: {}", current_path_after_set.display());
         
@@ -859,7 +862,7 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         }
 
         let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
-        match save_config(cfg_clone) {
+        match save_config(cfg_clone.clone()) {
             Ok(_) => {
                 // 更新数据库路径
                 let new_db_path = new_path.join("smartpaste.db");
@@ -875,9 +878,33 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
                     }
                 } else {
                     println!("❌ 新配置文件不存在，保存可能失败");
-                    // 尝试重新保存
-                    if let Err(e) = save_config(CONFIG.get().unwrap().read().unwrap().clone()) {
-                        println!("❌ 重新保存也失败: {}", e);
+                }
+                
+                // 🔥 关键修复：同时更新默认路径的配置文件
+                // 这样应用重启后能从默认路径读取到正确的存储路径
+                let app_default_dir = app.path().app_data_dir().unwrap();
+                let default_config_path = app_default_dir.join("config.json");
+                
+                if default_config_path != new_config_path {
+                    println!("📝 同时更新默认路径的配置文件: {}", default_config_path.display());
+                    
+                    // 创建默认路径的配置副本
+                    let mut default_config = cfg_clone.clone();
+                    // 确保存储路径字段正确
+                    default_config.storage_path = Some(new_path_str.clone());
+                    
+                    // 保存到默认路径
+                    let old_path_for_default = get_config_path();
+                    set_config_path(default_config_path.clone());
+                    
+                    if let Err(e) = save_config(default_config) {
+                        println!("⚠️ 更新默认路径配置文件失败: {}", e);
+                        // 恢复配置路径
+                        set_config_path(old_path_for_default);
+                    } else {
+                        println!("✅ 默认路径配置文件更新成功");
+                        // 恢复配置路径到新路径
+                        set_config_path(new_config_path);
                     }
                 }
                 
@@ -934,7 +961,6 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         }
     }
 }
-
 // /// 设置数据存储路径
 // /// # Param
 // /// path: PathBuf - 新的数据存储路径
