@@ -5,8 +5,9 @@ use std::{
     path::PathBuf,
     sync::{OnceLock, RwLock},
 };
+use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
-
+static CONFIG_PATH_GLOBAL: RwLock<Option<PathBuf>> = RwLock::new(None);
 /// 系统配置结构体，包含通用设置、剪贴板参数、AI、隐私、备份、云同步和用户信息等配置项。
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Config {
@@ -423,24 +424,25 @@ impl Default for Config {
     }
 }
 
-static CONFIG_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
 pub static CONFIG: OnceLock<RwLock<Config>> = OnceLock::new();
 
 /// 设置配置 JSON 文件路径
 /// # Param
 /// path: PathBuf - 配置文件路径
 pub fn set_config_path(path: PathBuf) {
-    CONFIG_PATH_GLOBAL.set(path).ok();
+    println!("🔄 设置配置路径: {}", path.display());
+    let mut global_path = CONFIG_PATH_GLOBAL.write().unwrap();
+    *global_path = Some(path);
 }
-
 /// 获取配置 JSON 文件路径
 /// # Returns
 /// PathBuf - 配置文件路径
 pub fn get_config_path() -> PathBuf {
-    CONFIG_PATH_GLOBAL
-        .get()
-        .cloned()
-        .unwrap_or_else(|| PathBuf::from("config.json"))
+    let global_path = CONFIG_PATH_GLOBAL.read().unwrap();
+    global_path.clone().unwrap_or_else(|| {
+        println!("⚠️ 使用默认配置路径");
+        PathBuf::from("config.json")
+    })
 }
 
 /// 初始化全局配置。如果存在配置文件则加载，否则使用默认配置并创建文件。
@@ -492,8 +494,38 @@ pub fn get_config_json() -> String {
 /// 保存配置到文件
 pub fn save_config(config: Config) -> Result<(), String> {
     let config_path = get_config_path();
+    println!("💾 正在保存配置到: {}", config_path.display());
+    
+    // 确保目录存在
+    if let Some(parent) = config_path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return Err(format!("创建配置目录失败: {}", e));
+        }
+    }
+    
     let data = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    fs::write(config_path, data).map_err(|e| e.to_string())
+    match fs::write(&config_path, &data) {
+        Ok(_) => {
+            println!("✅ 配置保存成功: {}", config_path.display());
+            
+            // 验证文件确实被创建
+            if config_path.exists() {
+                println!("✅ 配置文件确认存在");
+                if let Ok(metadata) = fs::metadata(&config_path) {
+                    println!("📊 配置文件大小: {} 字节", metadata.len());
+                }
+            } else {
+                println!("❌ 配置文件不存在，保存可能失败");
+            }
+            
+            Ok(())
+        }
+        Err(e) => {
+            let error_msg = format!("保存配置到 {} 失败: {}", config_path.display(), e);
+            println!("❌ {}", error_msg);
+            Err(error_msg)
+        }
+    }
 }
 
 /// 内部辅助函数：更新除 Autostart 外的简单配置项
@@ -586,7 +618,97 @@ pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(
         Err(e) => Err(e),
     }
 }
+/// 迁移数据到新的存储路径
+/// 迁移数据到新的存储路径
+fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
+    println!("🚚 开始迁移数据文件从 {} 到 {}", old_path.display(), new_path.display());
+    
+    // 确保新路径存在
+    if let Err(e) = fs::create_dir_all(new_path) {
+        return Err(format!("创建新存储路径失败: {}", e));
+    }
 
+    let files_to_migrate = vec![
+        ("smartpaste.db", "数据库文件"),
+        ("files", "文件目录")
+        // 注意：config.json 不在这里迁移，我们会单独处理
+    ];
+
+    for (file_name, desc) in files_to_migrate {
+        let old_file_path = old_path.join(file_name);
+        let new_file_path = new_path.join(file_name);
+        
+        if old_file_path.exists() {
+            if file_name == "files" && old_file_path.is_dir() {
+                // 处理文件夹迁移
+                if new_file_path.exists() {
+                    if let Err(e) = fs::remove_dir_all(&new_file_path) {
+                        return Err(format!("清空目标文件夹失败: {}", e));
+                    }
+                }
+                
+                match copy_dir_all(&old_file_path, &new_file_path) {
+                    Ok(_) => println!("✅ 已迁移 {}: {}", desc, file_name),
+                    Err(e) => return Err(format!("迁移 {} 失败: {}", desc, e)),
+                }
+            } else {
+                // 处理文件迁移
+                match fs::copy(&old_file_path, &new_file_path) {
+                    Ok(_) => println!("✅ 已迁移 {}: {}", desc, file_name),
+                    Err(e) => return Err(format!("迁移 {} 失败: {}", desc, e)),
+                }
+            }
+        } else {
+            println!("ℹ️ {} 不存在，跳过迁移: {}", desc, file_name);
+        }
+    }
+    
+    println!("🎉 数据文件迁移完成");
+    Ok(())
+}
+
+/// 递归复制目录
+fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            fs::copy(&entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// 获取当前的数据存储路径
+fn get_current_storage_path() -> PathBuf {
+    // 首先检查配置中的存储路径
+    if let Some(lock) = CONFIG.get() {
+        let cfg = lock.read().unwrap();
+        if let Some(ref path_str) = cfg.storage_path {
+            let custom_path = PathBuf::from(path_str);
+            if !path_str.trim().is_empty() {
+                return custom_path;
+            }
+        }
+    }
+    
+    // 回退到配置文件的父目录
+    let config_path = get_config_path();
+    if let Some(parent) = config_path.parent() {
+        return parent.to_path_buf();
+    }
+    
+    // 最后回退到当前目录
+    PathBuf::from(".")
+}
 /// 按传入参数修改配置信息。作为 Tauri Command 暴露给前端调用。
 ///
 /// 该函数是前端修改配置的统一入口。根据传入的 `key` 找到对应的配置项，并将 `value` 转换为相应的类型进行更新。
@@ -672,49 +794,144 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         None => return format!("Invalid config key: {}", key),
     };
 
-    // 尝试使用通用逻辑更新
-    match update_simple_config_item(&config_key, value.clone()) {
-        Ok(true) => {
-            // 已更新内存，直接保存
-            let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
-            match save_config(cfg_clone) {
-                Ok(_) => "config updated".to_string(),
-                Err(e) => format!("failed to save config: {}", e),
+    // 特殊处理存储路径修改
+    if config_key == ConfigKey::StoragePath {
+        let new_path_str = match value.as_str() {
+            Some(s) => s.to_string(),
+            None => return "Invalid storage path value".to_string(),
+        };
+
+        // 获取当前存储路径
+        let current_path = get_current_storage_path();
+        let new_path = PathBuf::from(&new_path_str);
+
+        println!("🔄 开始修改存储路径: {} -> {}", current_path.display(), new_path.display());
+
+        // 验证新路径
+        if new_path_str.trim().is_empty() {
+            return "Storage path cannot be empty".to_string();
+        }
+
+        // 如果新旧路径相同，直接返回
+        if current_path == new_path {
+            return "Storage path unchanged".to_string();
+        }
+
+        // 创建新路径
+        if let Err(e) = fs::create_dir_all(&new_path) {
+            return format!("Failed to create storage path: {}", e);
+        }
+
+        // 保存当前配置到旧路径，确保所有更改已持久化
+        if let Some(lock) = CONFIG.get() {
+            let current_config = lock.read().unwrap().clone();
+            if let Err(e) = save_config(current_config) {
+                return format!("Failed to save current config before migration: {}", e);
             }
         }
-        Ok(false) => {
-            // 返回 false 说明是 Autostart，需要特殊处理
-            if config_key == ConfigKey::Autostart {
-                match serde_json::from_value::<bool>(value) {
-                    Ok(enable) => {
-                        let autolaunch = app.autolaunch();
-                        let res = if enable {
-                            autolaunch.enable()
-                        } else {
-                            autolaunch.disable()
-                        };
-                        match res {
-                            Ok(_) => {
-                                if let Some(lock) = CONFIG.get() {
-                                    let mut cfg = lock.write().unwrap();
-                                    cfg.autostart = enable;
-                                }
-                                let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
-                                match save_config(cfg_clone) {
-                                    Ok(_) => "config updated".to_string(),
-                                    Err(e) => format!("failed to save config: {}", e),
-                                }
-                            }
-                            Err(e) => format!("Failed to change autostart: {}", e),
-                        }
+
+        // 执行数据迁移（不包括 config.json）
+        if let Err(e) = migrate_data_to_new_path(&current_path, &new_path) {
+            return format!("Data migration failed: {}", e);
+        }
+
+        // 更新内存中的配置
+        if let Some(lock) = CONFIG.get() {
+            let mut cfg = lock.write().unwrap();
+            cfg.storage_path = Some(new_path_str.clone());
+        }
+        let new_config_path = new_path.join("config.json");
+        
+        println!("💾 准备保存配置到新路径: {}", new_config_path.display());
+        
+        // 切换到新路径保存配置
+        let old_config_path = get_config_path();
+        set_config_path(new_config_path.clone());
+        
+        let current_path_after_set = get_config_path();
+        println!("🔍 设置配置路径后，当前配置路径: {}", current_path_after_set.display());
+        
+        if current_path_after_set != new_config_path {
+            println!("❌ 配置路径设置失败，期望: {}，实际: {}", 
+                new_config_path.display(), current_path_after_set.display());
+            set_config_path(old_config_path);
+            return "Failed to set config path".to_string();
+        }
+
+        let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
+        match save_config(cfg_clone) {
+            Ok(_) => {
+                // 更新数据库路径
+                let new_db_path = new_path.join("smartpaste.db");
+                crate::db::set_db_path(new_db_path);
+                
+                println!("✅ 存储路径修改完成，配置已保存到新路径: {}", new_config_path.display());
+                
+                // 验证新配置文件确实存在
+                if new_config_path.exists() {
+                    println!("✅ 新配置文件确认存在: {}", new_config_path.display());
+                    if let Ok(metadata) = fs::metadata(&new_config_path) {
+                        println!("📊 新配置文件大小: {} 字节", metadata.len());
                     }
-                    Err(_) => format!("Invalid type for key '{}'", key),
+                } else {
+                    println!("❌ 新配置文件不存在，保存可能失败");
+                    // 尝试重新保存
+                    if let Err(e) = save_config(CONFIG.get().unwrap().read().unwrap().clone()) {
+                        println!("❌ 重新保存也失败: {}", e);
+                    }
                 }
-            } else {
-                format!("Unhandled config key: {}", key)
+                
+                "config updated and data migrated".to_string()
+            }
+            Err(e) => {
+                // 如果保存失败，恢复旧的配置路径
+                set_config_path(old_config_path);
+                format!("failed to save config: {}", e)
             }
         }
-        Err(e) => e,
+    } else {
+        // 其他配置项的原有逻辑保持不变
+        match update_simple_config_item(&config_key, value.clone()) {
+            Ok(true) => {
+                let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
+                match save_config(cfg_clone) {
+                    Ok(_) => "config updated".to_string(),
+                    Err(e) => format!("failed to save config: {}", e),
+                }
+            }
+            Ok(false) => {
+                if config_key == ConfigKey::Autostart {
+                    match serde_json::from_value::<bool>(value) {
+                        Ok(enable) => {
+                            let autolaunch = app.autolaunch();
+                            let res = if enable {
+                                autolaunch.enable()
+                            } else {
+                                autolaunch.disable()
+                            };
+                            match res {
+                                Ok(_) => {
+                                    if let Some(lock) = CONFIG.get() {
+                                        let mut cfg = lock.write().unwrap();
+                                        cfg.autostart = enable;
+                                    }
+                                    let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
+                                    match save_config(cfg_clone) {
+                                        Ok(_) => "config updated".to_string(),
+                                        Err(e) => format!("failed to save config: {}", e),
+                                    }
+                                }
+                                Err(e) => format!("Failed to change autostart: {}", e),
+                            }
+                        }
+                        Err(_) => format!("Invalid type for key '{}'", key),
+                    }
+                } else {
+                    format!("Unhandled config key: {}", key)
+                }
+            }
+            Err(e) => e,
+        }
     }
 }
 

@@ -400,6 +400,22 @@ fn normalize_shortcut_format(shortcut: &str) -> String {
 
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
+        // 获取配置的存储路径
+        let data_root = if let Some(lock) = crate::config::CONFIG.get() {
+            let cfg = lock.read().unwrap();
+            if let Some(ref path_str) = cfg.storage_path {
+                PathBuf::from(path_str)
+            } else {
+                app_handle.path().app_data_dir().unwrap()
+            }
+        } else {
+            app_handle.path().app_data_dir().unwrap()
+        };
+        
+        let files_dir = data_root.join("files");
+        fs::create_dir_all(&files_dir).unwrap();
+        
+        println!("🎯 剪贴板监控使用存储路径: {}", data_root.display());
         let mut last_text = String::new();
         let mut last_image_bytes: Vec<u8> = Vec::new();
         let mut last_file_paths: Vec<PathBuf> = Vec::new();
