@@ -410,7 +410,8 @@ import {
 const router = useRouter()
 const route = useRoute()
 const currentWindow = getCurrentWindow();
-const settings = useSettingsStore()
+const store = useSettingsStore()        
+const settings = store.settings
 
 // 响应式数据
 const searchQuery = ref('')
@@ -784,8 +785,8 @@ const executeDoubleClick = async (item) => {
 
 // 弹出"确认删除"提示框
 const showDeleteAll = () => {
-  // 根据 deleteConfirmation 设置决定是否显示确认对话框
-  if (settings.deleteConfirmation) {
+  // 根据 delete_confirmation 设置决定是否显示确认对话框
+  if (settings.delete_confirmation) {
     showDeleteModal.value = true
   } else {
     // 如果不需要确认，直接执行删除操作
