@@ -85,6 +85,49 @@ fn test_insert_get_delete() {
 }
 
 #[test]
+fn test_not_text_data_insert_and_delete() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // insert image, file, folder types
+    let img_item = make_item("img-1", "image", ".\\files\\image.png");
+    let file_item = make_item("file-1", "file", ".\\files\\document.pdf");
+    let folder_item = make_item("folder-1", "folder", ".\\files\\myfolder");
+
+    // insert
+    insert_received_db_data(img_item.clone()).expect("insert image failed");
+    insert_received_db_data(file_item.clone()).expect("insert file failed");
+    insert_received_db_data(folder_item.clone()).expect("insert folder failed");
+
+    // get and verify
+    let img_json = get_data_by_id(&img_item.id).expect("get image failed");
+    let fetched_img: ClipboardItem = serde_json::from_str(&img_json).expect("parse image");
+    assert_eq!(fetched_img.id, img_item.id);
+
+    let file_json = get_data_by_id(&file_item.id).expect("get file failed");
+    let fetched_file: ClipboardItem = serde_json::from_str(&file_json).expect("parse file");
+    assert_eq!(fetched_file.id, file_item.id);
+
+    let folder_json = get_data_by_id(&folder_item.id).expect("get folder failed");
+    let fetched_folder: ClipboardItem = serde_json::from_str(&folder_json).expect("parse folder");
+    assert_eq!(fetched_folder.id, folder_item.id);
+
+    // delete
+    delete_data_by_id(&img_item.id).expect("delete image failed");
+    delete_data_by_id(&file_item.id).expect("delete file failed");
+    delete_data_by_id(&folder_item.id).expect("delete folder failed");
+
+    // ensure deleted
+    let img_json2 = get_data_by_id(&img_item.id).expect("get image after delete");
+    assert_eq!(img_json2, "null");
+    let file_json2 = get_data_by_id(&file_item.id).expect("get file after delete");
+    assert_eq!(file_json2, "null");
+    let folder_json2 = get_data_by_id(&folder_item.id).expect("get folder after delete");
+    assert_eq!(folder_json2, "null");
+}
+
+#[test]
 fn test_get_latest_data() {
     let _g = test_lock();
     set_test_db_path();
