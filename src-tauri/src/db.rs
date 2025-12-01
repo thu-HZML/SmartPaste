@@ -360,6 +360,59 @@ pub fn update_data_content_by_id(id: &str, new_content: &str) -> Result<String, 
     }
 }
 
+/// 更新file/folder/image数据的本地路径。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// old_path: &str - 旧的本地路径
+/// new_path: &str - 新的本地路径
+/// # Returns
+/// Result<usize, String> - 受影响的行数，如果失败则返回错误信息
+#[tauri::command]
+pub fn update_data_path(old_path: &str, new_path: &str) -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    // 开启事务以确保数据一致性
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 1. 获取所有相关类型的记录
+    let mut stmt = tx.prepare(
+        "SELECT id, content FROM data WHERE item_type IN ('file', 'image', 'folder')"
+    ).map_err(|e| e.to_string())?;
+
+    let rows: Vec<(String, String)> = stmt.query_map([], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    }).map_err(|e| e.to_string())?
+    .filter_map(Result::ok)
+    .collect();
+
+    // 释放 statement 借用，以便后续使用 tx
+    drop(stmt);
+
+    let mut count = 0;
+
+    // 2. 遍历并更新匹配的路径
+    for (id, content) in rows {
+        if content.starts_with(old_path) {
+            // 替换前缀
+            // 使用 replacen 确保只替换开头的匹配项
+            let new_content = content.replacen(old_path, new_path, 1);
+            
+            tx.execute(
+                "UPDATE data SET content = ?1 WHERE id = ?2",
+                params![new_content, id],
+            ).map_err(|e| e.to_string())?;
+            
+            count += 1;
+        }
+    }
+
+    // 提交事务
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(count)
+}
+
 /// 根据 ID 修改收藏状态。作为 Tauri command 暴露给前端调用。
 /// 如果 is_favorite 为 true，则收藏数据；否则取消收藏数据。
 /// # Param

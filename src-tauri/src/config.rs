@@ -528,7 +528,7 @@ pub fn save_config(config: Config) -> Result<(), String> {
     }
 }
 
-/// 内部辅助函数：更新除 Autostart 外的简单配置项
+/// 内部辅助函数：更新简单配置项
 /// 返回 Ok(true) 表示已处理并更新内存
 /// 返回 Ok(false) 表示该 key (如 Autostart) 需要特殊处理，未更新
 /// 返回 Err 表示类型错误或其他错误
