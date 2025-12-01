@@ -619,7 +619,6 @@ pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(
     }
 }
 /// 迁移数据到新的存储路径
-/// 迁移数据到新的存储路径
 fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
     println!("🚚 开始迁移数据文件从 {} 到 {}", old_path.display(), new_path.display());
     
@@ -881,7 +880,27 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         if let Err(e) = migrate_data_to_new_path(&current_path, &new_path) {
             return format!("Data migration failed: {}", e);
         }
+        // 我们需要将数据库中的旧路径更新为新路径
+        let old_path_str = current_path.to_string_lossy().replace('\\', "/");
+        let new_path_str = new_path.to_string_lossy().replace('\\', "/");
 
+        println!("🔄 开始更新数据库中的文件路径...");
+        println!("  旧路径: {}", old_path_str);
+        println!("  新路径: {}", new_path_str);
+
+        // 更新数据库中的文件路径
+        match crate::db::update_data_path(&old_path_str, &new_path_str) {
+            Ok(count) => {
+                println!("✅ 成功更新了 {} 条记录的路径", count);
+                if count == 0 {
+                    println!("⚠️ 没有找到需要更新的文件路径记录，这可能是正常的");
+                }
+            },
+            Err(e) => {
+                println!("⚠️ 更新数据库路径失败: {}", e);
+                // 这里不返回错误，继续执行，因为迁移已经完成
+            }
+        }
         // 更新内存中的配置
         if let Some(lock) = CONFIG.get() {
             let mut cfg = lock.write().unwrap();

@@ -3,7 +3,7 @@ use std::fs;
 use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::{path::Path, sync::OnceLock};
+use std::{path::Path, sync::RwLock}; 
 use crate::config;
 // use crate::clipboard::folder_item_to_json;
 use crate::clipboard::clipboard_item_to_json;
@@ -14,25 +14,26 @@ use crate::clipboard::FolderItem;
 
 // const DB_PATH: &str = "smartpaste.db";
 
-static DB_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
-
+static DB_PATH_GLOBAL: RwLock<Option<PathBuf>> = RwLock::new(None);
 /// 设置数据库路径
 /// # Param
 /// path: PathBuf - 数据库文件路径
 pub fn set_db_path(path: PathBuf) {
-    let _ = DB_PATH_GLOBAL.set(path);
+    // 3. 使用 write() 锁来强制更新路径
+    let mut db_path = DB_PATH_GLOBAL.write().unwrap();
+    println!("🔄 数据库路径已在内存中更新为: {:?}", path); 
+    *db_path = Some(path);
 }
-
 /// 获取数据库路径
 /// # Returns
 /// PathBuf - 数据库文件路径
 fn get_db_path() -> PathBuf {
-    DB_PATH_GLOBAL
-        .get()
-        .cloned()
+    // 4. 使用 read() 锁来获取当前路径
+    let db_path = DB_PATH_GLOBAL.read().unwrap();
+    db_path
+        .clone()
         .unwrap_or_else(|| PathBuf::from("smartpaste.db"))
 }
-
 /// 初始化数据库（合并了 CREATE TABLE IF NOT EXISTS 的逻辑）
 /// path: &Path - 数据库文件路径
 pub fn init_db(path: &Path) -> Result<()> {
@@ -405,11 +406,21 @@ pub fn update_data_content_by_id(id: &str, new_content: &str) -> Result<String, 
 /// new_path: &str - 新的本地路径
 /// # Returns
 /// Result<usize, String> - 受影响的行数，如果失败则返回错误信息
+/// 更新file/folder/image数据的本地路径。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// old_path: &str - 旧的本地路径
+/// new_path: &str - 新的本地路径
+/// # Returns
+/// Result<usize, String> - 受影响的行数，如果失败则返回错误信息
 #[tauri::command]
 pub fn update_data_path(old_path: &str, new_path: &str) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    println!("🔧 更新数据库中的文件路径...");
+    println!("  旧路径: {}", old_path);
+    println!("  新路径: {}", new_path);
 
     // 开启事务以确保数据一致性
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -432,10 +443,39 @@ pub fn update_data_path(old_path: &str, new_path: &str) -> Result<usize, String>
 
     // 2. 遍历并更新匹配的路径
     for (id, content) in rows {
-        if content.starts_with(old_path) {
+        let mut updated = false;
+        let mut new_content = content.clone();
+        
+        // 检查是否需要更新
+        // 处理 Windows 路径分隔符问题
+        let normalized_content = content.replace('\\', "/");
+        let normalized_old_path = old_path.replace('\\', "/");
+        
+        // 检查是否以旧路径开头（处理绝对路径）
+        if normalized_content.starts_with(&normalized_old_path) {
             // 替换前缀
-            // 使用 replacen 确保只替换开头的匹配项
-            let new_content = content.replacen(old_path, new_path, 1);
+            new_content = content.replacen(old_path, new_path, 1);
+            updated = true;
+        } 
+        // 检查是否是相对路径（以 files/ 开头）
+        else if normalized_content.starts_with("files/") || normalized_content.starts_with("./files/") || normalized_content.starts_with(r".\files\") {
+            // 对于相对路径，我们需要更新存储路径，但相对路径保持不变
+            // 这里不需要修改，因为相对路径相对于新的存储路径仍然有效
+            println!("ℹ️ 记录 {} 使用相对路径，无需修改: {}", id, content);
+        }
+        // 检查是否是绝对路径但包含旧存储路径的其他形式
+        else if let Some(relative_path) = normalized_content.split("/files/").last() {
+            // 如果路径包含 "/files/"，尝试将其转换为新路径
+            if relative_path != normalized_content {
+                new_content = format!("{}/files/{}", new_path, relative_path);
+                updated = true;
+            }
+        }
+        
+        if updated {
+            println!("🔄 更新记录 {} 的路径:", id);
+            println!("  旧路径: {}", content);
+            println!("  新路径: {}", new_content);
             
             tx.execute(
                 "UPDATE data SET content = ?1 WHERE id = ?2",
@@ -449,6 +489,7 @@ pub fn update_data_path(old_path: &str, new_path: &str) -> Result<usize, String>
     // 提交事务
     tx.commit().map_err(|e| e.to_string())?;
 
+    println!("✅ 数据库路径更新完成，共更新 {} 条记录", count);
     Ok(count)
 }
 
