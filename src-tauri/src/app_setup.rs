@@ -401,21 +401,7 @@ fn normalize_shortcut_format(shortcut: &str) -> String {
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
         // 获取配置的存储路径
-        let data_root = if let Some(lock) = crate::config::CONFIG.get() {
-            let cfg = lock.read().unwrap();
-            if let Some(ref path_str) = cfg.storage_path {
-                PathBuf::from(path_str)
-            } else {
-                app_handle.path().app_data_dir().unwrap()
-            }
-        } else {
-            app_handle.path().app_data_dir().unwrap()
-        };
-
-        let files_dir = data_root.join("files");
-        fs::create_dir_all(&files_dir).unwrap();
-
-        println!("🎯 剪贴板监控使用存储路径: {}", data_root.display());
+        // 初始变量状态
         let mut last_text = String::new();
         let mut last_image_bytes: Vec<u8> = Vec::new();
         let mut last_file_paths: Vec<PathBuf> = Vec::new();
@@ -423,13 +409,22 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         let mut is_first_run = true;
         let mut frontend_ignore_countdown = 0;
 
-        let app_dir = app_handle.path().app_data_dir().unwrap();
-        let files_dir = app_dir.join("files");
-        // let files_dir = PathBuf::from(".\\files");
-        let db_root_dir = PathBuf::from(".\\files");
-        fs::create_dir_all(&files_dir).unwrap();
+        // 定义相对路径根目录 (保持不变，因为这是存入数据库的相对路径)
+        let db_root_dir = PathBuf::from("files"); 
 
         loop {
+            let current_storage_path = crate::config::get_current_storage_path();
+            let files_dir = current_storage_path.join("files");
+
+            // 确保目录存在 (防止路径刚切换，文件夹还没建好，或者被意外删除)
+            if !files_dir.exists() {
+                if let Err(e) = fs::create_dir_all(&files_dir) {
+                    eprintln!("❌ 无法创建文件存储目录 {:?}: {}", files_dir, e);
+                    // 如果目录创建失败，本次循环暂停，避免后续报错
+                    thread::sleep(Duration::from_millis(1000));
+                    continue; 
+                }
+            }
             {
                 let state = app_handle.state::<ClipboardSourceState>();
                 let mut flag = state.is_frontend_copy.lock().unwrap();

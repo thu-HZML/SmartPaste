@@ -41,6 +41,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
+// main.rs 头部引入
+use windows::Win32::System::Com::{CoInitialize, CoUninitialize, COINIT_APARTMENTTHREADED};
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -358,7 +360,30 @@ async fn get_file_icon(path: String) -> Result<String, String> {
 #[cfg(target_os = "windows")]
 fn extract_icon_base64(path: &str) -> Result<String, String> {
     unsafe {
-        let wide_path: Vec<u16> = OsStr::new(path)
+        // 1. 初始化 COM
+        let com_init = CoInitialize(None);
+        let _com_guard = ScopeGuard((), |_| {
+            if com_init.is_ok() {
+               CoUninitialize();
+            }
+        });
+
+        // 2. 路径规范化：强制将所有正斜杠 '/' 替换为反斜杠 '\'
+        // Windows API 对混合斜杠非常敏感
+        let normalized_path = path.replace("/", "\\");
+
+        // 3. 处理 UNC 前缀 (\\?\)
+        // 如果规范化后的路径以 \\?\ 开头，则去掉它，因为 SHGetFileInfoW 有时对这个前缀处理不好
+        let clean_path = if normalized_path.starts_with(r"\\?\") {
+            &normalized_path[4..]
+        } else {
+            &normalized_path
+        };
+
+        // 调试日志（可选，确认路径变正常了）
+        // println!("🔧 提取图标使用的路径: {}", clean_path);
+
+        let wide_path: Vec<u16> = OsStr::new(clean_path)
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
@@ -373,7 +398,7 @@ fn extract_icon_base64(path: &str) -> Result<String, String> {
         );
 
         if result == 0 || shfi.hIcon.is_invalid() {
-            return Err("SHGetFileInfoW 失败或未找到图标".to_string());
+            return Err(format!("SHGetFileInfoW 失败或未找到图标，路径: {}", clean_path));
         }
 
         let hicon = shfi.hIcon;
