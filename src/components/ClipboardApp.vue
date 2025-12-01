@@ -184,7 +184,7 @@
                 <div v-else-if="item.item_type === 'image'" class="image-container">
                   <img 
                     v-if="item.content"
-                    :src="convertFileSrc(item.content)" 
+                    :src="convertFileSrc(normalizedPath + item.content)" 
                     :alt="'图片: ' + getFileName(item.content)"
                     class="preview-image"
                     @error="handleImageError"
@@ -410,7 +410,7 @@ import {
 const router = useRouter()
 const route = useRoute()
 const currentWindow = getCurrentWindow();
-const settings = useSettingsStore()
+const settings = useSettingsStore().settings
 
 // 响应式数据
 const searchQuery = ref('')
@@ -508,6 +508,12 @@ watch(searchType, (newType) => {
     startTime.value = ''
     endTime.value = ''
   }
+})
+
+// 计算属性：规范化路径
+const normalizedPath = computed(() => {
+  if (!settings.storage_path) return '未设置路径'
+  return settings.storage_path.replace(/\\\\/g, '\\')
 })
 
 // 监听时间变化
