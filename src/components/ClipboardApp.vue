@@ -184,7 +184,7 @@
                 <div v-else-if="item.item_type === 'image'" class="image-container">
                   <img 
                     v-if="item.content"
-                    :src="convertFileSrc(normalizedPath + item.content)" 
+                    :src="convertFileSrc(normalizedPath + '\\' + item.content)" 
                     :alt="'图片: ' + getFileName(item.content)"
                     class="preview-image"
                     @error="handleImageError"
@@ -513,7 +513,7 @@ watch(searchType, (newType) => {
 // 计算属性：规范化路径
 const normalizedPath = computed(() => {
   if (!settings.storage_path) return '未设置路径'
-  return settings.storage_path.replace(/\\\\/g, '\\')
+  return settings.storage_path.replace(/\//g, '\\')
 })
 
 // 监听时间变化
