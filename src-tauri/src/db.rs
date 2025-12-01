@@ -4,7 +4,7 @@ use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{path::Path, sync::OnceLock};
-
+use crate::config;
 // use crate::clipboard::folder_item_to_json;
 use crate::clipboard::clipboard_item_to_json;
 use crate::clipboard::clipboard_items_to_json;
@@ -296,30 +296,70 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     );
 
     if let Ok((item_type, content)) = query_result {
-        let path = Path::new(&content);
+        // 获取当前配置的存储路径
+        let storage_path = crate::config::get_current_storage_path();
+        
+        // 处理相对路径：如果是以 ".\files\" 或 "./files/" 开头的相对路径
+        let file_path = if content.starts_with(r".\files\") || content.starts_with("./files/") || content.starts_with("files/") {
+            // 从相对路径中提取文件名部分
+            let file_name = if let Some(name) = content.split(r"\files\").last() {
+                name.to_string()
+            } else if let Some(name) = content.split(r"./files/").last() {
+                name.to_string()
+            } else if let Some(name) = content.split("files/").last() {
+                name.to_string()
+            } else {
+                content.to_string()
+            };
+            
+            // 构建完整路径：storage_path + "files" + 文件名
+            storage_path.join("files").join(file_name)
+        } else if content.starts_with(r"files\") {
+            // 处理 files\xxx 格式
+            let file_name = content.split(r"files\").last().unwrap_or(&content);
+            storage_path.join("files").join(file_name)
+        } else {
+            // 如果不是相对路径，直接使用
+            PathBuf::from(&content)
+        };
+
+        println!("🗑️ 尝试删除文件: {:?}", file_path);
+        println!("🗑️ 存储根目录: {:?}", storage_path);
 
         // 检查路径是否存在
-        if path.exists() {
+        if file_path.exists() {
             // ✅ 情况 A: 如果是文件夹类型 (或者物理路径确实是个文件夹)
-            if item_type == "folder" || path.is_dir() {
+            if item_type == "folder" || file_path.is_dir() {
                 // 使用 remove_dir_all 递归删除文件夹及其内容
-                if let Err(e) = fs::remove_dir_all(path) {
-                    eprintln!("⚠️ 删除本地文件夹失败 (ID: {}): {:?} - {}", id, path, e);
+                if let Err(e) = fs::remove_dir_all(&file_path) {
+                    eprintln!("⚠️ 删除本地文件夹失败 (ID: {}): {:?} - {}", id, file_path, e);
                 } else {
-                    println!("🗑️ 已删除关联的本地文件夹: {:?}", path);
+                    println!("🗑️ 已删除关联的本地文件夹: {:?}", file_path);
                 }
             }
             // ✅ 情况 B: 如果是图片或普通文件
-            else if item_type == "image" || item_type == "file" || path.is_file() {
+            else if item_type == "image" || item_type == "file" || file_path.is_file() {
                 // 使用 remove_file 删除单个文件
-                if let Err(e) = fs::remove_file(path) {
-                    eprintln!("⚠️ 删除本地文件失败 (ID: {}): {:?} - {}", id, path, e);
+                if let Err(e) = fs::remove_file(&file_path) {
+                    eprintln!("⚠️ 删除本地文件失败 (ID: {}): {:?} - {}", id, file_path, e);
                 } else {
-                    println!("🗑️ 已删除关联的本地文件: {:?}", path);
+                    println!("🗑️ 已删除关联的本地文件: {:?}", file_path);
                 }
             }
         } else {
-            println!("ℹ️ 本地路径不存在，跳过物理删除: {:?}", path);
+            println!("ℹ️ 本地路径不存在，跳过物理删除: {:?}", file_path);
+            // 尝试调试：打印可能的其他路径
+            let alt_path = Path::new(&content);
+            println!("ℹ️ 原始路径: {:?}", alt_path);
+            if alt_path.exists() {
+                println!("ℹ️ 原始路径存在，尝试删除");
+                // 尝试删除原始路径
+                if alt_path.is_dir() {
+                    let _ = fs::remove_dir_all(alt_path);
+                } else {
+                    let _ = fs::remove_file(alt_path);
+                }
+            }
         }
     }
 
@@ -332,7 +372,6 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
 
     Ok(rows_affected)
 }
-
 /// 根据 ID 修改数据内容。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// id: &str - 要修改数据的 ID

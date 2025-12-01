@@ -719,7 +719,7 @@ fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
 }
 
 /// 获取当前的数据存储路径
-fn get_current_storage_path() -> PathBuf {
+pub fn get_current_storage_path() -> PathBuf {
     // 首先检查配置中的存储路径
     if let Some(lock) = CONFIG.get() {
         let cfg = lock.read().unwrap();
