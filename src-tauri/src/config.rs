@@ -619,6 +619,7 @@ pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(
     }
 }
 /// 迁移数据到新的存储路径
+/// 迁移数据到新的存储路径
 fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
     println!("🚚 开始迁移数据文件从 {} 到 {}", old_path.display(), new_path.display());
     
@@ -683,10 +684,25 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
         }
     }
     
+    // 🆕 新增功能：迁移完成后删除原路径下的 files 文件夹
+    let old_files_dir = old_path.join("files");
+    if old_files_dir.exists() && old_files_dir.is_dir() {
+        println!("🗑️ 开始删除原路径下的 files 文件夹: {}", old_files_dir.display());
+        match fs::remove_dir_all(&old_files_dir) {
+            Ok(_) => println!("✅ 已成功删除原路径下的 files 文件夹"),
+            Err(e) => {
+                // 注意：这里不返回错误，只记录日志，因为迁移已经成功
+                println!("⚠️ 删除原路径下的 files 文件夹失败: {}", e);
+                println!("ℹ️ 这可能是因为文件正在使用中或权限不足，但迁移已完成");
+            }
+        }
+    } else {
+        println!("ℹ️ 原路径下没有 files 文件夹，无需删除");
+    }
+    
     println!("🎉 数据文件迁移完成");
     Ok(())
 }
-
 /// 递归复制目录
 /// 递归复制目录
 fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
