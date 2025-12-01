@@ -912,3 +912,61 @@ fn test_insert_get_icon_data() {
     let got_none = get_icon_data_by_item_id("non-existent-id").expect("get icon none failed");
     assert_eq!(got_none, "");
 }
+
+#[test]
+fn test_update_data_path() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据
+    // 需要更新的项 (file, folder, image)
+    let file_match = make_item("udp-1", "file", "/old/root/doc.pdf");
+    let folder_match = make_item("udp-2", "folder", "/old/root/subfolder");
+    let image_match = make_item("udp-3", "image", "/old/root/img.png");
+
+    // 不应更新的项 - 类型不对 (text)
+    let text_match_prefix = make_item("udp-4", "text", "/old/root/note.txt");
+
+    // 不应更新的项 - 前缀不匹配
+    let file_no_match = make_item("udp-5", "file", "/other/root/doc.pdf");
+
+    // 边界情况：前缀匹配但不是目录边界 (starts_with 逻辑)
+    // "/old/root" 匹配 "/old/root_suffix/file"
+    let file_partial_match = make_item("udp-6", "file", "/old/root_suffix/file");
+
+    insert_received_db_data(file_match.clone()).expect("insert file_match");
+    insert_received_db_data(folder_match.clone()).expect("insert folder_match");
+    insert_received_db_data(image_match.clone()).expect("insert image_match");
+    insert_received_db_data(text_match_prefix.clone()).expect("insert text_match");
+    insert_received_db_data(file_no_match.clone()).expect("insert file_no_match");
+    insert_received_db_data(file_partial_match.clone()).expect("insert file_partial");
+
+    // 2. 执行更新
+    let old_path = "/old/root";
+    let new_path = "/new/root";
+    let count = update_data_path(old_path, new_path).expect("update_data_path failed");
+
+    // 3. 验证受影响行数
+    // file_match, folder_match, image_match, file_partial_match 应该被更新 (共4个)
+    // text_match_prefix 类型不对
+    // file_no_match 前缀不对
+    assert_eq!(count, 4, "expected 4 items to be updated");
+
+    // 4. 验证内容更新结果
+    let get_content = |id| -> String {
+        let json = get_data_by_id(id).unwrap();
+        let item: ClipboardItem = serde_json::from_str(&json).unwrap();
+        item.content
+    };
+
+    assert_eq!(get_content(&file_match.id), "/new/root/doc.pdf");
+    assert_eq!(get_content(&folder_match.id), "/new/root/subfolder");
+    assert_eq!(get_content(&image_match.id), "/new/root/img.png");
+
+    // 验证部分匹配的替换结果
+    assert_eq!(get_content(&file_partial_match.id), "/new/root_suffix/file");
+
+    // 5. 验证未受影响的项目保持原样
+    assert_eq!(get_content(&text_match_prefix.id), "/old/root/note.txt");
+}
