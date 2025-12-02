@@ -431,9 +431,20 @@ pub static CONFIG: OnceLock<RwLock<Config>> = OnceLock::new();
 /// # Param
 /// path: PathBuf - 配置文件路径
 pub fn set_config_path(path: PathBuf) {
-    println!("🔄 设置配置路径: {}", path.display());
+    // 🔥 修复：强制规范化路径分隔符
+    let path_str = path.to_string_lossy().to_string();
+    
+    #[cfg(target_os = "windows")]
+    let normalized_path_str = path_str.replace("/", "\\");
+    
+    #[cfg(not(target_os = "windows"))]
+    let normalized_path_str = path_str;
+
+    let normalized_path = PathBuf::from(normalized_path_str);
+
+    println!("🔄 设置配置路径(已规范化): {}", normalized_path.display());
     let mut global_path = CONFIG_PATH_GLOBAL.write().unwrap();
-    *global_path = Some(path);
+    *global_path = Some(normalized_path);
 }
 /// 获取配置 JSON 文件路径
 /// # Returns
@@ -740,9 +751,14 @@ pub fn get_current_storage_path() -> PathBuf {
     if let Some(lock) = CONFIG.get() {
         let cfg = lock.read().unwrap();
         if let Some(ref path_str) = cfg.storage_path {
-            let custom_path = PathBuf::from(path_str);
             if !path_str.trim().is_empty() {
-                return custom_path;
+                // 🔥 修复：读取时也进行规范化，防止旧配置污染
+                #[cfg(target_os = "windows")]
+                let clean_path = path_str.replace("/", "\\");
+                #[cfg(not(target_os = "windows"))]
+                let clean_path = path_str.clone();
+
+                return PathBuf::from(clean_path);
             }
         }
     }
@@ -847,7 +863,8 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
             Some(s) => s.to_string(),
             None => return "Invalid storage path value".to_string(),
         };
-
+        #[cfg(target_os = "windows")]
+        let new_path_str = new_path_str.replace("/", "\\");
         // 获取当前存储路径
         let current_path = get_current_storage_path();
         let new_path = PathBuf::from(&new_path_str);
@@ -1052,6 +1069,46 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
             }
             Err(e) => e,
         }
+    }
+}
+/// 强制从当前设置的路径重新加载配置到内存
+/// 用于在运行时切换存储路径后更新全局状态
+pub fn reload_config() -> String {
+    let config_path = get_config_path();
+    println!("🔄 正在重新加载配置: {}", config_path.display());
+
+    // 1. 读取文件内容
+    let config: Config = if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(data) => match serde_json::from_str(&data) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    eprintln!("❌ 解析配置文件失败: {}", e);
+                    return format!("Parse error: {}", e);
+                }
+            },
+            Err(e) => {
+                eprintln!("❌ 读取配置文件失败: {}", e);
+                return format!("Read error: {}", e);
+            }
+        }
+    } else {
+        eprintln!("⚠️ 配置文件不存在: {}", config_path.display());
+        return "File not found".to_string();
+    };
+
+    // 2. 更新全局 RwLock
+    if let Some(lock) = CONFIG.get() {
+        let mut global_cfg = lock.write().unwrap();
+        *global_cfg = config; // 👈 关键点：直接覆盖内存中的旧配置
+        println!("✅ 内存配置已更新");
+        "reloaded successfully".to_string()
+    } else {
+        // 理论上不应该走到这里，除非 init_config 还没被调用过
+        // 如果没初始化，尝试初始化
+        CONFIG.set(RwLock::new(config))
+            .map(|_| "initialized successfully".to_string())
+            .unwrap_or_else(|_| "Unknown error".to_string())
     }
 }
 // /// 设置数据存储路径
