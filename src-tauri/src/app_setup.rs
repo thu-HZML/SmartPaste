@@ -440,8 +440,34 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
         // 定义相对路径根目录 (保持不变，因为这是存入数据库的相对路径)
         let db_root_dir = PathBuf::from("files"); 
-
+        // 辅助函数
+        fn get_path_size(path: &Path) -> u64 {
+            if path.is_dir() {
+                // 递归计算文件夹大小
+                let mut total = 0;
+                if let Ok(entries) = fs::read_dir(path) {
+                    for entry in entries.flatten() {
+                        total += get_path_size(&entry.path());
+                    }
+                }
+                total
+            } else {
+                // 文件大小
+                fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+            }
+        }
         loop {
+            // 每次循环都重新读取配置，以支持运行时修改
+            let size_limit_mb = {
+                if let Some(lock) = CONFIG.get() {
+                    let cfg = lock.read().unwrap();
+                    cfg.ignore_big_file_mb
+                } else {
+                    5 // 默认值 5MB
+                }
+            };
+            let size_limit_bytes = size_limit_mb as u64 * 1024 * 1024;
+
             let current_storage_path = crate::config::get_current_storage_path();
             let files_dir = current_storage_path.join("files");
 
@@ -583,6 +609,17 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
                         for path in paths {
+                             // 检查文件/文件夹大小是否超过限制
+                            let path_size = get_path_size(&path);
+                            if size_limit_mb > 0 && path_size > size_limit_bytes {
+                                println!(
+                                    "❌ 文件/文件夹大小超过限制: {:?} ({} MB > {} MB)，跳过复制",
+                                    path,
+                                    path_size as f64 / (1024.0 * 1024.0),
+                                    size_limit_mb
+                                );
+                                continue; // 跳过这个文件/文件夹
+                            }
                             // 1. 判断类型：如果是目录则为 "folder"，否则按扩展名判断
                             let item_type = if path.is_dir() {
                                 "folder".to_string()
