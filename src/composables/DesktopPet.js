@@ -9,6 +9,12 @@ import {
   updateMenuWindowPositionRealTime,
   hasMenuWindow as checkMenuWindowExists
 } from '../utils/actions.js'
+import { 
+  AnimationManager, 
+  AnimationState, 
+  getAnimationForKey, 
+  getAnimationForMouse 
+} from './utils/animations.js'
 
 export function useDesktopPet() {
   const isHovering = ref(false)
@@ -21,6 +27,10 @@ export function useDesktopPet() {
   const scaleFactor = ref(1.486)
   const allowClickPet = ref(true)
   const currentPosition = ref({ x: 0, y: 0 })
+  const animationFrame = ref('idle_1') // 当前动画帧
+
+  // 初始化动画管理器
+  const animationManager = new AnimationManager()
 
   let clickPetTimeout = null
   let positionUpdateInterval = null
@@ -200,6 +210,102 @@ export function useDesktopPet() {
     document.removeEventListener('pointerup', handlePointerUp)
   }
 
+  // 设置动画回调
+  const setupAnimationCallbacks = () => {
+    animationManager.on('onFrameChange', (state, frameIndex) => {
+      const config = ANIMATION_CONFIG[state]
+      if (config && config.frames[frameIndex]) {
+        animationFrame.value = config.frames[frameIndex]
+      }
+    })
+
+    animationManager.on('onStateChange', (oldState, newState) => {
+      console.log(`动画状态: ${oldState} → ${newState}`)
+    })
+  }
+
+  // 监听全局键盘事件
+  const setupGlobalListeners = async () => {
+    try {
+      // 监听键盘按下事件
+      await listen('key-down', (event) => {
+        console.log('键盘按下:', event.payload)
+        handleKeyPress(event.payload)
+      })
+
+      // 监听键盘释放事件
+      await listen('key-up', (event) => {
+        // 可以在这里处理键盘释放的动画
+        console.log('键盘释放:', event.payload)
+      })
+
+      // 监听全局鼠标点击事件
+      await listen('global-mouse-down', (event) => {
+        handleGlobalMouseDown(event.payload)
+      })
+
+      // 监听全局鼠标释放事件
+      await listen('global-mouse-up', (event) => {
+        handleGlobalMouseUp(event.payload)
+      })
+
+    } catch (error) {
+      console.error('设置全局监听器失败:', error)
+    }
+  }
+
+  // 处理键盘按下
+  const handleKeyPress = (keyEvent) => {
+    if (!keyEvent || !keyEvent.code) return
+    
+    const animationType = getAnimationForKey(keyEvent.code)
+    
+    // 根据按键类型触发不同的动画
+    switch(animationType) {
+      case 'left_paw':
+        animationManager.setState(AnimationState.LEFT_CLICK)
+        break
+      case 'right_paw':
+        animationManager.setState(AnimationState.RIGHT_CLICK)
+        break
+      case 'both_paws':
+        // 双爪动画
+        animationManager.setState(AnimationState.KEY_PRESS)
+        break
+      default:
+        animationManager.setState(AnimationState.KEY_PRESS)
+    }
+    
+    // 动画持续时间后返回空闲状态
+    setTimeout(() => {
+      if (animationManager.currentState !== AnimationState.IDLE && 
+          !animationManager.isAnimating) {
+        animationManager.setState(AnimationState.IDLE)
+      }
+    }, 300)
+  }
+
+  // 处理全局鼠标按下
+  const handleGlobalMouseDown = (mouseEvent) => {
+    if (!mouseEvent || !mouseEvent.button) return
+    
+    const button = mouseEvent.button === 0 ? 'left' : 
+                   mouseEvent.button === 1 ? 'middle' : 'right'
+    
+    const animationState = getAnimationForMouse(button)
+    animationManager.setState(animationState)
+  }
+
+  // 处理全局鼠标释放
+  const handleGlobalMouseUp = (mouseEvent) => {
+    // 鼠标释放后，如果不是正在动画，返回空闲状态
+    if (!animationManager.isAnimating) {
+      setTimeout(() => {
+        animationManager.setState(AnimationState.IDLE)
+      }, 100)
+    }
+  }
+
   onMounted(async () => {
     console.log('[DesktopPet] mounted')
     try {
@@ -216,6 +322,14 @@ export function useDesktopPet() {
       }
       updateMainWindowPosition(currentPosition.value, { width: 120, height: 120 })
       
+      // 初始化动画系统
+      setupAnimationCallbacks()
+      animationManager.setState(AnimationState.IDLE)
+      
+      // 设置全局事件监听
+      await setupGlobalListeners()
+
+      // 启动位置跟踪
       startPositionTracking()
     } catch (error) {
       console.error('设置窗口大小失败:', error)
@@ -226,6 +340,7 @@ export function useDesktopPet() {
     stopPositionTracking()
     stopDragTracking()
     cleanupEventListeners()
+    animationManager.destroy()
   })
 
   return {
@@ -237,6 +352,7 @@ export function useDesktopPet() {
     handlePointerLeave,
     handlePointerDown,
     handleLeftClick,
-    handleContextMenu
+    handleContextMenu,
+    animationFrame
   }
 }

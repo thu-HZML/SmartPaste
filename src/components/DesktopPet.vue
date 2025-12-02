@@ -10,8 +10,14 @@ const {
   handlePointerLeave,
   handlePointerDown,
   handleLeftClick,
-  handleContextMenu
+  handleContextMenu,
+  animationFrame
 } = useDesktopPet()
+
+// 根据动画帧计算图片路径
+const petImagePath = computed(() => {
+  return `/animations/${animationFrame.value}.png`
+})
 </script>
 
 <template>
