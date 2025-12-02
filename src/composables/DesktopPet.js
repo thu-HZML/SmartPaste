@@ -1,8 +1,7 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
+import { listen } from '@tauri-apps/api/event'
 import { 
-  windowInstances, 
-  toggleClipboardWindow, 
   updateMainWindowPosition, 
   toggleMenuWindow,
   updateMenuWindowPosition,
@@ -13,8 +12,9 @@ import {
   AnimationManager, 
   AnimationState, 
   getAnimationForKey, 
-  getAnimationForMouse 
-} from './utils/animations.js'
+  getAnimationForMouse,
+  ANIMATION_CONFIG
+} from '../utils/animations.js'
 
 export function useDesktopPet() {
   const isHovering = ref(false)
@@ -27,7 +27,7 @@ export function useDesktopPet() {
   const scaleFactor = ref(1.486)
   const allowClickPet = ref(true)
   const currentPosition = ref({ x: 0, y: 0 })
-  const animationFrame = ref('idle_1') // 当前动画帧
+  const animationFrame = ref('cover') // 当前动画帧
 
   // 初始化动画管理器
   const animationManager = new AnimationManager()
@@ -35,6 +35,11 @@ export function useDesktopPet() {
   let clickPetTimeout = null
   let positionUpdateInterval = null
   let dragUpdateInterval = null
+
+  // 根据动画帧计算图片路径
+  const petImagePath = computed(() => {
+    return `/resources/${animationFrame.value}.png`
+  })
 
   // 启动位置跟踪（常规更新）
   const startPositionTracking = () => {
@@ -118,7 +123,6 @@ export function useDesktopPet() {
   }
 
   const handlePointerMove = async (event) => {  
-    console.log('删除点击定时器')
     clearTimeout(clickPetTimeout)
 
     if (event.buttons === 0) {
@@ -210,17 +214,24 @@ export function useDesktopPet() {
     document.removeEventListener('pointerup', handlePointerUp)
   }
 
-  // 设置动画回调
+  // 设置动画回调 - 修复帧更新逻辑
   const setupAnimationCallbacks = () => {
     animationManager.on('onFrameChange', (state, frameIndex) => {
+      
+      // 获取对应状态的配置
       const config = ANIMATION_CONFIG[state]
-      if (config && config.frames[frameIndex]) {
-        animationFrame.value = config.frames[frameIndex]
+      if (config && config.frames && config.frames.length > 0) {
+        // 确保帧索引在有效范围内
+        const safeFrameIndex = frameIndex % config.frames.length
+        const newFrame = config.frames[safeFrameIndex]
+        
+        console.log('新动画帧:', newFrame)
+        animationFrame.value = newFrame
       }
     })
 
     animationManager.on('onStateChange', (oldState, newState) => {
-      console.log(`动画状态: ${oldState} → ${newState}`)
+      console.log(`动画状态变化: ${oldState} → ${newState}`)
     })
   }
 
@@ -323,9 +334,9 @@ export function useDesktopPet() {
       updateMainWindowPosition(currentPosition.value, { width: 120, height: 120 })
       
       // 初始化动画系统
-      setupAnimationCallbacks()
-      animationManager.setState(AnimationState.IDLE)
-      
+      animationManager.setState(AnimationState.IDLE, true)
+      setupAnimationCallbacks()    
+
       // 设置全局事件监听
       await setupGlobalListeners()
 
@@ -344,10 +355,16 @@ export function useDesktopPet() {
   })
 
   return {
+    // 响应式状态
     isHovering,
     hasClipboardWindow,
     hasMenuWindow,
     isDragging,
+
+    // 计算属性
+    petImagePath,
+
+    // 事件处理函数
     handlePointerEnter,
     handlePointerLeave,
     handlePointerDown,

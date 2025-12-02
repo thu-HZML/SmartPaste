@@ -2,10 +2,16 @@
 import { useDesktopPet } from '../composables/DesktopPet'
 
 const {
+  // 响应式状态
   isHovering,
   hasClipboardWindow,
   hasMenuWindow,
   isDragging,
+
+  // 计算属性
+  petImagePath,
+
+  // 事件处理函数
   handlePointerEnter,
   handlePointerLeave,
   handlePointerDown,
@@ -14,10 +20,7 @@ const {
   animationFrame
 } = useDesktopPet()
 
-// 根据动画帧计算图片路径
-const petImagePath = computed(() => {
-  return `/animations/${animationFrame.value}.png`
-})
+
 </script>
 
 <template>
@@ -34,7 +37,7 @@ const petImagePath = computed(() => {
   >
     <div class="pet-container">
       <img
-        src="/pet.png"
+        :src="petImagePath"
         alt="Desktop Pet"
         draggable="false"
         :class="['pet-image', { 'hover': isHovering, 'has-window': hasMenuWindow }]"
