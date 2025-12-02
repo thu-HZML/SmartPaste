@@ -163,40 +163,6 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <h3>自动分类</h3>
-              <p>自动分类开关</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.auto_classify" 
-                  @change="updateSetting('auto_classify', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>OCR自动识别</h3>
-              <p>OCR自动识别开关</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.ocr_auto_recognition" 
-                  @change="updateSetting('ocr_auto_recognition', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
               <h3>删除确认</h3>
               <p>删除剪贴板内容时弹出确认对话框</p>
             </div>
@@ -607,41 +573,6 @@
             </div>
           </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动备份</h3>
-              <p>定期自动备份数据</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.auto_backup" 
-                  @change="updateSetting('auto_backup', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div v-if="settings.auto_backup" class="setting-item">
-            <div class="setting-info">
-              <h3>备份频率</h3>
-              <p>自动备份的频率</p>
-            </div>
-            <div class="setting-control">
-              <select 
-                v-model="settings.backup_frequency" 
-                @change="updateSetting('backup_frequency', $event.target.value)" 
-                class="select-input"
-              >
-                <option value="daily">每天</option>
-                <option value="weekly">每周</option>
-                <option value="monthly">每月</option>
-              </select>
-            </div>
-          </div>
-
           <div class="backup-actions">
             <h3>数据操作</h3>
 
@@ -662,13 +593,6 @@
                 <button class="btn btn-secondary" @click="importData">导入数据</button>
               </div>
 
-              <div class="action-item">
-                <div class="action-info">
-                  <h4>立即备份</h4>
-                  <p>立即创建数据备份</p>
-                </div>
-                <button class="btn btn-secondary" @click="createBackup">立即备份</button>
-              </div>
             </div>
           </div>
         </div>
