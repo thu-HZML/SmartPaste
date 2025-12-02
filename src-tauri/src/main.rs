@@ -41,6 +41,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
+// main.rs 头部引入
+use windows::Win32::System::Com::{CoInitialize, CoUninitialize, COINIT_APARTMENTTHREADED};
 #[tauri::command]
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -76,6 +78,7 @@ async fn write_file_to_clipboard(
     // 写入剪贴板 (复用列表逻辑，只不过列表里只有一个)
     copy_files_list_to_clipboard(vec![final_path])
 }
+
 fn copy_dir_all(src: &Path, dst: &Path) -> io::Result<()> {
     // 如果目标文件夹不存在，创建它
     if !dst.exists() {
@@ -97,6 +100,12 @@ fn copy_dir_all(src: &Path, dst: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+/// 更新剪贴板监控的文件目录（需要修改 app_setup.rs）
+fn update_clipboard_monitor_path(app_handle: &tauri::AppHandle, data_root: &Path) {
+    // 这里需要修改 app_setup.rs 中的 start_clipboard_monitor 函数
+    // 使其能够接收和使用 data_root 路径，而不是硬编码的 app_dir
+    println!("📁 剪贴板监控使用目录: {}", data_root.to_string_lossy());
 }
 // --- 辅助函数：处理单个文件（去除时间戳，复制到临时目录，返回绝对路径） ---
 fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
@@ -351,7 +360,30 @@ async fn get_file_icon(path: String) -> Result<String, String> {
 #[cfg(target_os = "windows")]
 fn extract_icon_base64(path: &str) -> Result<String, String> {
     unsafe {
-        let wide_path: Vec<u16> = OsStr::new(path)
+        // 1. 初始化 COM
+        let com_init = CoInitialize(None);
+        let _com_guard = ScopeGuard((), |_| {
+            if com_init.is_ok() {
+               CoUninitialize();
+            }
+        });
+
+        // 2. 路径规范化：强制将所有正斜杠 '/' 替换为反斜杠 '\'
+        // Windows API 对混合斜杠非常敏感
+        let normalized_path = path.replace("/", "\\");
+
+        // 3. 处理 UNC 前缀 (\\?\)
+        // 如果规范化后的路径以 \\?\ 开头，则去掉它，因为 SHGetFileInfoW 有时对这个前缀处理不好
+        let clean_path = if normalized_path.starts_with(r"\\?\") {
+            &normalized_path[4..]
+        } else {
+            &normalized_path
+        };
+
+        // 调试日志（可选，确认路径变正常了）
+        // println!("🔧 提取图标使用的路径: {}", clean_path);
+
+        let wide_path: Vec<u16> = OsStr::new(clean_path)
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
@@ -366,7 +398,7 @@ fn extract_icon_base64(path: &str) -> Result<String, String> {
         );
 
         if result == 0 || shfi.hIcon.is_invalid() {
-            return Err("SHGetFileInfoW 失败或未找到图标".to_string());
+            return Err(format!("SHGetFileInfoW 失败或未找到图标，路径: {}", clean_path));
         }
 
         let hicon = shfi.hIcon;
@@ -528,90 +560,117 @@ fn main() {
             config::get_config_json,
             config::set_config_item,
         ])
+        
         .setup(move |app| {
-            // 初始化数据库路径
-            let app_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
-            if !app_dir.exists() {
-                std::fs::create_dir_all(&app_dir).expect("无法创建应用数据目录");
+            // 1. 获取系统默认的应用数据目录
+            let app_default_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
+            if !app_default_dir.exists() {
+                std::fs::create_dir_all(&app_default_dir).expect("无法创建默认应用目录");
             }
 
-            // 初始化配置文件
-            let config_path = app_dir.join("config.json");
-            config::set_config_path(config_path.clone());
+            // 2. 初始化引导配置 - 先从默认位置加载
+            let default_config_path = app_default_dir.join("config.json");
+            config::set_config_path(default_config_path.clone());
             let init_result = config::init_config();
             println!("配置初始化结果: {}", init_result);
 
-            // 设置数据库路径
-            let mut db_path = app_dir.join("smartpaste.db");
-            // db::set_db_path(db_path.clone());
-
-            // 获取配置文件中的存储路径设置
+            // 3. 确定最终的数据存储根目录
+            let mut data_root = app_default_dir.clone();
+            
+            // 读取配置中的 storage_path
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
-                // 如果配置中没有存储路径，则使用默认的 app_dir
-                if cfg.storage_path.is_none() {
-                    drop(cfg); // 释放读锁
-                    let _ = config::set_config_item_internal(
-                        "storage_path",
-                        serde_json::Value::String(app_dir.to_string_lossy().to_string()),
-                    );
-                }
-                // 否则，使用配置中的存储路径
-                else if let Some(ref path_str) = cfg.storage_path {
+                if let Some(ref path_str) = cfg.storage_path {
                     let custom_path = PathBuf::from(path_str);
-                    if custom_path.exists() && custom_path.is_dir() {
-                        drop(cfg); // 释放读锁
-                        let _ = config::set_config_item_internal(
-                            "storage_path",
-                            serde_json::Value::String(custom_path.to_string_lossy().to_string()),
-                        );
-                        db_path = custom_path.join("smartpaste.db");
-                    } else {
-                        eprintln!(
-                            "⚠️ 配置的存储路径无效，使用默认路径: {}",
-                            app_dir.to_string_lossy()
-                        );
-                        drop(cfg); // 释放读锁
-                        let _ = config::set_config_item_internal(
-                            "storage_path",
-                            serde_json::Value::String(app_dir.to_string_lossy().to_string()),
-                        );
+                    if !path_str.trim().is_empty() {
+                        println!("✅ 检测到配置的存储路径: {}", path_str);
+                        
+                        // 检查自定义路径是否存在，如果不存在则创建
+                        if !custom_path.exists() {
+                            println!("📁 创建存储路径: {}", custom_path.display());
+                            if let Err(e) = std::fs::create_dir_all(&custom_path) {
+                                eprintln!("❌ 创建存储路径失败: {}", e);
+                            } else {
+                                data_root = custom_path.clone();
+                            }
+                        } else {
+                            data_root = custom_path.clone();
+                        }
+                        
+                        // 检查新路径下是否有配置文件
+                        let new_config_path = data_root.join("config.json");
+                        if new_config_path.exists() {
+                            println!("📄 检测到新路径下的配置文件，切换到: {}", new_config_path.display());
+                            config::set_config_path(new_config_path.clone());
+                            
+                            // 重新加载配置
+                            let reload_result = config::init_config();
+                            println!("重新加载配置结果: {}", reload_result);
+                        } else {
+                            println!("ℹ️ 新路径下没有配置文件，将使用默认配置路径");
+                            // 如果新路径没有配置文件，但存储路径已设置，我们创建一个
+                            println!("📝 在新路径创建配置文件");
+                            if let Some(lock) = config::CONFIG.get() {
+                                let config_to_save = lock.read().unwrap().clone();
+                                config::set_config_path(new_config_path.clone());
+                                if let Err(e) = config::save_config(config_to_save) {
+                                    eprintln!("❌ 创建新路径配置文件失败: {}", e);
+                                    // 恢复默认路径
+                                    config::set_config_path(default_config_path.clone());
+                                } else {
+                                    println!("✅ 新路径配置文件创建成功");
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            // 以现有数据库路径，修改 Config 中的数据存储路径
-            // let set_db_path_result = config::set_db_storage_path(db_path.clone());
+            // 4. 配置各类文件的最终路径
+            let final_db_path = data_root.join("smartpaste.db");
+            let final_files_dir = data_root.join("files");
 
-            // 设置数据库路径并打印结果
-            println!("设置数据库路径结果: {}", db_path.to_string_lossy());
-            db::set_db_path(db_path.clone());
-            // 调试：读取并打印数据库中所有记录
-            /*
-            match db::get_all_data() {
-                Ok(json) => println!("DEBUG get_all_data: {}", json),
-                Err(e) => eprintln!("DEBUG get_all_data error: {}", e),
+            // 5. 确保 files 文件夹存在
+            if !final_files_dir.exists() {
+                std::fs::create_dir_all(&final_files_dir).expect("无法创建 files 文件夹");
             }
-            */
-            // 现有快捷键 / 线程 / 文件路径逻辑继续使用 app_dir
-            let files_dir = app_dir.join("files");
-            std::fs::create_dir_all(&files_dir).unwrap();
-            // 设置系统托盘
+
+            // 6. 设置数据库路径
+            println!("📂 数据库路径设置为: {}", final_db_path.to_string_lossy());
+            db::set_db_path(final_db_path);
+
+            // 7. 打印最终使用的配置路径
+            let current_config_path = config::get_config_path();
+            println!("📄 最终配置文件路径: {}", current_config_path.display());
+            
+            // 打印当前配置的存储路径用于验证
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("📍 配置中记录的存储路径: {:?}", cfg.storage_path);
+                println!("📍 最终数据根目录: {}", data_root.display());
+                
+                // 验证存储路径是否与最终数据根目录一致
+                if let Some(ref storage_path) = cfg.storage_path {
+                    let storage_path_buf = PathBuf::from(storage_path);
+                    if storage_path_buf != data_root {
+                        println!("⚠️ 警告: 配置中的存储路径与最终数据根目录不一致");
+                        println!("  配置存储路径: {}", storage_path);
+                        println!("  实际数据根目录: {}", data_root.display());
+                    }
+                }
+            }
+
+            // 其他现有代码保持不变...
             app_setup::setup_tray(app)?;
-
-            // 注册全局快捷键
             app_setup::setup_global_shortcuts(app.handle().clone())?;
-
-            // 启动剪贴板监控
+            
             let handle = app.handle().clone();
             app_setup::start_clipboard_monitor(handle);
 
-            // 初始隐藏主窗口，避免启动时闪烁
             if let Some(window) = app.get_webview_window("main") {
                 window.hide()?;
             }
 
-            // 设置主窗口为透明 + 穿透
             if let Some(window) = app.get_webview_window("main") {
                 window.show()?;
             }

@@ -85,6 +85,49 @@ fn test_insert_get_delete() {
 }
 
 #[test]
+fn test_not_text_data_insert_and_delete() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // insert image, file, folder types
+    let img_item = make_item("img-1", "image", ".\\files\\image.png");
+    let file_item = make_item("file-1", "file", ".\\files\\document.pdf");
+    let folder_item = make_item("folder-1", "folder", ".\\files\\myfolder");
+
+    // insert
+    insert_received_db_data(img_item.clone()).expect("insert image failed");
+    insert_received_db_data(file_item.clone()).expect("insert file failed");
+    insert_received_db_data(folder_item.clone()).expect("insert folder failed");
+
+    // get and verify
+    let img_json = get_data_by_id(&img_item.id).expect("get image failed");
+    let fetched_img: ClipboardItem = serde_json::from_str(&img_json).expect("parse image");
+    assert_eq!(fetched_img.id, img_item.id);
+
+    let file_json = get_data_by_id(&file_item.id).expect("get file failed");
+    let fetched_file: ClipboardItem = serde_json::from_str(&file_json).expect("parse file");
+    assert_eq!(fetched_file.id, file_item.id);
+
+    let folder_json = get_data_by_id(&folder_item.id).expect("get folder failed");
+    let fetched_folder: ClipboardItem = serde_json::from_str(&folder_json).expect("parse folder");
+    assert_eq!(fetched_folder.id, folder_item.id);
+
+    // delete
+    delete_data_by_id(&img_item.id).expect("delete image failed");
+    delete_data_by_id(&file_item.id).expect("delete file failed");
+    delete_data_by_id(&folder_item.id).expect("delete folder failed");
+
+    // ensure deleted
+    let img_json2 = get_data_by_id(&img_item.id).expect("get image after delete");
+    assert_eq!(img_json2, "null");
+    let file_json2 = get_data_by_id(&file_item.id).expect("get file after delete");
+    assert_eq!(file_json2, "null");
+    let folder_json2 = get_data_by_id(&folder_item.id).expect("get folder after delete");
+    assert_eq!(folder_json2, "null");
+}
+
+#[test]
 fn test_get_latest_data() {
     let _g = test_lock();
     set_test_db_path();
@@ -911,4 +954,62 @@ fn test_insert_get_icon_data() {
     // 对不存在的 id 应返回空字符串
     let got_none = get_icon_data_by_item_id("non-existent-id").expect("get icon none failed");
     assert_eq!(got_none, "");
+}
+
+#[test]
+fn test_update_data_path() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据
+    // 需要更新的项 (file, folder, image)
+    let file_match = make_item("udp-1", "file", "/old/root/doc.pdf");
+    let folder_match = make_item("udp-2", "folder", "/old/root/subfolder");
+    let image_match = make_item("udp-3", "image", "/old/root/img.png");
+
+    // 不应更新的项 - 类型不对 (text)
+    let text_match_prefix = make_item("udp-4", "text", "/old/root/note.txt");
+
+    // 不应更新的项 - 前缀不匹配
+    let file_no_match = make_item("udp-5", "file", "/other/root/doc.pdf");
+
+    // 边界情况：前缀匹配但不是目录边界 (starts_with 逻辑)
+    // "/old/root" 匹配 "/old/root_suffix/file"
+    let file_partial_match = make_item("udp-6", "file", "/old/root_suffix/file");
+
+    insert_received_db_data(file_match.clone()).expect("insert file_match");
+    insert_received_db_data(folder_match.clone()).expect("insert folder_match");
+    insert_received_db_data(image_match.clone()).expect("insert image_match");
+    insert_received_db_data(text_match_prefix.clone()).expect("insert text_match");
+    insert_received_db_data(file_no_match.clone()).expect("insert file_no_match");
+    insert_received_db_data(file_partial_match.clone()).expect("insert file_partial");
+
+    // 2. 执行更新
+    let old_path = "/old/root";
+    let new_path = "/new/root";
+    let count = update_data_path(old_path, new_path).expect("update_data_path failed");
+
+    // 3. 验证受影响行数
+    // file_match, folder_match, image_match, file_partial_match 应该被更新 (共4个)
+    // text_match_prefix 类型不对
+    // file_no_match 前缀不对
+    assert_eq!(count, 4, "expected 4 items to be updated");
+
+    // 4. 验证内容更新结果
+    let get_content = |id| -> String {
+        let json = get_data_by_id(id).unwrap();
+        let item: ClipboardItem = serde_json::from_str(&json).unwrap();
+        item.content
+    };
+
+    assert_eq!(get_content(&file_match.id), "/new/root/doc.pdf");
+    assert_eq!(get_content(&folder_match.id), "/new/root/subfolder");
+    assert_eq!(get_content(&image_match.id), "/new/root/img.png");
+
+    // 验证部分匹配的替换结果
+    assert_eq!(get_content(&file_partial_match.id), "/new/root_suffix/file");
+
+    // 5. 验证未受影响的项目保持原样
+    assert_eq!(get_content(&text_match_prefix.id), "/old/root/note.txt");
 }

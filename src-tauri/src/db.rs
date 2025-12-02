@@ -3,8 +3,8 @@ use std::fs;
 use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::{path::Path, sync::OnceLock};
-
+use std::{path::Path, sync::RwLock}; 
+use crate::config;
 // use crate::clipboard::folder_item_to_json;
 use crate::clipboard::clipboard_item_to_json;
 use crate::clipboard::clipboard_items_to_json;
@@ -14,25 +14,26 @@ use crate::clipboard::FolderItem;
 
 // const DB_PATH: &str = "smartpaste.db";
 
-static DB_PATH_GLOBAL: OnceLock<PathBuf> = OnceLock::new();
-
+static DB_PATH_GLOBAL: RwLock<Option<PathBuf>> = RwLock::new(None);
 /// 设置数据库路径
 /// # Param
 /// path: PathBuf - 数据库文件路径
 pub fn set_db_path(path: PathBuf) {
-    let _ = DB_PATH_GLOBAL.set(path);
+    // 3. 使用 write() 锁来强制更新路径
+    let mut db_path = DB_PATH_GLOBAL.write().unwrap();
+    println!("🔄 数据库路径已在内存中更新为: {:?}", path); 
+    *db_path = Some(path);
 }
-
 /// 获取数据库路径
 /// # Returns
 /// PathBuf - 数据库文件路径
 fn get_db_path() -> PathBuf {
-    DB_PATH_GLOBAL
-        .get()
-        .cloned()
+    // 4. 使用 read() 锁来获取当前路径
+    let db_path = DB_PATH_GLOBAL.read().unwrap();
+    db_path
+        .clone()
         .unwrap_or_else(|| PathBuf::from("smartpaste.db"))
 }
-
 /// 初始化数据库（合并了 CREATE TABLE IF NOT EXISTS 的逻辑）
 /// path: &Path - 数据库文件路径
 pub fn init_db(path: &Path) -> Result<()> {
@@ -296,30 +297,70 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     );
 
     if let Ok((item_type, content)) = query_result {
-        let path = Path::new(&content);
+        // 获取当前配置的存储路径
+        let storage_path = crate::config::get_current_storage_path();
+        
+        // 处理相对路径：如果是以 ".\files\" 或 "./files/" 开头的相对路径
+        let file_path = if content.starts_with(r".\files\") || content.starts_with("./files/") || content.starts_with("files/") {
+            // 从相对路径中提取文件名部分
+            let file_name = if let Some(name) = content.split(r"\files\").last() {
+                name.to_string()
+            } else if let Some(name) = content.split(r"./files/").last() {
+                name.to_string()
+            } else if let Some(name) = content.split("files/").last() {
+                name.to_string()
+            } else {
+                content.to_string()
+            };
+            
+            // 构建完整路径：storage_path + "files" + 文件名
+            storage_path.join("files").join(file_name)
+        } else if content.starts_with(r"files\") {
+            // 处理 files\xxx 格式
+            let file_name = content.split(r"files\").last().unwrap_or(&content);
+            storage_path.join("files").join(file_name)
+        } else {
+            // 如果不是相对路径，直接使用
+            PathBuf::from(&content)
+        };
+
+        println!("🗑️ 尝试删除文件: {:?}", file_path);
+        println!("🗑️ 存储根目录: {:?}", storage_path);
 
         // 检查路径是否存在
-        if path.exists() {
+        if file_path.exists() {
             // ✅ 情况 A: 如果是文件夹类型 (或者物理路径确实是个文件夹)
-            if item_type == "folder" || path.is_dir() {
+            if item_type == "folder" || file_path.is_dir() {
                 // 使用 remove_dir_all 递归删除文件夹及其内容
-                if let Err(e) = fs::remove_dir_all(path) {
-                    eprintln!("⚠️ 删除本地文件夹失败 (ID: {}): {:?} - {}", id, path, e);
+                if let Err(e) = fs::remove_dir_all(&file_path) {
+                    eprintln!("⚠️ 删除本地文件夹失败 (ID: {}): {:?} - {}", id, file_path, e);
                 } else {
-                    println!("🗑️ 已删除关联的本地文件夹: {:?}", path);
+                    println!("🗑️ 已删除关联的本地文件夹: {:?}", file_path);
                 }
             }
             // ✅ 情况 B: 如果是图片或普通文件
-            else if item_type == "image" || item_type == "file" || path.is_file() {
+            else if item_type == "image" || item_type == "file" || file_path.is_file() {
                 // 使用 remove_file 删除单个文件
-                if let Err(e) = fs::remove_file(path) {
-                    eprintln!("⚠️ 删除本地文件失败 (ID: {}): {:?} - {}", id, path, e);
+                if let Err(e) = fs::remove_file(&file_path) {
+                    eprintln!("⚠️ 删除本地文件失败 (ID: {}): {:?} - {}", id, file_path, e);
                 } else {
-                    println!("🗑️ 已删除关联的本地文件: {:?}", path);
+                    println!("🗑️ 已删除关联的本地文件: {:?}", file_path);
                 }
             }
         } else {
-            println!("ℹ️ 本地路径不存在，跳过物理删除: {:?}", path);
+            println!("ℹ️ 本地路径不存在，跳过物理删除: {:?}", file_path);
+            // 尝试调试：打印可能的其他路径
+            let alt_path = Path::new(&content);
+            println!("ℹ️ 原始路径: {:?}", alt_path);
+            if alt_path.exists() {
+                println!("ℹ️ 原始路径存在，尝试删除");
+                // 尝试删除原始路径
+                if alt_path.is_dir() {
+                    let _ = fs::remove_dir_all(alt_path);
+                } else {
+                    let _ = fs::remove_file(alt_path);
+                }
+            }
         }
     }
 
@@ -332,7 +373,6 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
 
     Ok(rows_affected)
 }
-
 /// 根据 ID 修改数据内容。作为 Tauri command 暴露给前端调用。
 /// # Param
 /// id: &str - 要修改数据的 ID
@@ -358,6 +398,99 @@ pub fn update_data_content_by_id(id: &str, new_content: &str) -> Result<String, 
     } else {
         Ok(json)
     }
+}
+
+/// 更新file/folder/image数据的本地路径。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// old_path: &str - 旧的本地路径
+/// new_path: &str - 新的本地路径
+/// # Returns
+/// Result<usize, String> - 受影响的行数，如果失败则返回错误信息
+/// 更新file/folder/image数据的本地路径。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// old_path: &str - 旧的本地路径
+/// new_path: &str - 新的本地路径
+/// # Returns
+/// Result<usize, String> - 受影响的行数，如果失败则返回错误信息
+#[tauri::command]
+pub fn update_data_path(old_path: &str, new_path: &str) -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    println!("🔧 更新数据库中的文件路径...");
+    println!("  旧路径: {}", old_path);
+    println!("  新路径: {}", new_path);
+
+    // 开启事务以确保数据一致性
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 1. 获取所有相关类型的记录
+    let mut stmt = tx.prepare(
+        "SELECT id, content FROM data WHERE item_type IN ('file', 'image', 'folder')"
+    ).map_err(|e| e.to_string())?;
+
+    let rows: Vec<(String, String)> = stmt.query_map([], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    }).map_err(|e| e.to_string())?
+    .filter_map(Result::ok)
+    .collect();
+
+    // 释放 statement 借用，以便后续使用 tx
+    drop(stmt);
+
+    let mut count = 0;
+
+    // 2. 遍历并更新匹配的路径
+    for (id, content) in rows {
+        let mut updated = false;
+        let mut new_content = content.clone();
+        
+        // 检查是否需要更新
+        // 处理 Windows 路径分隔符问题
+        let normalized_content = content.replace('\\', "/");
+        let normalized_old_path = old_path.replace('\\', "/");
+        
+        // 检查是否以旧路径开头（处理绝对路径）
+        if normalized_content.starts_with(&normalized_old_path) {
+            // 替换前缀
+            new_content = content.replacen(old_path, new_path, 1);
+            updated = true;
+        } 
+        // 检查是否是相对路径（以 files/ 开头）
+        else if normalized_content.starts_with("files/") || normalized_content.starts_with("./files/") || normalized_content.starts_with(r".\files\") {
+            // 对于相对路径，我们需要更新存储路径，但相对路径保持不变
+            // 这里不需要修改，因为相对路径相对于新的存储路径仍然有效
+            println!("ℹ️ 记录 {} 使用相对路径，无需修改: {}", id, content);
+        }
+        // 检查是否是绝对路径但包含旧存储路径的其他形式
+        else if let Some(relative_path) = normalized_content.split("/files/").last() {
+            // 如果路径包含 "/files/"，尝试将其转换为新路径
+            if relative_path != normalized_content {
+                new_content = format!("{}/files/{}", new_path, relative_path);
+                updated = true;
+            }
+        }
+        
+        if updated {
+            println!("🔄 更新记录 {} 的路径:", id);
+            println!("  旧路径: {}", content);
+            println!("  新路径: {}", new_content);
+            
+            tx.execute(
+                "UPDATE data SET content = ?1 WHERE id = ?2",
+                params![new_content, id],
+            ).map_err(|e| e.to_string())?;
+            
+            count += 1;
+        }
+    }
+
+    // 提交事务
+    tx.commit().map_err(|e| e.to_string())?;
+
+    println!("✅ 数据库路径更新完成，共更新 {} 条记录", count);
+    Ok(count)
 }
 
 /// 根据 ID 修改收藏状态。作为 Tauri command 暴露给前端调用。

@@ -400,6 +400,8 @@ fn normalize_shortcut_format(shortcut: &str) -> String {
 
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
+        // 获取配置的存储路径
+        // 初始变量状态
         let mut last_text = String::new();
         let mut last_image_bytes: Vec<u8> = Vec::new();
         let mut last_file_paths: Vec<PathBuf> = Vec::new();
@@ -407,11 +409,22 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         let mut is_first_run = true;
         let mut frontend_ignore_countdown = 0;
 
-        let app_dir = app_handle.path().app_data_dir().unwrap();
-        let files_dir = app_dir.join("files");
-        fs::create_dir_all(&files_dir).unwrap();
+        // 定义相对路径根目录 (保持不变，因为这是存入数据库的相对路径)
+        let db_root_dir = PathBuf::from("files"); 
 
         loop {
+            let current_storage_path = crate::config::get_current_storage_path();
+            let files_dir = current_storage_path.join("files");
+
+            // 确保目录存在 (防止路径刚切换，文件夹还没建好，或者被意外删除)
+            if !files_dir.exists() {
+                if let Err(e) = fs::create_dir_all(&files_dir) {
+                    eprintln!("❌ 无法创建文件存储目录 {:?}: {}", files_dir, e);
+                    // 如果目录创建失败，本次循环暂停，避免后续报错
+                    thread::sleep(Duration::from_millis(1000));
+                    continue; 
+                }
+            }
             {
                 let state = app_handle.state::<ClipboardSourceState>();
                 let mut flag = state.is_frontend_copy.lock().unwrap();
@@ -464,8 +477,8 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     } else {
                         // 只有是非前端复制时，才执行保存文件和数据库操作
                         let image_id = Uuid::new_v4().to_string();
-                        let dest_path = files_dir.join(format!("{}.png", image_id));
-
+                        // let dest_path = files_dir.join(format!("{}.png", image_id));
+                        let dest_path = db_root_dir.join(format!("{}.png", image_id));
                         if image::save_buffer(
                             &dest_path,
                             &image.rgba(),
@@ -569,6 +582,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                 let timestamp = Utc::now().timestamp_millis();
                                 let new_file_name = format!("{}-{}", timestamp, file_name);
                                 let dest_path = files_dir.join(&new_file_name);
+                                let dest_relative_path = db_root_dir.join(&new_file_name);
 
                                 // 2. 根据是文件夹还是文件执行不同的复制操作
                                 let copy_result = if path.is_dir() {
@@ -587,7 +601,11 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                         let new_item = ClipboardItem {
                                             id: Uuid::new_v4().to_string(),
                                             item_type: item_type,
-                                            content: dest_path.to_str().unwrap().to_string(),
+                                            // content: dest_path.to_str().unwrap().to_string(),
+                                            content: dest_relative_path
+                                                .to_str()
+                                                .unwrap()
+                                                .to_string(),
                                             size: size,
                                             is_favorite: false,
                                             notes: "".to_string(),
@@ -596,7 +614,8 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
                                         // 先保存 id 与路径副本，new_item 会被 move 到 insert_received_db_data
                                         let item_id_for_icon = new_item.id.clone();
-                                        let dest_path_for_icon = new_item.content.clone();
+                                        let dest_path_for_icon =
+                                            dest_path.clone().to_str().unwrap().to_string();
 
                                         // 记录数据库插入开始时间
                                         let db_insert_start = Instant::now();

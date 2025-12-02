@@ -184,7 +184,7 @@
                 <div v-else-if="item.item_type === 'image'" class="image-container">
                   <img 
                     v-if="item.content"
-                    :src="convertFileSrc(item.content)" 
+                    :src="convertFileSrc(normalizedPath + '\\' + item.content)" 
                     :alt="'图片: ' + getFileName(item.content)"
                     class="preview-image"
                     @error="handleImageError"
