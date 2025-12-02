@@ -430,9 +430,20 @@ pub static CONFIG: OnceLock<RwLock<Config>> = OnceLock::new();
 /// # Param
 /// path: PathBuf - 配置文件路径
 pub fn set_config_path(path: PathBuf) {
-    println!("🔄 设置配置路径: {}", path.display());
+    // 🔥 修复：强制规范化路径分隔符
+    let path_str = path.to_string_lossy().to_string();
+    
+    #[cfg(target_os = "windows")]
+    let normalized_path_str = path_str.replace("/", "\\");
+    
+    #[cfg(not(target_os = "windows"))]
+    let normalized_path_str = path_str;
+
+    let normalized_path = PathBuf::from(normalized_path_str);
+
+    println!("🔄 设置配置路径(已规范化): {}", normalized_path.display());
     let mut global_path = CONFIG_PATH_GLOBAL.write().unwrap();
-    *global_path = Some(path);
+    *global_path = Some(normalized_path);
 }
 /// 获取配置 JSON 文件路径
 /// # Returns
@@ -739,9 +750,14 @@ pub fn get_current_storage_path() -> PathBuf {
     if let Some(lock) = CONFIG.get() {
         let cfg = lock.read().unwrap();
         if let Some(ref path_str) = cfg.storage_path {
-            let custom_path = PathBuf::from(path_str);
             if !path_str.trim().is_empty() {
-                return custom_path;
+                // 🔥 修复：读取时也进行规范化，防止旧配置污染
+                #[cfg(target_os = "windows")]
+                let clean_path = path_str.replace("/", "\\");
+                #[cfg(not(target_os = "windows"))]
+                let clean_path = path_str.clone();
+
+                return PathBuf::from(clean_path);
             }
         }
     }
@@ -846,7 +862,8 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
             Some(s) => s.to_string(),
             None => return "Invalid storage path value".to_string(),
         };
-
+        #[cfg(target_os = "windows")]
+        let new_path_str = new_path_str.replace("/", "\\");
         // 获取当前存储路径
         let current_path = get_current_storage_path();
         let new_path = PathBuf::from(&new_path_str);
