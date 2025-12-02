@@ -41,8 +41,8 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <h3>启动时最小化到托盘</h3>
-              <p>启动时不弹出窗口，挂载在后台</p>
+              <h3>显示系统托盘图标</h3>
+              <p>在系统托盘显示应用图标(修改后需重启应用)</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -50,40 +50,6 @@
                   type="checkbox" 
                   :checked="settings.tray_icon_visible" 
                   @change="updateSetting('tray_icon_visible', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>显示系统托盘图标</h3>
-              <p>在系统托盘显示应用图标，方便快速访问</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.minimize_to_tray" 
-                  @change="updateSetting('minimize_to_tray', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动保存剪贴板历史</h3>
-              <p>自动保存剪贴板内容到历史记录</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.auto_save" 
-                  @change="updateSetting('auto_save', $event.target.checked)"
                 >
                 <span class="slider"></span>
               </label>

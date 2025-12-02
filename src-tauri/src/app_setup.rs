@@ -267,7 +267,7 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
-        .tooltip("桌面宠物")
+        .tooltip("SmartPaste")
         .on_menu_event(move |app, event| {
             if let Some(window) = app.get_webview_window("main") {
                 match event.id().as_ref() {
@@ -293,7 +293,6 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .build(app)?;
-    println!("✅ 托盘图标创建成功");
     Ok(())
 }
 
