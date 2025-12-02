@@ -1,8 +1,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
+import { apiService } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import { 
   Cog6ToothIcon,
@@ -14,7 +14,6 @@ import {
 
 export function usePreferences() {
   const router = useRouter()
-  const currentWindow = getCurrentWindow()
 
   // 响应式数据
   const activeNav = ref('general')
@@ -22,10 +21,38 @@ export function usePreferences() {
   const toastMessage = ref('')
   const recordingShortcut = ref('')
   const newIgnoredApp = ref('')
-  const userLoggedIn = ref(true)
+  const userLoggedIn = ref(false)
   const userEmail = ref('user@example.com')
   const autostart = ref(false)
   const loading = ref(false)
+
+  // 注册相关状态
+  const showRegisterDialog = ref(false)
+  const showLoginDialog = ref(false)
+  const registerLoading = ref(false)
+  const loginLoading = ref(false)
+  
+  // 注册表单数据
+  const registerData = reactive({
+    username: '',
+    email: '',
+    password: '',
+    password2: ''
+  })
+  
+  // 登录表单数据
+  const loginData = reactive({
+    email: '',
+    password: ''
+  })
+  
+  // 表单验证错误
+  const registerErrors = reactive({
+    username: '',
+    email: '',
+    password: '',
+    password2: ''
+  })
 
   // 快捷键设置所需的变量
   const errorMsg = ref('')
@@ -86,15 +113,216 @@ export function usePreferences() {
     router.back()
   }
 
-  const login = () => {
-    userLoggedIn.value = true
-    showMessage('登录成功')
+  // 表单验证函数
+  const validateRegisterForm = () => {
+    let isValid = true
+    
+    // 清除之前的错误
+    Object.keys(registerErrors).forEach(key => {
+      registerErrors[key] = ''
+    })
+    
+    // 验证用户名
+    if (!registerData.username.trim()) {
+      registerErrors.username = '用户名不能为空'
+      isValid = false
+    } else if (registerData.username.length < 3) {
+      registerErrors.username = '用户名至少3个字符'
+      isValid = false
+    }
+    
+    // 验证邮箱
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!registerData.email.trim()) {
+      registerErrors.email = '邮箱不能为空'
+      isValid = false
+    } else if (!emailRegex.test(registerData.email)) {
+      registerErrors.email = '邮箱格式不正确'
+      isValid = false
+    }
+    
+    // 验证密码
+    if (!registerData.password) {
+      registerErrors.password = '密码不能为空'
+      isValid = false
+    } else if (registerData.password.length < 6) {
+      registerErrors.password = '密码至少6个字符'
+      isValid = false
+    }
+    
+    // 验证确认密码
+    if (!registerData.password2) {
+      registerErrors.password2 = '请确认密码'
+      isValid = false
+    } else if (registerData.password !== registerData.password2) {
+      registerErrors.password2 = '两次输入的密码不一致'
+      isValid = false
+    }
+    
+    return isValid
   }
 
-  const logout = () => {
-    userLoggedIn.value = false
-    showMessage('已退出登录')
+  // 注册方法
+  const handleRegister = async () => {
+    // 验证表单
+    if (!validateRegisterForm()) {
+      showMessage('请填写正确的表单信息', 'error')
+      return
+    }
+    
+    registerLoading.value = true
+    
+    try {
+      const response = await apiService.register({
+        username: registerData.username,
+        email: registerData.email,
+        password: registerData.password,
+        password2: registerData.password2
+      })
+
+      if (response.success) {
+        // 注册成功
+        showMessage('注册成功！', 'success')
+        
+        // 保存用户信息到本地存储
+        if (response.data) {
+          localStorage.setItem('user', JSON.stringify(response.data))
+          userLoggedIn.value = true
+          userEmail.value = response.data.email || registerData.email
+          userInfo.username = response.data.username || registerData.username
+          userInfo.email = response.data.email || registerData.email
+          userInfo.bio = response.data.bio || '剪贴板管理爱好者'
+        }
+        
+        // 关闭注册对话框
+        showRegisterDialog.value = false
+        
+        // 清空表单数据
+        Object.assign(registerData, {
+          username: '',
+          email: '',
+          password: '',
+          password2: ''
+        })
+        
+        // 清除错误信息
+        Object.keys(registerErrors).forEach(key => {
+          registerErrors[key] = ''
+        })
+      } else {
+        // 注册失败
+        showMessage(`注册失败：${response.message}`, 'error')
+      }
+    } catch (error) {
+      console.error('注册错误:', error)
+      showMessage('注册出错，请稍后重试', 'error')
+    } finally {
+      registerLoading.value = false
+    }
   }
+
+  // 登录方法
+  const handleLogin = async () => {
+    if (!loginData.email || !loginData.password) {
+      showMessage('请输入邮箱和密码', 'error')
+      return
+    }
+    
+    loginLoading.value = true
+    
+    try {
+      // 这里调用登录API
+      const response = await apiService.login({
+        email: loginData.email,
+        password: loginData.password
+      })
+
+      if (response.success) {
+        // 登录成功
+        showMessage('登录成功！', 'success')
+        
+        // 保存用户信息到本地存储
+        if (response.data) {
+          localStorage.setItem('user', JSON.stringify(response.data))
+          localStorage.setItem('token', response.data.token || '')
+          userLoggedIn.value = true
+          userEmail.value = response.data.email || loginData.email
+          userInfo.username = response.data.username || '当前用户'
+          userInfo.email = response.data.email || loginData.email
+          userInfo.bio = response.data.bio || '剪贴板管理爱好者'
+        }
+        
+        // 关闭登录对话框
+        showLoginDialog.value = false
+        
+        // 清空表单数据
+        Object.assign(loginData, {
+          email: '',
+          password: ''
+        })
+      } else {
+        // 登录失败
+        showMessage(`登录失败：${response.message}`, 'error')
+      }
+    } catch (error) {
+      console.error('登录错误:', error)
+      showMessage('登录出错，请检查网络连接', 'error')
+    } finally {
+      loginLoading.value = false
+    }
+  }
+
+  // 打开注册对话框
+  const openRegisterDialog = () => {
+    showRegisterDialog.value = true
+    // 清空表单数据
+    Object.assign(registerData, {
+      username: '',
+      email: '',
+      password: '',
+      password2: ''
+    })
+    // 清空错误信息
+    Object.keys(registerErrors).forEach(key => {
+      registerErrors[key] = ''
+    })
+  }
+
+  // 打开登录对话框
+  const openLoginDialog = () => {
+    showLoginDialog.value = true
+  }
+
+  // 关闭注册对话框
+  const closeRegisterDialog = () => {
+    showRegisterDialog.value = false
+  }
+
+  // 关闭登录对话框
+  const closeLoginDialog = () => {
+    showLoginDialog.value = false
+  }
+
+  const login = () => {
+    openLoginDialog()
+  }
+
+  // 修改logout方法
+  const logout = () => {
+    if (confirm('确定要退出登录吗？')) {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      userLoggedIn.value = false
+      userEmail.value = ''
+      Object.assign(userInfo, {
+        username: '',
+        email: '',
+        bio: ''
+      })
+      showMessage('已退出登录', 'success')
+    }
+  }
+
 
   const resetUserInfo = () => {
     Object.assign(userInfo, {
@@ -105,7 +333,7 @@ export function usePreferences() {
     showMessage('用户信息已重置')
   }
 
-  const showMessage = (message) => {
+  const showMessage = (message, type = 'success') => {
     toastMessage.value = message
     showToast.value = true
     setTimeout(() => {
@@ -517,7 +745,12 @@ const updateRetentionDays = async () => {
   const deleteAccount = async () => {
     if (confirm('确定要删除账户吗？此操作将永久删除所有数据且不可恢复！')) {
       try {
+        // 调用后端API删除账户
         // await invoke('delete_user_account')
+        localStorage.removeItem('user')
+        localStorage.removeItem('token')
+        userLoggedIn.value = false
+        userEmail.value = ''
         showMessage('账户已删除')
         router.push('/')
       } catch (error) {
@@ -550,16 +783,20 @@ const updateRetentionDays = async () => {
 
     // 生命周期
   onMounted(async () => {
-      // 加载保存的设置
-      /*
-      const savedSettings = localStorage.getItem('clipboardSettings')
-      if (savedSettings) {
-        Object.assign(settings, JSON.parse(savedSettings))
+    // 检查本地存储中是否有用户信息
+    try {
+      const savedUser = localStorage.getItem('user')
+      if (savedUser) {
+        const userData = JSON.parse(savedUser)
+        userLoggedIn.value = true
+        userEmail.value = userData.email || ''
+        userInfo.username = userData.username || ''
+        userInfo.email = userData.email || ''
+        userInfo.bio = userData.bio || ''
       }
-      const savedTime = localStorage.getItem('lastSyncTime');
-      if (savedTime) {
-        lastSyncTime.value = parseInt(savedTime);
-      }*/
+    } catch (error) {
+      console.error('加载用户信息失败:', error)
+    }
 
       // await checkAutostartStatus()
     /*
@@ -597,6 +834,24 @@ const updateRetentionDays = async () => {
     shortcutDisplayNames,
     shortcutKeys,
 
+    // 注册登录相关状态
+    showRegisterDialog,
+    showLoginDialog,
+    registerData,
+    loginData,
+    registerErrors,
+    registerLoading,
+    loginLoading,
+
+    // 注册登录相关状态
+    showRegisterDialog,
+    showLoginDialog,
+    registerData,
+    loginData,
+    registerErrors,
+    registerLoading,
+    loginLoading,
+
     // 基础方法
     setActiveNav,
     goBack,
@@ -604,6 +859,14 @@ const updateRetentionDays = async () => {
     logout,
     resetUserInfo,
     showMessage,
+
+    // 注册登录方法
+    handleRegister,
+    handleLogin,
+    openRegisterDialog,
+    openLoginDialog,
+    closeRegisterDialog,
+    closeLoginDialog,
 
     // 快捷键方法
     startRecording,
