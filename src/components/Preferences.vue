@@ -118,6 +118,24 @@
             <p>提示：点击快捷键输入框，然后按下您想要设置的组合键</p>
             <p>按 ESC 键可取消设置</p>
           </div>
+
+          <div v-for="key in shortcutKeys" :key="key" class="setting-item">
+            <div class="setting-info">
+              <h3>{{ shortcutDisplayNames[key] }}</h3>
+              <p>自定义全局快捷键</p>
+            </div>
+            <div class="setting-control">
+              <input 
+                type="text" 
+                :value="settings[key]" 
+                :class="['shortcut-input', { 'recording-active': shortcutManager.isRecording && shortcutManager.currentType === key }]"
+                @click="startRecording(key)"
+                readonly
+                :placeholder="shortcutManager.isRecording && shortcutManager.currentType === key ? '正在录制...' : '点击设置'"
+              >
+            </div>
+          </div>
+          
         </div>
 
         <!-- 剪贴板参数设置 -->
@@ -904,6 +922,8 @@ const {
   userInfo,
   navItems,
   settings,
+  shortcutDisplayNames,
+  shortcutKeys,
 
   // 方法
   setActiveNav,
@@ -1198,11 +1218,23 @@ input:checked + .slider:before {
   text-align: center;
   min-width: 120px;
   transition: all 0.2s;
+  user-select: none;
 }
 
 .shortcut-input:hover {
   border-color: #3498db;
   background: #f8f9fa;
+}
+
+.shortcut-status-messages {
+    margin-top: 24px;
+}
+
+.shortcut-input.recording-active {
+  border-color: #e67e22; /* Orange color for active recording */
+  background: #fdf3e9; /* Light orange background */
+  box-shadow: 0 0 5px rgba(230, 126, 34, 0.5);
+  animation: pulse-border 1s infinite alternate;
 }
 
 .hint {
@@ -1517,6 +1549,15 @@ input:checked + .slider:before {
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes pulse-border {
+  from {
+    border-color: #e67e22;
+  }
+  to {
+    border-color: #f1c40f;
   }
 }
 
