@@ -441,8 +441,10 @@ const {
   // 计算属性
   selectedItemsCount,
   searchPlaceholder,
+  normalizedPath,
 
   // 方法
+  convertFileSrc,
   showMessage,
   setActiveCategory,
   togglePinnedView,

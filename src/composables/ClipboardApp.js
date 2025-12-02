@@ -11,8 +11,7 @@ export function useClipboardApp() {
   const router = useRouter()
   const route = useRoute()
   const currentWindow = getCurrentWindow();
-  const store = useSettingsStore()        
-  const settings = store.settings
+  const settings = useSettingsStore().settings        
 
   // 响应式数据
   const searchQuery = ref('')
@@ -94,6 +93,12 @@ export function useClipboardApp() {
       default:
         return '搜索剪贴板内容...'
     }
+  })
+
+  // 计算属性：规范化路径
+  const normalizedPath = computed(() => {
+    if (!settings.storage_path) return '未设置路径'
+    return settings.storage_path.replace(/\//g, '\\')
   })
 
   // 监听搜索类型变化
@@ -1170,8 +1175,10 @@ export function useClipboardApp() {
     // 计算属性
     selectedItemsCount,
     searchPlaceholder,
+    normalizedPath,
 
     // 方法
+    convertFileSrc,
     showMessage,
     setActiveCategory,
     togglePinnedView,
