@@ -7,6 +7,7 @@ use std::{
 };
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+use crate::app_setup;
 static CONFIG_PATH_GLOBAL: RwLock<Option<PathBuf>> = RwLock::new(None);
 /// 系统配置结构体，包含通用设置、剪贴板参数、AI、隐私、备份、云同步和用户信息等配置项。
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -986,6 +987,32 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         // 其他配置项的原有逻辑保持不变
         match update_simple_config_item(&config_key, value.clone()) {
             Ok(true) => {
+                // --- 修复后的动态更新托盘图标可见性逻辑 ---
+                if config_key == ConfigKey::TrayIconVisible {
+                    if let Ok(visible) = serde_json::from_value::<bool>(value.clone()) {
+                        println!("🔄 动态更新托盘图标可见性为: {}", visible);
+                        
+                        // 关键修改：通过全局函数获取存储的 TrayIconHandle
+                        if let Some(tray) = app_setup::get_tray_icon_handle() {
+                             if let Err(e) = tray.set_visible(visible) {
+                                println!("❌ 托盘图标设置可见性失败: {:?}", e);
+                            } else {
+                                println!("✅ 托盘图标可见性设置成功");
+                            }
+                        } else {
+                            // 如果句柄不存在，则说明托盘未创建（在启动时配置为不可见）。
+                            if visible {
+                                // 启动时托盘未创建，配置现在改为可见，提示用户重启
+                                println!("⚠️ 托盘图标未创建。新的可见性设置将在下次启动时生效，请重启应用");
+                            } else {
+                                // 如果托盘不存在，配置改为不可见，忽略。
+                                println!("ℹ️ 托盘图标未创建，忽略设置为不可见的操作");
+                            }
+                        }
+                    } else {
+                        return format!("Invalid type for key '{}'", key);
+                    }
+                }
                 let cfg_clone = CONFIG.get().unwrap().read().unwrap().clone();
                 match save_config(cfg_clone) {
                     Ok(_) => "config updated".to_string(),

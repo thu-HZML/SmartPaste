@@ -42,7 +42,7 @@
           <div class="setting-item">
             <div class="setting-info">
               <h3>显示系统托盘图标</h3>
-              <p>在系统托盘显示应用图标(修改后需重启应用)</p>
+              <p>在系统托盘显示应用图标</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
