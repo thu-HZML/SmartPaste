@@ -10,17 +10,21 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, TrayIcon};
 use tauri::{App, AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{
     GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState,
 };
 use uuid::Uuid;
+
+// 全局静态变量存储托盘图标的句柄
+static TRAY_ICON_GLOBAL: OnceLock<TrayIcon> = OnceLock::new();
+
 pub struct ClipboardSourceState {
     pub is_frontend_copy: Mutex<bool>,
 }
@@ -264,10 +268,10 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let menu = Menu::new(app)?;
     menu.append(&show_hide)?;
     menu.append(&quit)?;
-    TrayIconBuilder::new()
+    let tray_handle = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
-        .tooltip("桌面宠物")
+        .tooltip("SmartPaste")
         .on_menu_event(move |app, event| {
             if let Some(window) = app.get_webview_window("main") {
                 match event.id().as_ref() {
@@ -293,8 +297,16 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .build(app)?;
-    println!("✅ 托盘图标创建成功");
+    // 存储 handle
+    if TRAY_ICON_GLOBAL.set(tray_handle).is_err() {
+        eprintln!("⚠️ 托盘图标句柄重复设置失败");
+    }
     Ok(())
+}
+
+// 供 config.rs 调用的获取句柄函数
+pub fn get_tray_icon_handle() -> Option<&'static TrayIcon> {
+    TRAY_ICON_GLOBAL.get()
 }
 
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {

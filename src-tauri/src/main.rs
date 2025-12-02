@@ -660,8 +660,20 @@ fn main() {
                 }
             }
 
-            // 其他现有代码保持不变...
-            app_setup::setup_tray(app)?;
+            let tray_icon_visible = if let Some(lock) = config::CONFIG.get() {
+                lock.read().unwrap().tray_icon_visible
+            } else {
+                true // 默认显示
+            };
+
+            if tray_icon_visible {
+                // 只有在 visible 为 true 时才创建托盘图标
+                app_setup::setup_tray(app)?; 
+                println!("✅ 托盘图标已创建");
+            } else {
+                // 如果是 false，则不创建托盘图标
+                println!("🚫 托盘图标配置为不可见，跳过创建");
+            }
             app_setup::setup_global_shortcuts(app.handle().clone())?;
             
             let handle = app.handle().clone();
