@@ -843,6 +843,15 @@ const updateRetentionDays = async () => {
     registerLoading,
     loginLoading,
 
+    // 注册登录相关状态
+    showRegisterDialog,
+    showLoginDialog,
+    registerData,
+    loginData,
+    registerErrors,
+    registerLoading,
+    loginLoading,
+
     // 基础方法
     setActiveNav,
     goBack,
