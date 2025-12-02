@@ -134,25 +134,42 @@ lazy_static::lazy_static! {
         });
         m
     };
+    // 通过 Storage Key 查找 Handler Key 的反向映射
+    static ref STORAGE_KEY_TO_HANDLER_KEY: std::collections::HashMap<&'static str, &'static str> = {
+        let mut m = std::collections::HashMap::new();
+        for (handler_key, config) in SHORTCUT_CONFIGS.iter() {
+            m.insert(config.storage_key, *handler_key);
+        }
+        m
+    };
 }
 
 /// 从 Config 中加载快捷键配置
 fn load_shortcut_from_storage(shortcut_type: &str) -> String {
-    if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type) {
-        if let Some(lock) = CONFIG.get() {
-            let cfg = lock.read().unwrap();
-            match config.storage_key {
-                "global_shortcut" => cfg.global_shortcut.clone(),
-                "global_shortcut_2" => cfg.global_shortcut_2.clone(),
-                "global_shortcut_3" => cfg.global_shortcut_3.clone(),
-                "global_shortcut_4" => cfg.global_shortcut_4.clone(),
-                "global_shortcut_5" => cfg.global_shortcut_5.clone(),
-                _ => config.default_value.to_string(),
+    // 确保我们能通过 storage_key 找到对应的配置，以获取默认值
+    if let Some(handler_key) = STORAGE_KEY_TO_HANDLER_KEY.get(shortcut_type) {
+        if let Some(config) = SHORTCUT_CONFIGS.get(handler_key) { // 拿到对应的配置对象
+            if let Some(lock) = CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                // 简化匹配，直接使用传入的 storage_key
+                match shortcut_type {
+                    "global_shortcut" => cfg.global_shortcut.clone(),
+                    "global_shortcut_2" => cfg.global_shortcut_2.clone(),
+                    "global_shortcut_3" => cfg.global_shortcut_3.clone(),
+                    "global_shortcut_4" => cfg.global_shortcut_4.clone(),
+                    "global_shortcut_5" => cfg.global_shortcut_5.clone(),
+                    _ => config.default_value.to_string(),
+                }
+            } else {
+                config.default_value.to_string()
             }
         } else {
-            config.default_value.to_string()
+            // fallback to default if config map lookup fails
+            // Since we use STORAGE_KEY_TO_HANDLER_KEY, this path is unlikely
+            "".to_string()
         }
     } else {
+        // Unknown shortcut type
         "".to_string()
     }
 }
@@ -281,49 +298,46 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let handle_for_closure = handle.clone();
     let shortcut_manager = handle.state::<AppShortcutManager>();
 
-    // 1. 设置统一的全局事件处理器 - 修复格式匹配问题
+    // 1. 设置统一的全局事件处理器
     handle.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |app, shortcut, event| {
-                //println!("🔧 收到快捷键事件: {}, 状态: {:?}", shortcut, event.state());
-
                 if event.state() != PluginShortcutState::Pressed {
                     return;
                 }
 
                 let shortcut_str = shortcut.to_string();
-                //println!("🔍 查找快捷键: {}", shortcut_str);
-
                 let manager = app.state::<AppShortcutManager>();
                 let shortcuts = manager.shortcuts.lock().unwrap();
 
-                // 打印所有已注册的快捷键用于调试
-                //println!("📋 已注册快捷键: {:?}", *shortcuts);
-
                 // 统一快捷键格式进行比较
                 let normalized_received = normalize_shortcut_format(&shortcut_str);
-                //println!("🔄 标准化后的快捷键: {}", normalized_received);
 
                 // 检查所有注册的快捷键
-                for (shortcut_type, registered_shortcut) in shortcuts.iter() {
+                // storage_key 是 &String 类型，需要 .as_str() 才能用作 HashMap<&str, ...> 的查找键
+                for (storage_key, registered_shortcut) in shortcuts.iter() {
                     let normalized_registered = normalize_shortcut_format(registered_shortcut);
-                    //println!("🔍 比较: {} vs {}", normalized_received, normalized_registered);
 
                     if normalized_received == normalized_registered {
                         println!(
                             "✅ 匹配到快捷键: {} - {}",
-                            shortcut_type, registered_shortcut
+                            storage_key, registered_shortcut
                         );
 
-                        // 调用对应的处理器
-                        if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type.as_str()) {
-                            println!("🚀 执行处理器: {}", shortcut_type);
-                            (config.handler)(app, registered_shortcut);
+                        // 使用 storage_key.as_str() 转换为 &str 进行查找
+                        if let Some(handler_key) = STORAGE_KEY_TO_HANDLER_KEY.get(storage_key.as_str()) {
+                            // 找到对应的处理器配置并执行
+                            if let Some(config) = SHORTCUT_CONFIGS.get(handler_key) {
+                                println!("🚀 执行处理器: {}", handler_key);
+                                (config.handler)(app, registered_shortcut);
+                            } else {
+                                println!("❌ 未找到处理器配置 (Handler Key: {})", handler_key);
+                            }
                         } else {
-                            println!("❌ 未找到处理器: {}", shortcut_type);
+                            // 错误：找不到与存储键对应的处理器
+                            println!("❌ 未找到处理器: {}", storage_key);
                         }
                         return;
                     }
@@ -335,7 +349,9 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     )?;
 
     // 2. 初始化并注册所有快捷键
-    for (&shortcut_type, config) in SHORTCUT_CONFIGS.iter() {
+    // 迭代 SHORTCUT_CONFIGS 的值，确保使用 config.storage_key 作为 AppShortcutManager 的键
+    for config in SHORTCUT_CONFIGS.values() { 
+        let shortcut_type = config.storage_key; // shortcut_type 即为 storage_key (e.g., "global_shortcut")
         let shortcut_str = load_shortcut_from_storage(shortcut_type);
         println!("ℹ️ 正在尝试注册快捷键 {}: {}", shortcut_type, shortcut_str);
 
@@ -348,7 +364,8 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                 );
             } else {
                 println!("✅ 已成功注册快捷键 {}: {}", shortcut_type, shortcut_str);
-                shortcut_manager.set_shortcut(shortcut_type, shortcut_str);
+                // 使用 Storage Key (shortcut_type) 存储到 AppShortcutManager
+                shortcut_manager.set_shortcut(shortcut_type, shortcut_str); 
             }
         } else {
             eprintln!("❌ 快捷键 {} '{}' 格式无效。", shortcut_type, shortcut_str);

@@ -75,6 +75,7 @@ export function usePreferences() {
     global_shortcut_4: '快速粘贴',
     global_shortcut_5: '清空剪贴板历史'
   }
+  const shortcutKeys = Object.keys(shortcutDisplayNames)
 
   // 基础方法
   const setActiveNav = (navId) => {
@@ -314,7 +315,7 @@ const updateRetentionDays = async () => {
         newShortcutStr: newShortcutStr 
       })
 
-      settings.shortcuts[shortcutType] = newShortcutStr
+      await updateSetting(shortcutType, newShortcutStr)
       successMsg.value = `${shortcutDisplayNames[shortcutType]} 快捷键设置成功！`
       console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
 
@@ -593,6 +594,8 @@ const updateRetentionDays = async () => {
     userInfo,
     navItems,
     settings,
+    shortcutDisplayNames,
+    shortcutKeys,
 
     // 基础方法
     setActiveNav,
