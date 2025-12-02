@@ -1,0 +1,636 @@
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
+import { open } from '@tauri-apps/plugin-dialog'
+import { useSettingsStore } from '../stores/settings'
+import { 
+  Cog6ToothIcon,
+  TvIcon,
+  CloudIcon,
+  ClipboardIcon,
+  UserIcon
+} from '@heroicons/vue/24/outline'
+
+export function usePreferences() {
+  const router = useRouter()
+  const currentWindow = getCurrentWindow()
+
+  // 响应式数据
+  const activeNav = ref('general')
+  const showToast = ref(false)
+  const toastMessage = ref('')
+  const recordingShortcut = ref('')
+  const newIgnoredApp = ref('')
+  const userLoggedIn = ref(true)
+  const userEmail = ref('user@example.com')
+  const autostart = ref(false)
+  const loading = ref(false)
+
+  // 快捷键设置所需的变量
+  const errorMsg = ref('')
+  const successMsg = ref('')
+  const currentShortcut = ref('')
+  let timer = null
+  const shortcutManager = reactive({
+    currentType: '',
+    isRecording: false,
+    currentKeys: new Set()
+  })
+  const recordingShortcutType = ref('')
+
+  // 同步状态相关数据
+  const lastSyncTime = ref(null)
+  const lastSyncStatus = ref('')
+  const isSyncing = ref(false)
+
+  // 用户信息
+  const userInfo = reactive({
+    username: '当前用户',
+    email: 'user@example.com',
+    bio: '剪贴板管理爱好者'
+  })
+
+  // 导航项
+  const navItems = ref([
+    { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
+    { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
+    { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
+    { id: 'ocr', name: 'OCR设置', icon: ClipboardIcon },
+    { id: 'ai', name: 'AI Agent 设置', icon: ClipboardIcon },
+    { id: 'security', name: '安全与隐私', icon: ClipboardIcon }, 
+    { id: 'backup', name: '数据备份', icon: ClipboardIcon },
+    { id: 'cloud', name: '云端入口', icon: CloudIcon },
+    { id: 'user', name: '用户信息', icon: UserIcon }
+  ])
+
+  // 设置数据
+  const settings = useSettingsStore().settings
+
+  // 快捷键显示名称映射
+  const shortcutDisplayNames = {
+    global_shortcut: '显示/隐藏主窗口',
+    global_shortcut_2: '显示/隐藏剪贴板', 
+    global_shortcut_3: '显示/隐藏AI助手',
+    global_shortcut_4: '快速粘贴',
+    global_shortcut_5: '清空剪贴板历史'
+  }
+
+  // 基础方法
+  const setActiveNav = (navId) => {
+    activeNav.value = navId
+  }
+
+  const goBack = () => {
+    router.back()
+  }
+
+  const login = () => {
+    userLoggedIn.value = true
+    showMessage('登录成功')
+  }
+
+  const logout = () => {
+    userLoggedIn.value = false
+    showMessage('已退出登录')
+  }
+
+  const resetUserInfo = () => {
+    Object.assign(userInfo, {
+      username: '当前用户',
+      email: 'user@example.com',
+      bio: '剪贴板管理爱好者'
+    })
+    showMessage('用户信息已重置')
+  }
+
+  const showMessage = (message) => {
+    toastMessage.value = message
+    showToast.value = true
+    setTimeout(() => {
+      showToast.value = false
+    }, 2000)
+  }
+
+
+  // 通用设置相关函数
+// 启动时自动运行
+// 检查自启状态
+/*
+const checkAutostartStatus = async () => {
+  try {
+    const isEnabled = await invoke('is_autostart_enabled')
+    settings.autoStart = isEnabled
+    console.log('当前自启状态:', isEnabled)
+  } catch (error) {
+    console.error('检查自启状态失败:', error)
+    showMessage('检查自启状态失败')
+  }
+}
+
+// 切换自启状态 - 唯一的函数
+const toggleAutoStart = async () => {
+  loading.value = true
+  try {
+    await invoke('set_autostart', { enable: settings.autoStart })
+    const message = settings.autoStart ? '已开启开机自启' : '已关闭开机自启'
+    console.log(message)
+    showMessage(message)
+  } catch (error) {
+    console.error('设置自启失败:', error)
+    showMessage(`设置失败: ${error}`)
+    // 出错时恢复原状态
+    settings.autoStart = !settings.autoStart
+  } finally {
+    loading.value = false
+  }
+}
+// 显示系统托盘图标
+const toggleTrayIcon = async () => {
+  try {
+    await invoke('set_tray_icon_visibility', { visible: settings.showTrayIcon })
+    showMessage(settings.showTrayIcon ? '已显示托盘图标' : '已隐藏托盘图标')
+  } catch (error) {
+    console.error('设置托盘图标失败:', error)
+    settings.showTrayIcon = !settings.showTrayIcon
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+//启动时最小化到托盘
+const toggleMinimizeToTray = async () => {
+  try {
+    await invoke('set_minimize_to_tray', { enabled: settings.showTrayIcon })
+    showMessage(settings.showTrayIcon ? '已启用启动时最小化到托盘' : '已禁用启动时最小化到托盘')
+  } catch (error) {
+    console.error('设置最小化到托盘失败:', error)
+    settings.showTrayIcon = !settings.showTrayIcon
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 自动保存剪贴板历史
+const toggleAutoSave = async () => {
+  try {
+    await invoke('set_auto_save', { enabled: settings.autoSave })
+    showMessage(settings.autoSave ? '已启用自动保存' : '已禁用自动保存')
+  } catch (error) {
+    console.error('设置自动保存失败:', error)
+    settings.autoSave = !settings.autoSave
+    showMessage(`设置失败: ${error}`)
+  }
+}
+
+// 历史记录保留时间
+const updateRetentionDays = async () => {
+  try {
+    await invoke('set_retention_days', { days: parseInt(settings.retentionDays) })
+    showMessage(`历史记录保留时间已设置为 ${settings.retentionDays} 天`)
+  } catch (error) {
+    console.error('设置保留时间失败:', error)
+    showMessage(`设置失败: ${error}`)
+  }
+}*/
+
+  // 快捷键相关方法
+  const startRecording = (shortcutType) => {
+    shortcutManager.currentType = shortcutType
+    shortcutManager.isRecording = true
+    shortcutManager.currentKeys.clear()
+    
+    showMessage(`请按下 ${shortcutDisplayNames[shortcutType]} 的快捷键...`)
+    
+    window.addEventListener('keydown', handleKeyDownDuringRecording)
+    window.addEventListener('keyup', handleKeyUpDuringRecording)
+  }
+
+  const handleKeyDownDuringRecording = (event) => {
+    if (!shortcutManager.isRecording) return
+    
+    event.preventDefault()
+    event.stopPropagation()
+    
+    const key = getKeyName(event)
+    if (key) {
+      shortcutManager.currentKeys.add(key)
+    }
+    
+    if (event.key === 'Escape') {
+      cancelRecording()
+      return
+    }
+    
+    const hasRegularKey = Array.from(shortcutManager.currentKeys).some(key => 
+      !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(key)
+    )
+    
+    if (hasRegularKey && shortcutManager.currentKeys.size > 0) {
+      const shortcutStr = Array.from(shortcutManager.currentKeys).join('+')
+      finishRecording(shortcutStr)
+    }
+  }
+
+  const handleKeyUpDuringRecording = (event) => {
+    if (!shortcutManager.isRecording) return
+    
+    const key = getKeyName(event)
+    if (key) {
+      shortcutManager.currentKeys.delete(key)
+    }
+  }
+
+  const getKeyName = (event) => {
+    if (event.key === 'Control') return 'Ctrl'
+    if (event.key === 'Alt') return 'Alt'
+    if (event.key === 'Shift') return 'Shift'
+    if (event.key === 'Meta') return 'Meta'
+    
+    if (event.key === 'Control' || event.key === 'Alt' || 
+        event.key === 'Shift' || event.key === 'Meta') {
+      return null
+    }
+    
+    if (event.key === ' ') return 'Space'
+    if (event.key === 'Escape') return 'Escape'
+    
+    if (event.key.startsWith('F') && event.key.length > 1) {
+      const fNumber = event.key.slice(1)
+      if (!isNaN(fNumber)) {
+        return event.key
+      }
+    }
+    
+    if (event.key.length === 1 && event.key.match(/[a-zA-Z]/)) {
+      return event.key.toUpperCase()
+    }
+    
+    if (event.key.match(/^[0-9]$/)) {
+      return event.key
+    }
+    
+    const specialKeys = {
+      'ArrowUp': 'Up',
+      'ArrowDown': 'Down', 
+      'ArrowLeft': 'Left',
+      'ArrowRight': 'Right',
+      'Enter': 'Enter',
+      'Tab': 'Tab',
+      'CapsLock': 'CapsLock',
+      'Backspace': 'Backspace',
+      'Delete': 'Delete',
+      'Insert': 'Insert',
+      'Home': 'Home',
+      'End': 'End',
+      'PageUp': 'PageUp',
+      'PageDown': 'PageDown',
+      ' ': 'Space'
+    }
+    
+    return specialKeys[event.key] || event.key
+  }
+
+  const finishRecording = async (newShortcut) => {
+    shortcutManager.isRecording = false
+    
+    window.removeEventListener('keydown', handleKeyDownDuringRecording)
+    window.removeEventListener('keyup', handleKeyUpDuringRecording)
+    
+    await setShortcut(newShortcut, shortcutManager.currentType)
+    shortcutManager.currentType = ''
+  }
+
+  const setShortcut = async (newShortcutStr, shortcutType) => {
+    if (!shortcutType) {
+      console.error('没有指定快捷键类型')
+      return
+    }
+    
+    errorMsg.value = ''
+    successMsg.value = ''
+
+    try {
+      await invoke('update_shortcut', { 
+        shortcutType: shortcutType,
+        newShortcutStr: newShortcutStr 
+      })
+
+      settings.shortcuts[shortcutType] = newShortcutStr
+      successMsg.value = `${shortcutDisplayNames[shortcutType]} 快捷键设置成功！`
+      console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
+
+    } catch (err) {
+      errorMsg.value = `设置失败: ${err}`
+      console.error('❌ 设置快捷键失败:', err)
+      
+      if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
+        errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键'
+      }
+    }
+
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      successMsg.value = ''
+      errorMsg.value = ''
+    }, 3000)
+  }
+
+  const cancelRecording = () => {
+    shortcutManager.isRecording = false
+    shortcutManager.currentType = ''
+    window.removeEventListener('keydown', handleKeyDownDuringRecording)
+    window.removeEventListener('keyup', handleKeyUpDuringRecording)
+    showMessage('已取消快捷键设置')
+  }
+
+  // 设置相关方法
+  const updateSetting = async (key, value) => {
+    const oldValue = settings[key]
+    
+    try {
+      settings[key] = value
+      await invoke('set_config_item', { key, value })
+      showMessage('设置已更新')
+    } catch (error) {
+      console.error(`设置 ${key} 失败:`, error)
+      settings[key] = oldValue
+      showMessage(`设置失败: ${error}`)
+    }
+  }
+
+  const toggleOCRLanguage = async (language, isChecked) => {
+    let updatedLanguages
+    
+    if (isChecked) {
+      updatedLanguages = [...settings.ocr_languages, language]
+    } else {
+      updatedLanguages = settings.ocr_languages.filter(lang => lang !== language)
+    }
+    
+    try {
+      await updateSetting('ocr_languages', updatedLanguages)
+      showMessage('OCR语言设置已更新')
+    } catch (error) {
+      console.error('更新OCR语言失败:', error)
+      showMessage(`更新失败: ${error}`)
+    }
+  }
+
+  const changeStoragePath = async () => {
+    try {
+      const selectedPath = await open({
+        directory: true,
+        multiple: false,
+        title: '选择数据存储路径',
+        defaultPath: settings.storage_path || undefined
+      })
+
+      if (selectedPath) {
+        settings.storage_path = selectedPath
+        await updateSetting('storage_path', selectedPath)
+        showMessage('存储路径已更新')
+      }
+    } catch (error) {
+      console.error('选择存储路径失败:', error)
+      showMessage(`选择路径失败: ${error}`)
+    }
+  }
+
+  // 数据管理方法
+  const clearAiHistory = async () => {
+    if (confirm('确定要清空所有AI对话历史吗？此操作不可恢复。')) {
+      try {
+        // await invoke('clear_ai_history')
+        showMessage('AI对话历史已清空')
+      } catch (error) {
+        console.error('清空AI历史失败:', error)
+        showMessage(`清空失败: ${error}`)
+      }
+    }
+  }
+
+  const exportData = async () => {
+    try {
+      // const exportPath = await invoke('export_user_data')
+      showMessage(`数据已导出到: ${exportPath}`)
+    } catch (error) {
+      console.error('导出数据失败:', error)
+      showMessage(`导出失败: ${error}`)
+    }
+  }
+
+  const importData = async () => {
+    try {
+      // const result = await invoke('import_user_data')
+      if (result.success) {
+        showMessage('数据导入成功')
+      }
+    } catch (error) {
+      console.error('导入数据失败:', error)
+      showMessage(`导入失败: ${error}`)
+    }
+  }
+
+  const createBackup = async () => {
+    try {
+      // const backupPath = await invoke('create_backup')
+      showMessage(`备份已创建: ${backupPath}`)
+    } catch (error) {
+      console.error('创建备份失败:', error)
+      showMessage(`备份失败: ${error}`)
+    }
+  }
+
+  // 云端同步方法
+  const formatTime = (timestamp) => {
+    if (!timestamp) return ''
+    const date = new Date(timestamp)
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`
+  }
+
+  const manualSync = async () => {
+    if (isSyncing.value) return
+    
+    isSyncing.value = true
+    try {
+      // await invoke('force_cloud_sync')
+      lastSyncStatus.value = 'success'
+      lastSyncTime.value = Date.now()
+      localStorage.setItem('lastSyncTime', lastSyncTime.value)
+      showMessage('同步成功')
+    } catch (error) {
+      lastSyncStatus.value = 'error'
+      console.error('同步失败:', error)
+      showMessage(`同步失败: ${error}`)
+    } finally {
+      isSyncing.value = false
+    }
+  }
+
+  const syncNow = async () => {
+    try {
+      showMessage('正在同步...')
+      // await invoke('force_cloud_sync')
+      showMessage('云端同步完成')
+    } catch (error) {
+      console.error('同步失败:', error)
+      showMessage(`同步失败: ${error}`)
+    }
+  }
+
+  const checkSyncStatus = async () => {
+    try {
+      // const status = await invoke('get_sync_status')
+      showMessage(`同步状态: ${status.lastSync ? `最后同步 ${formatTime(status.lastSync)}` : '从未同步'}`)
+    } catch (error) {
+      console.error('获取同步状态失败:', error)
+      showMessage(`获取状态失败: ${error}`)
+    }
+  }
+
+  // 用户管理方法
+  const changeAvatar = async () => {
+    try {
+      // const filePath = await invoke('select_avatar_file')
+      if (filePath) {
+        await invoke('upload_user_avatar', { filePath })
+        showMessage('头像更换成功')
+      }
+    } catch (error) {
+      console.error('更换头像失败:', error)
+      showMessage(`更换失败: ${error}`)
+    }
+  }
+
+  const changePassword = async () => {
+    try {
+      // const result = await invoke('open_change_password_dialog')
+      if (result.success) {
+        showMessage('密码修改成功')
+      }
+    } catch (error) {
+      console.error('修改密码失败:', error)
+      showMessage(`修改失败: ${error}`)
+    }
+  }
+
+  const deleteAccount = async () => {
+    if (confirm('确定要删除账户吗？此操作将永久删除所有数据且不可恢复！')) {
+      try {
+        // await invoke('delete_user_account')
+        showMessage('账户已删除')
+        router.push('/')
+      } catch (error) {
+        console.error('删除账户失败:', error)
+        showMessage(`删除失败: ${error}`)
+      }
+    }
+  }
+
+  // 辅助方法
+  const getAIServiceName = (service) => {
+    const serviceMap = {
+      'openai': 'OpenAI',
+      'claude': 'Claude', 
+      'gemini': 'Gemini',
+      'deepseek': 'DeepSeek',
+      'custom': '自定义'
+    }
+    return serviceMap[service] || service
+  }
+
+  const getBackupFrequencyName = (frequency) => {
+    const frequencyMap = {
+      'daily': '每天',
+      'weekly': '每周',
+      'monthly': '每月'
+    }
+    return frequencyMap[frequency] || frequency
+  }
+
+    // 生命周期
+  onMounted(async () => {
+      // 加载保存的设置
+      /*
+      const savedSettings = localStorage.getItem('clipboardSettings')
+      if (savedSettings) {
+        Object.assign(settings, JSON.parse(savedSettings))
+      }
+      const savedTime = localStorage.getItem('lastSyncTime');
+      if (savedTime) {
+        lastSyncTime.value = parseInt(savedTime);
+      }*/
+
+      // await checkAutostartStatus()
+    /*
+      // 初始化窗口大小
+      try {
+        await currentWindow.setSize(new LogicalSize(800, 580));
+      } catch (error) {
+        console.error('设置窗口大小失败:', error)
+      }
+        */
+    })
+
+  return {
+    // 状态
+    activeNav,
+    showToast,
+    toastMessage,
+    recordingShortcut,
+    newIgnoredApp,
+    userLoggedIn,
+    userEmail,
+    autostart,
+    loading,
+    errorMsg,
+    successMsg,
+    currentShortcut,
+    shortcutManager,
+    recordingShortcutType,
+    lastSyncTime,
+    lastSyncStatus,
+    isSyncing,
+    userInfo,
+    navItems,
+    settings,
+
+    // 基础方法
+    setActiveNav,
+    goBack,
+    login,
+    logout,
+    resetUserInfo,
+    showMessage,
+
+    // 快捷键方法
+    startRecording,
+    cancelRecording,
+    setShortcut,
+
+    // 设置方法
+    updateSetting,
+    toggleOCRLanguage,
+    changeStoragePath,
+
+    // 数据管理方法
+    clearAiHistory,
+    exportData,
+    importData,
+    createBackup,
+
+    // 云端同步方法
+    formatTime,
+    manualSync,
+    syncNow,
+    checkSyncStatus,
+
+    // 用户管理方法
+    changeAvatar,
+    changePassword,
+    deleteAccount,
+
+    // 辅助方法
+    getAIServiceName,
+    getBackupFrequencyName
+  }
+}
