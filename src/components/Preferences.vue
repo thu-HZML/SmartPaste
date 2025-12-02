@@ -713,12 +713,18 @@
             
             <div class="account-status" v-if="!userLoggedIn">
               <p>您尚未登录，请登录以启用云端同步功能</p>
-              <button class="btn btn-primary" @click="login">登录账户</button>
+              <div class="account-buttons">
+                <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
+                <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
+              </div>
             </div>
             
             <div class="account-status" v-else>
               <p>已登录为: {{ userEmail }}</p>
-              <button class="btn btn-secondary" @click="logout">退出登录</button>
+              <div class="account-buttons">
+                <button class="btn btn-secondary" @click="logout">退出登录</button>
+                <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
+              </div>
             </div>
           </div>
         </div>
@@ -784,6 +790,138 @@
     <div v-if="showToast" class="toast">
       {{ toastMessage }}
     </div>
+
+    <!-- 注册对话框 -->
+    <div v-if="showRegisterDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>注册新账户</h3>
+          <button @click="closeRegisterDialog" class="close-btn">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <form @submit.prevent="handleRegister">
+            <div class="form-group">
+              <label for="username">用户名</label>
+              <input
+                id="username"
+                v-model="registerData.username"
+                type="text"
+                required
+                placeholder="请输入用户名（至少3个字符）"
+                class="form-input"
+                :class="{ 'error': registerErrors.username }"
+              />
+              <div v-if="registerErrors.username" class="error-message">{{ registerErrors.username }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="email">邮箱</label>
+              <input
+                id="email"
+                v-model="registerData.email"
+                type="email"
+                required
+                placeholder="请输入邮箱"
+                class="form-input"
+                :class="{ 'error': registerErrors.email }"
+              />
+              <div v-if="registerErrors.email" class="error-message">{{ registerErrors.email }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="password">密码</label>
+              <input
+                id="password"
+                v-model="registerData.password"
+                type="password"
+                required
+                placeholder="请输入密码（至少6位）"
+                class="form-input"
+                :class="{ 'error': registerErrors.password }"
+              />
+              <div v-if="registerErrors.password" class="error-message">{{ registerErrors.password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="password2">确认密码</label>
+              <input
+                id="password2"
+                v-model="registerData.password2"
+                type="password"
+                required
+                placeholder="请再次输入密码"
+                class="form-input"
+                :class="{ 'error': registerErrors.password2 }"
+              />
+              <div v-if="registerErrors.password2" class="error-message">{{ registerErrors.password2 }}</div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeRegisterDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="registerLoading" class="btn btn-primary">
+                <span v-if="registerLoading">注册中...</span>
+                <span v-else>注册</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登录对话框 -->
+    <div v-if="showLoginDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>登录账户</h3>
+          <button @click="closeLoginDialog" class="close-btn">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <form @submit.prevent="handleLogin">
+            <div class="form-group">
+              <label for="login-email">邮箱</label>
+              <input
+                id="login-email"
+                v-model="loginData.email"
+                type="email"
+                required
+                placeholder="请输入注册邮箱"
+                class="form-input"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label for="login-password">密码</label>
+              <input
+                id="login-password"
+                v-model="loginData.password"
+                type="password"
+                required
+                placeholder="请输入密码"
+                class="form-input"
+              />
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeLoginDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="loginLoading" class="btn btn-primary">
+                <span v-if="loginLoading">登录中...</span>
+                <span v-else>登录</span>
+              </button>
+            </div>
+            
+            <div class="form-footer">
+              <p>还没有账户？ <a href="#" @click.prevent="showLoginDialog = false; openRegisterDialog()">立即注册</a></p>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div> 
   </div>
 </template>
 
@@ -815,30 +953,59 @@ const {
   shortcutDisplayNames,
   shortcutKeys,
 
-  // 方法
+  // 注册登录相关状态
+  showRegisterDialog,
+  showLoginDialog,
+  registerData,
+  loginData,
+  registerErrors,
+  registerLoading,
+  loginLoading,
+
+  // 基础方法
   setActiveNav,
   goBack,
   login,
   logout,
   resetUserInfo,
   showMessage,
+
+  // 注册登录方法
+  handleRegister,
+  handleLogin,
+  openRegisterDialog,
+  openLoginDialog,
+  closeRegisterDialog,
+  closeLoginDialog,
+  
+  // 快捷键方法
   startRecording,
   cancelRecording,
   setShortcut,
+
+  // 设置方法
   updateSetting,
   toggleOCRLanguage,
   changeStoragePath,
+
+  // 数据管理方法
   clearAiHistory,
   exportData,
   importData,
   createBackup,
+
+  // 云端同步方法
   formatTime,
   manualSync,
   syncNow,
   checkSyncStatus,
+
+  // 用户管理方法
   changeAvatar,
   changePassword,
   deleteAccount,
+
+  // 辅助方法
   getAIServiceName,
   getBackupFrequencyName
 } = usePreferences()
@@ -1414,6 +1581,196 @@ input:checked + .slider:before {
 
 .btn-danger:hover {
   background: #c0392b;
+}
+
+/* 未登录用户界面 */
+.unlogged-user {
+  padding: 40px 20px;
+  text-align: center;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+}
+
+.unlogged-message h3 {
+  margin-bottom: 10px;
+  color: #2c3e50;
+  font-size: 18px;
+}
+
+.unlogged-message p {
+  margin-bottom: 20px;
+  color: #7f8c8d;
+}
+
+.unlogged-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* 账户按钮组 */
+.account-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #2c3e50;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+/* 表单样式 */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.25);
+}
+
+.form-input.error {
+  border-color: #e74c3c;
+}
+
+.error-message {
+  color: #e74c3c;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 30px;
+}
+
+.form-footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #7f8c8d;
+}
+
+.form-footer a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+.form-footer a:hover {
+  text-decoration: underline;
+}
+
+/* 按钮样式更新 */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #3498db;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2980b9;
+}
+
+.btn-primary:disabled {
+  background: #a0c9e5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #ecf0f1;
+  color: #2c3e50;
+  border: 1px solid #bdc3c7;
+}
+
+.btn-secondary:hover {
+  background: #d5dbdb;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 14px;
 }
 
 /* 提示信息样式 */
