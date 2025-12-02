@@ -1044,6 +1044,46 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         }
     }
 }
+/// 强制从当前设置的路径重新加载配置到内存
+/// 用于在运行时切换存储路径后更新全局状态
+pub fn reload_config() -> String {
+    let config_path = get_config_path();
+    println!("🔄 正在重新加载配置: {}", config_path.display());
+
+    // 1. 读取文件内容
+    let config: Config = if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(data) => match serde_json::from_str(&data) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    eprintln!("❌ 解析配置文件失败: {}", e);
+                    return format!("Parse error: {}", e);
+                }
+            },
+            Err(e) => {
+                eprintln!("❌ 读取配置文件失败: {}", e);
+                return format!("Read error: {}", e);
+            }
+        }
+    } else {
+        eprintln!("⚠️ 配置文件不存在: {}", config_path.display());
+        return "File not found".to_string();
+    };
+
+    // 2. 更新全局 RwLock
+    if let Some(lock) = CONFIG.get() {
+        let mut global_cfg = lock.write().unwrap();
+        *global_cfg = config; // 👈 关键点：直接覆盖内存中的旧配置
+        println!("✅ 内存配置已更新");
+        "reloaded successfully".to_string()
+    } else {
+        // 理论上不应该走到这里，除非 init_config 还没被调用过
+        // 如果没初始化，尝试初始化
+        CONFIG.set(RwLock::new(config))
+            .map(|_| "initialized successfully".to_string())
+            .unwrap_or_else(|_| "Unknown error".to_string())
+    }
+}
 // /// 设置数据存储路径
 // /// # Param
 // /// path: PathBuf - 新的数据存储路径
