@@ -1,3 +1,4 @@
+use crate::app_setup;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -7,7 +8,6 @@ use std::{
 };
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
-use crate::app_setup;
 static CONFIG_PATH_GLOBAL: RwLock<Option<PathBuf>> = RwLock::new(None);
 /// 系统配置结构体，包含通用设置、剪贴板参数、AI、隐私、备份、云同步和用户信息等配置项。
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -370,7 +370,7 @@ impl Default for Config {
             global_shortcut_5: default_shortcut_5(), // 新增
             // 剪贴板
             max_history_items: 500,         // 最大历史记录数：500条
-            ignore_short_text_len: 3,       // 忽略短文本长度：3字符
+            ignore_short_text_len: 0,       // 忽略短文本长度：不忽略(0表示不忽略)
             ignore_big_file_mb: 5,          // 忽略大文件大小：5MB
             ignored_apps: Vec::new(),       // 忽略的应用列表：空
             auto_classify: true,            // 自动分类：是
@@ -433,10 +433,10 @@ pub static CONFIG: OnceLock<RwLock<Config>> = OnceLock::new();
 pub fn set_config_path(path: PathBuf) {
     // 🔥 修复：强制规范化路径分隔符
     let path_str = path.to_string_lossy().to_string();
-    
+
     #[cfg(target_os = "windows")]
     let normalized_path_str = path_str.replace("/", "\\");
-    
+
     #[cfg(not(target_os = "windows"))]
     let normalized_path_str = path_str;
 
@@ -507,19 +507,19 @@ pub fn get_config_json() -> String {
 pub fn save_config(config: Config) -> Result<(), String> {
     let config_path = get_config_path();
     println!("💾 正在保存配置到: {}", config_path.display());
-    
+
     // 确保目录存在
     if let Some(parent) = config_path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             return Err(format!("创建配置目录失败: {}", e));
         }
     }
-    
+
     let data = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     match fs::write(&config_path, &data) {
         Ok(_) => {
             println!("✅ 配置保存成功: {}", config_path.display());
-            
+
             // 验证文件确实被创建
             if config_path.exists() {
                 println!("✅ 配置文件确认存在");
@@ -529,7 +529,7 @@ pub fn save_config(config: Config) -> Result<(), String> {
             } else {
                 println!("❌ 配置文件不存在，保存可能失败");
             }
-            
+
             Ok(())
         }
         Err(e) => {
@@ -632,8 +632,12 @@ pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(
 }
 /// 迁移数据到新的存储路径
 fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
-    println!("🚚 开始迁移数据文件从 {} 到 {}", old_path.display(), new_path.display());
-    
+    println!(
+        "🚚 开始迁移数据文件从 {} 到 {}",
+        old_path.display(),
+        new_path.display()
+    );
+
     // 确保新路径存在
     if let Err(e) = fs::create_dir_all(new_path) {
         return Err(format!("创建新存储路径失败: {}", e));
@@ -641,10 +645,7 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
 
     // 🔥 关键修复：在迁移前先清理新路径下的现有文件
     println!("🧹 检查并清理新路径下的现有文件...");
-    let files_to_clean = vec![
-        ("smartpaste.db", "数据库文件"),
-        ("files", "文件目录")
-    ];
+    let files_to_clean = vec![("smartpaste.db", "数据库文件"), ("files", "文件目录")];
 
     for (file_name, desc) in files_to_clean {
         let target_path = new_path.join(file_name);
@@ -667,15 +668,12 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
         }
     }
 
-    let files_to_migrate = vec![
-        ("smartpaste.db", "数据库文件"),
-        ("files", "文件目录")
-    ];
+    let files_to_migrate = vec![("smartpaste.db", "数据库文件"), ("files", "文件目录")];
 
     for (file_name, desc) in files_to_migrate {
         let old_file_path = old_path.join(file_name);
         let new_file_path = new_path.join(file_name);
-        
+
         if old_file_path.exists() {
             if file_name == "files" && old_file_path.is_dir() {
                 // 处理文件夹迁移 - 现在目标文件夹已经被清理，直接复制
@@ -694,11 +692,14 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
             println!("ℹ️ {} 不存在，跳过迁移: {}", desc, file_name);
         }
     }
-    
+
     // 🆕 新增功能：迁移完成后删除原路径下的 files 文件夹
     let old_files_dir = old_path.join("files");
     if old_files_dir.exists() && old_files_dir.is_dir() {
-        println!("🗑️ 开始删除原路径下的 files 文件夹: {}", old_files_dir.display());
+        println!(
+            "🗑️ 开始删除原路径下的 files 文件夹: {}",
+            old_files_dir.display()
+        );
         match fs::remove_dir_all(&old_files_dir) {
             Ok(_) => println!("✅ 已成功删除原路径下的 files 文件夹"),
             Err(e) => {
@@ -710,7 +711,7 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
     } else {
         println!("ℹ️ 原路径下没有 files 文件夹，无需删除");
     }
-    
+
     println!("🎉 数据文件迁移完成");
     Ok(())
 }
@@ -725,7 +726,7 @@ fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
         if !dst.is_dir() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "目标路径不是目录"
+                "目标路径不是目录",
             ));
         }
     }
@@ -762,13 +763,13 @@ pub fn get_current_storage_path() -> PathBuf {
             }
         }
     }
-    
+
     // 回退到配置文件的父目录
     let config_path = get_config_path();
     if let Some(parent) = config_path.parent() {
         return parent.to_path_buf();
     }
-    
+
     // 最后回退到当前目录
     PathBuf::from(".")
 }
@@ -792,7 +793,11 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         let current_path = get_current_storage_path();
         let new_path = PathBuf::from(&new_path_str);
 
-        println!("🔄 开始修改存储路径: {} -> {}", current_path.display(), new_path.display());
+        println!(
+            "🔄 开始修改存储路径: {} -> {}",
+            current_path.display(),
+            new_path.display()
+        );
 
         // 验证新路径
         if new_path_str.trim().is_empty() {
@@ -836,7 +841,7 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
                 if count == 0 {
                     println!("⚠️ 没有找到需要更新的文件路径记录，这可能是正常的");
                 }
-            },
+            }
             Err(e) => {
                 println!("⚠️ 更新数据库路径失败: {}", e);
                 // 这里不返回错误，继续执行，因为迁移已经完成
@@ -851,19 +856,25 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
         // 保存配置到新路径
         let new_config_path = new_path.join("config.json");
         let old_config_path = get_config_path();
-        
+
         println!("💾 准备保存配置到新路径: {}", new_config_path.display());
-        
+
         // 切换到新路径保存配置
         set_config_path(new_config_path.clone());
-        
+
         // 验证路径是否真的改变了
         let current_path_after_set = get_config_path();
-        println!("🔍 设置配置路径后，当前配置路径: {}", current_path_after_set.display());
-        
+        println!(
+            "🔍 设置配置路径后，当前配置路径: {}",
+            current_path_after_set.display()
+        );
+
         if current_path_after_set != new_config_path {
-            println!("❌ 配置路径设置失败，期望: {}，实际: {}", 
-                new_config_path.display(), current_path_after_set.display());
+            println!(
+                "❌ 配置路径设置失败，期望: {}，实际: {}",
+                new_config_path.display(),
+                current_path_after_set.display()
+            );
             set_config_path(old_config_path);
             return "Failed to set config path".to_string();
         }
@@ -874,9 +885,12 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
                 // 更新数据库路径
                 let new_db_path = new_path.join("smartpaste.db");
                 crate::db::set_db_path(new_db_path);
-                
-                println!("✅ 存储路径修改完成，配置已保存到新路径: {}", new_config_path.display());
-                
+
+                println!(
+                    "✅ 存储路径修改完成，配置已保存到新路径: {}",
+                    new_config_path.display()
+                );
+
                 // 验证新配置文件确实存在
                 if new_config_path.exists() {
                     println!("✅ 新配置文件确认存在: {}", new_config_path.display());
@@ -886,24 +900,27 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
                 } else {
                     println!("❌ 新配置文件不存在，保存可能失败");
                 }
-                
+
                 // 🔥 关键修复：同时更新默认路径的配置文件
                 // 这样应用重启后能从默认路径读取到正确的存储路径
                 let app_default_dir = app.path().app_data_dir().unwrap();
                 let default_config_path = app_default_dir.join("config.json");
-                
+
                 if default_config_path != new_config_path {
-                    println!("📝 同时更新默认路径的配置文件: {}", default_config_path.display());
-                    
+                    println!(
+                        "📝 同时更新默认路径的配置文件: {}",
+                        default_config_path.display()
+                    );
+
                     // 创建默认路径的配置副本
                     let mut default_config = cfg_clone.clone();
                     // 确保存储路径字段正确
                     default_config.storage_path = Some(new_path_str.clone());
-                    
+
                     // 保存到默认路径
                     let old_path_for_default = get_config_path();
                     set_config_path(default_config_path.clone());
-                    
+
                     if let Err(e) = save_config(default_config) {
                         println!("⚠️ 更新默认路径配置文件失败: {}", e);
                         // 恢复配置路径
@@ -914,7 +931,7 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
                         set_config_path(new_config_path);
                     }
                 }
-                
+
                 "config updated and data migrated".to_string()
             }
             Err(e) => {
@@ -931,10 +948,10 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
                 if config_key == ConfigKey::TrayIconVisible {
                     if let Ok(visible) = serde_json::from_value::<bool>(value.clone()) {
                         println!("🔄 动态更新托盘图标可见性为: {}", visible);
-                        
+
                         // 关键修改：通过全局函数获取存储的 TrayIconHandle
                         if let Some(tray) = app_setup::get_tray_icon_handle() {
-                             if let Err(e) = tray.set_visible(visible) {
+                            if let Err(e) = tray.set_visible(visible) {
                                 println!("❌ 托盘图标设置可见性失败: {:?}", e);
                             } else {
                                 println!("✅ 托盘图标可见性设置成功");
@@ -1029,7 +1046,8 @@ pub fn reload_config() -> String {
     } else {
         // 理论上不应该走到这里，除非 init_config 还没被调用过
         // 如果没初始化，尝试初始化
-        CONFIG.set(RwLock::new(config))
+        CONFIG
+            .set(RwLock::new(config))
             .map(|_| "initialized successfully".to_string())
             .unwrap_or_else(|_| "Unknown error".to_string())
     }
