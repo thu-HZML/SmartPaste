@@ -273,7 +273,39 @@ fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
             io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
         }
     }
+    println!("🔧 正在修正 config.json 中的存储路径...");
+    let config_file_path = root_path.join("config.json");
 
+    if config_file_path.exists() {
+        // 1. 读取解压出来的配置文件
+        let config_content = fs::read_to_string(&config_file_path).map_err(|e| format!("读取配置失败: {}", e))?;
+        
+        // 2. 解析 JSON
+        let mut json_val: serde_json::Value = serde_json::from_str(&config_content).map_err(|e| format!("解析配置失败: {}", e))?;
+
+        // 3. 获取当前的物理路径字符串
+        let current_path_str = root_path.to_string_lossy().to_string();
+
+        // 4. 规范化路径 (Windows下强制使用反斜杠，防止混合斜杠Bug复发)
+        #[cfg(target_os = "windows")]
+        let final_path_str = current_path_str.replace("\\", "/");
+        
+        #[cfg(not(target_os = "windows"))]
+        let final_path_str = current_path_str;
+
+        println!("📍 将 storage_path 修正为: {}", final_path_str);
+
+        // 5. 修改字段
+        json_val["storage_path"] = serde_json::Value::String(final_path_str);
+
+        // 6. 写回文件
+        let new_content = serde_json::to_string_pretty(&json_val).map_err(|e| format!("序列化配置失败: {}", e))?;
+        fs::write(&config_file_path, new_content).map_err(|e| format!("写入配置失败: {}", e))?;
+        
+        println!("✅ storage_path 修正完成");
+    } else {
+        eprintln!("⚠️ 警告: 解压后未找到 config.json，跳过路径修正");
+    }
     // 6. 恢复完成后，必须重新加载配置到内存
     println!("🔄 恢复完成，正在刷新配置...");
     let reload_msg = crate::config::reload_config();
