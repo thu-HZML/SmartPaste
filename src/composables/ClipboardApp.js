@@ -26,6 +26,7 @@ export function useClipboardApp() {
   const showFoldersModal = ref(false)
   const showOcrModal = ref(false)
   const showDeleteModal = ref(false)
+  const showDeleteSingleModal = ref(false)
   const editingText = ref('')
   const editingItem = ref(null)
   const notingText = ref('')
@@ -417,6 +418,21 @@ export function useClipboardApp() {
     showDeleteModal.value = false
   }
 
+  // 弹出"确认删除"提示框
+  const showDeleteSingle = (item) => {
+    currentItem.value = item
+    if (settings.delete_confirmation) {
+      showDeleteSingleModal.value = true
+    } else {
+      removeItem()
+    }    
+  }
+
+  // "确认删除"提示框消失
+  const cancelDeleteSingle = () => {
+    showDeleteSingleModal.value = false
+  }
+
   // 编辑项目
   const editItem = (item) => {
     editingItem.value = item
@@ -509,7 +525,8 @@ export function useClipboardApp() {
   }
 
   // 删除历史记录
-  const removeItem = async (item) => {
+  const removeItem = async () => {
+    const item = currentItem.value
     try {
       // 如果记录被收藏，先从所有收藏夹中移除
       if (item.is_favorite) {
@@ -536,7 +553,7 @@ export function useClipboardApp() {
       if (index !== -1) {
         filteredHistory.value.splice(index, 1)
       }
-      
+      cancelDeleteSingle()
       showMessage('已删除记录')
     } catch (error) {
       console.error('删除记录失败:', error)
@@ -1147,6 +1164,7 @@ export function useClipboardApp() {
     showFoldersModal,
     showOcrModal,
     showDeleteModal,
+    showDeleteSingleModal,
     editingText,
     editingItem,
     notingText,
@@ -1208,8 +1226,10 @@ export function useClipboardApp() {
     addToFolder,
     cancelAddToFolder,
     showDeleteAll,
+    showDeleteSingle,
     deleteAllHistory,
     cancelDeleteAll,
+    cancelDeleteSingle,
     handleItemClick,
     copySelectedItems,
     exitMultiSelectMode,
