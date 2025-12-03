@@ -2,6 +2,7 @@ use crate::clipboard::ClipboardItem;
 use crate::config::{self, CONFIG};
 use crate::db;
 use crate::ocr;
+use crate::utils;
 use chrono::Utc;
 use image::buffer::EnumeratePixelsMut;
 use image::ColorType;
@@ -709,7 +710,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                                 // 记录图标提取开始时间
                                                 let icon_extract_start = Instant::now();
 
-                                                match crate::get_file_icon(
+                                                match utils::get_file_icon(
                                                     dest_path_for_icon.clone(),
                                                 )
                                                 .await
