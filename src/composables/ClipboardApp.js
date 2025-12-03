@@ -26,6 +26,7 @@ export function useClipboardApp() {
   const showFoldersModal = ref(false)
   const showOcrModal = ref(false)
   const showDeleteModal = ref(false)
+  const showDeleteSingleModal = ref(false)
   const editingText = ref('')
   const editingItem = ref(null)
   const notingText = ref('')
@@ -391,20 +392,19 @@ export function useClipboardApp() {
 
   // 弹出"确认删除"提示框
   const showDeleteAll = () => {
-    // 根据 delete_confirmation 设置决定是否显示确认对话框
-    if (settings.delete_confirmation) {
-      showDeleteModal.value = true
-    } else {
-      // 如果不需要确认，直接执行删除操作
-      deleteAllHistory()
-    }
+    showDeleteModal.value = true
   }
 
   // 删除所有历史记录
   const deleteAllHistory = async () => {
     try {
-      await invoke('delete_unfavorited_data')
-      showMessage('已清除所有未收藏记录')
+      if (settings.keep_favorites_on_delete) {
+        await invoke('delete_unfavorited_data')
+        showMessage('已清除所有未收藏记录')
+      } else {
+        await invoke('delete_all_data')
+        showMessage('已清除所有历史记录')
+      }
       handleSearch(searchQuery.value)
       handleCategoryChange(activeCategory.value)
     } catch(err) {
@@ -416,6 +416,21 @@ export function useClipboardApp() {
   // "确认删除"提示框消失
   const cancelDeleteAll = () => {
     showDeleteModal.value = false
+  }
+
+  // 弹出"确认删除"提示框
+  const showDeleteSingle = (item) => {
+    currentItem.value = item
+    if (settings.delete_confirmation) {
+      showDeleteSingleModal.value = true
+    } else {
+      removeItem()
+    }    
+  }
+
+  // "确认删除"提示框消失
+  const cancelDeleteSingle = () => {
+    showDeleteSingleModal.value = false
   }
 
   // 编辑项目
@@ -510,7 +525,8 @@ export function useClipboardApp() {
   }
 
   // 删除历史记录
-  const removeItem = async (item) => {
+  const removeItem = async () => {
+    const item = currentItem.value
     try {
       // 如果记录被收藏，先从所有收藏夹中移除
       if (item.is_favorite) {
@@ -537,7 +553,7 @@ export function useClipboardApp() {
       if (index !== -1) {
         filteredHistory.value.splice(index, 1)
       }
-      
+      cancelDeleteSingle()
       showMessage('已删除记录')
     } catch (error) {
       console.error('删除记录失败:', error)
@@ -1148,6 +1164,7 @@ export function useClipboardApp() {
     showFoldersModal,
     showOcrModal,
     showDeleteModal,
+    showDeleteSingleModal,
     editingText,
     editingItem,
     notingText,
@@ -1176,6 +1193,7 @@ export function useClipboardApp() {
     selectedItemsCount,
     searchPlaceholder,
     normalizedPath,
+    settings,
 
     // 方法
     convertFileSrc,
@@ -1208,8 +1226,10 @@ export function useClipboardApp() {
     addToFolder,
     cancelAddToFolder,
     showDeleteAll,
+    showDeleteSingle,
     deleteAllHistory,
     cancelDeleteAll,
+    cancelDeleteSingle,
     handleItemClick,
     copySelectedItems,
     exitMultiSelectMode,
