@@ -2,11 +2,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
 import { 
   windowInstances, 
-  toggleClipboardWindow, 
   updateMainWindowPosition, 
   toggleMenuWindow,
   updateMenuWindowPosition,
-  updateMenuWindowPositionRealTime,
   hasMenuWindow as checkMenuWindowExists
 } from '../utils/actions.js'
 
@@ -25,61 +23,6 @@ export function useDesktopPet() {
   let clickPetTimeout = null
   let positionUpdateInterval = null
   let dragUpdateInterval = null
-
-  // 启动位置跟踪（常规更新）
-  const startPositionTracking = () => {
-    positionUpdateInterval = setInterval(async () => {
-      if (hasMenuWindow.value && !isDragging.value) {
-        await updateWindowPosition()
-        await updateMenuWindowPosition()
-      }
-    }, 500)
-  }
-
-  // 停止位置跟踪
-  const stopPositionTracking = () => {
-    if (positionUpdateInterval) {
-      clearInterval(positionUpdateInterval)
-      positionUpdateInterval = null
-    }
-  }
-
-  // 启动拖拽跟踪（高频更新）
-  const startDragTracking = () => {
-    dragUpdateInterval = setInterval(async () => {
-      if (hasMenuWindow.value && isDragging.value) {
-        await updateWindowPosition()
-        await updateMenuWindowPositionRealTime()
-      }
-    }, 50)
-  }
-
-  // 停止拖拽跟踪
-  const stopDragTracking = () => {
-    if (dragUpdateInterval) {
-      clearInterval(dragUpdateInterval)
-      dragUpdateInterval = null
-    }
-  }
-
-  // 实时更新窗口位置
-  const updateWindowPosition = async () => {
-    try {
-      const position = await currentWindow.outerPosition()
-      const newPosition = {
-        x: Math.round(position.x / scaleFactor.value),
-        y: Math.round(position.y / scaleFactor.value)
-      }
-      
-      if (newPosition.x !== currentPosition.value.x || newPosition.y !== currentPosition.value.y) {
-        currentPosition.value = newPosition
-        updateMainWindowPosition(currentPosition.value, { width: 120, height: 120 })
-        console.log('📍 主窗口位置更新:', currentPosition.value)
-      }
-    } catch (error) {
-      console.error('更新窗口位置失败:', error)
-    }
-  }
 
   const handlePointerDown = async (event) => {
     event.stopPropagation()
@@ -100,7 +43,6 @@ export function useDesktopPet() {
     }
 
     isDragging.value = true
-    startDragTracking()
     
     document.addEventListener('pointermove', handlePointerMove)
     document.addEventListener('pointerup', handlePointerUp)
@@ -125,6 +67,9 @@ export function useDesktopPet() {
     
     try {
       await currentWindow.setPosition(new LogicalPosition(newX, newY))
+      currentPosition.value = { x: newX, y: newY }
+      await updateMainWindowPosition(currentPosition.value)
+      await updateMenuWindowPosition()
     } catch (error) {
       console.error('移动窗口失败:', error)
     }
@@ -137,13 +82,7 @@ export function useDesktopPet() {
 
   const handlePointerUp = async () => {
     isDragging.value = false
-    stopDragTracking()
     cleanupEventListeners()
-    
-    await updateWindowPosition()
-    if (hasMenuWindow.value) {
-      await updateMenuWindowPosition()
-    }
   }
 
   // 鼠标进入桌宠区域
@@ -171,8 +110,6 @@ export function useDesktopPet() {
       
       if (hasMenuWindow.value) {
         console.log('📋 菜单窗口已打开')
-        await updateWindowPosition()
-        await updateMenuWindowPosition()
       } else {
         console.log('📋 菜单窗口已关闭')
       }
@@ -214,17 +151,13 @@ export function useDesktopPet() {
         x: Math.round(position.x / scaleFactor.value),
         y: Math.round(position.y / scaleFactor.value)
       }
-      updateMainWindowPosition(currentPosition.value, { width: 120, height: 120 })
-      
-      startPositionTracking()
+      await updateMainWindowPosition(currentPosition.value)
     } catch (error) {
       console.error('设置窗口大小失败:', error)
     }
   })
 
   onUnmounted(() => {
-    stopPositionTracking()
-    stopDragTracking()
     cleanupEventListeners()
   })
 
