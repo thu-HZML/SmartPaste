@@ -391,20 +391,19 @@ export function useClipboardApp() {
 
   // 弹出"确认删除"提示框
   const showDeleteAll = () => {
-    // 根据 delete_confirmation 设置决定是否显示确认对话框
-    if (settings.delete_confirmation) {
-      showDeleteModal.value = true
-    } else {
-      // 如果不需要确认，直接执行删除操作
-      deleteAllHistory()
-    }
+    showDeleteModal.value = true
   }
 
   // 删除所有历史记录
   const deleteAllHistory = async () => {
     try {
-      await invoke('delete_unfavorited_data')
-      showMessage('已清除所有未收藏记录')
+      if (settings.keep_favorites_on_delete) {
+        await invoke('delete_unfavorited_data')
+        showMessage('已清除所有未收藏记录')
+      } else {
+        await invoke('delete_all_data')
+        showMessage('已清除所有历史记录')
+      }
       handleSearch(searchQuery.value)
       handleCategoryChange(activeCategory.value)
     } catch(err) {
@@ -1176,6 +1175,7 @@ export function useClipboardApp() {
     selectedItemsCount,
     searchPlaceholder,
     normalizedPath,
+    settings,
 
     // 方法
     convertFileSrc,
