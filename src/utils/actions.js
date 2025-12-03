@@ -6,17 +6,15 @@ import { LogicalPosition } from '@tauri-apps/api/window'
 export const windowInstances = new Map()
 
 // 全局状态存储主窗口位置
-let mainWindowPosition = { x: 100, y: 100, width: 200, height: 200 }
+let mainWindowPosition = { x: 100, y: 100 }
 
 /**
  * 更新主窗口位置
  */
-export function updateMainWindowPosition(position, size) {
+export function updateMainWindowPosition(position) {
   mainWindowPosition = {
     x: position.x,
     y: position.y,
-    width: size.width,
-    height: size.height
   }
   console.log('更新主窗口位置:', mainWindowPosition)
 }
@@ -92,14 +90,14 @@ export async function toggleMenuWindow() {
     // 如果不存在，创建新窗口
     try {
       // 使用全局存储的主窗口位置
-      const { x, y, width, height } = mainWindowPosition
+      const { x, y } = mainWindowPosition
       
       // 计算新窗口位置（在桌宠右侧）
-      const newX = x + width + 10
+      const newX = x + 150
       const newY = y
       
       console.log('使用主窗口位置创建菜单窗口:', { 
-        mainWindow: { x, y, width, height },
+        mainWindow: { x, y },
         menuWindow: { newX, newY }
       })
       
@@ -118,23 +116,22 @@ export async function toggleMenuWindow() {
 
 // 新增：更新菜单窗口位置函数
 export async function updateMenuWindowPosition() {
-  const menuWindows = Array.from(windowInstances.entries())
+  const menuWindow = Array.from(windowInstances.entries())
     .find(([key]) => key === 'menu')
   
-  if (menuWindows.length > 0 && mainWindowPosition) {
-    const { x, y, width, height } = mainWindowPosition
-    const newX = x + width + 10
+  if (menuWindow) {
+    const { x, y } = mainWindowPosition
+    const newX = x + 150
     const newY = y
     
     console.log('📱 更新菜单窗口位置:', { newX, newY, mainWindowPosition })
 
-    for (const [windowId, window] of menuWindows) {
-      try {
-        await window.setPosition(new LogicalPosition(newX, newY))
-        console.log('更新菜单窗口位置:', { newX, newY })
-      } catch (error) {
-        console.error('更新菜单窗口位置失败:', error)
-      }
+    const [windowId, window] = menuWindow
+    try {
+      await window.setPosition(new LogicalPosition(newX, newY))
+      console.log('更新菜单窗口位置:', { newX, newY })
+    } catch (error) {
+      console.error('更新菜单窗口位置失败:', error)
     }
   }
 }
@@ -144,30 +141,6 @@ export async function updateMenuWindowPosition() {
  */
 export function hasMenuWindow() {
   return Array.from(windowInstances.keys()).some(key => key.startsWith('menu'))
-}
-
-/**
- * 实时更新菜单窗口位置（基于当前主窗口位置）
- */
-export async function updateMenuWindowPositionRealTime() {
-  const menuWindows = Array.from(windowInstances.entries())
-    .find(([key]) => key === 'menu')
-  
-  if (menuWindows.length > 0 && mainWindowPosition) {
-    const { x, y, width, height } = mainWindowPosition
-    const newX = x + width + 10
-    const newY = y
-    
-    console.log('🔄 实时更新菜单窗口位置:', { newX, newY })
-    
-    for (const [windowId, window] of menuWindows) {
-      try {
-        await window.setPosition(new LogicalPosition(newX, newY))
-      } catch (error) {
-        console.error('❌ 实时更新菜单窗口位置失败:', error)
-      }
-    }
-  }
 }
 
 /**
