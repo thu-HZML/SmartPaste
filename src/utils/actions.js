@@ -352,7 +352,7 @@ export async function createSetWindow(options = {}) {
       x,
       y,
       resizable: true,
-      minimizable: true,
+      minimizable: false,
       maximizable: false,
       decorations: true,
       alwaysOnTop: true,

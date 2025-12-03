@@ -639,8 +639,8 @@ const updateRetentionDays = async () => {
 
   const exportData = async () => {
     try {
-      // const exportPath = await invoke('export_user_data')
-      showMessage(`数据已导出到: ${exportPath}`)
+      await invoke('export_to_zip')
+      showMessage(`数据已导出到: ${settings.storage_path}/SmartPaste_Backup.zip`)
     } catch (error) {
       console.error('导出数据失败:', error)
       showMessage(`导出失败: ${error}`)
@@ -649,10 +649,8 @@ const updateRetentionDays = async () => {
 
   const importData = async () => {
     try {
-      // const result = await invoke('import_user_data')
-      if (result.success) {
-        showMessage('数据导入成功')
-      }
+      await invoke('import_data_from_zip')
+      showMessage('数据导入成功')
     } catch (error) {
       console.error('导入数据失败:', error)
       showMessage(`导入失败: ${error}`)

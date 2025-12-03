@@ -24,12 +24,15 @@ use image::{ImageFormat, RgbaImage};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
+use std::fs::File;
+use zip::write::FileOptions;
+use std::io::{Read, Write, Seek};
 use std::io;
 use std::io::Cursor;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::{Manager, State,Emitter}; 
 use tauri_plugin_autostart::MacosLauncher;
 use uuid::Uuid;
 use windows::core::PCWSTR;
@@ -47,7 +50,274 @@ use windows::Win32::System::Com::{CoInitialize, CoUninitialize, COINIT_APARTMENT
 fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
 }
+/// 辅助函数：递归压缩目录
+fn zip_dir<T>(
+    it: &mut zip::ZipWriter<T>,
+    src_dir: &Path,
+    prefix: &str,
+    options: FileOptions,
+) -> zip::result::ZipResult<()>
+where
+    T: Write + Seek,
+{
+    if !src_dir.exists() {
+        return Ok(());
+    }
 
+    // 遍历目录
+    for entry in std::fs::read_dir(src_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        // 获取文件名
+        let name = path.file_name().unwrap().to_string_lossy();
+        
+        // 组合 ZIP 中的路径 (例如: files/image.png)
+        // 注意：ZIP 规范要求使用正斜杠 /，即使在 Windows 上
+        let zip_entry_name = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}/{}", prefix, name)
+        };
+
+        if path.is_dir() {
+            // 递归处理子文件夹
+            // 在 ZIP 中显式添加目录条目是可选的，但为了结构清晰通常建议加上
+            it.add_directory(&zip_entry_name, options)?;
+            zip_dir(it, &path, &zip_entry_name, options)?;
+        } else {
+            // 这是一个文件，添加到 ZIP
+            it.start_file(&zip_entry_name, options)?;
+            let mut f = File::open(path)?;
+            let mut buffer = Vec::new();
+            f.read_to_end(&mut buffer)?;
+            it.write_all(&buffer)?;
+        }
+    }
+    Ok(())
+}
+
+/// 导出数据为 ZIP。作为 Tauri Command 暴露给前端。
+#[tauri::command]
+fn export_to_zip() -> Result<String, String> {
+    // 1. 获取当前存储根目录
+    let root_path = crate::config::get_current_storage_path();
+    
+    // 2. 生成 ZIP 文件名 (backup_时间戳.zip)
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    let zip_filename = format!("backup_{}.zip", timestamp);
+    let zip_path = root_path.join(&zip_filename);
+
+    // 3. 创建 ZIP 文件
+    let file = File::create(&zip_path).map_err(|e| format!("无法创建 ZIP 文件: {}", e))?;
+    let mut zip = zip::ZipWriter::new(file);
+    
+    // 设置压缩选项 (Deflated 压缩率较高)
+    let options = FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+
+    // 4. 定义需要打包的目标列表
+    let targets = vec![
+        ("config.json", false), // (文件名, 是否是文件夹)
+        ("smartpaste.db", false),
+        ("files", true),
+    ];
+
+    for (target_name, is_dir) in targets {
+        let target_path = root_path.join(target_name);
+        
+        if target_path.exists() {
+            if is_dir {
+                // 压缩文件夹
+                zip.add_directory(target_name, options).map_err(|e| e.to_string())?;
+                zip_dir(&mut zip, &target_path, target_name, options)
+                    .map_err(|e| format!("压缩目录 {} 失败: {}", target_name, e))?;
+            } else {
+                // 压缩单个文件
+                zip.start_file(target_name, options).map_err(|e| e.to_string())?;
+                // 读取文件内容
+                // 注意：如果数据库正在被频繁写入，这里可能会有读取冲突，但一般备份操作能接受
+                let mut f = File::open(&target_path).map_err(|e| e.to_string())?;
+                let mut buffer = Vec::new();
+                f.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+                zip.write_all(&buffer).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    // 5. 完成写入
+    zip.finish().map_err(|e| format!("ZIP 写入失败: {}", e))?;
+
+    println!("✅ 数据已备份至: {}", zip_path.display());
+    
+    // 返回生成的 ZIP 文件名或完整路径
+    Ok(zip_path.to_string_lossy().to_string())
+}
+/// 从当前目录下的最新备份 ZIP 恢复数据
+/// 要求 ZIP 中必须包含 config.json, smartpaste.db 和 files/ 文件夹
+#[tauri::command]
+fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
+    // 1. 获取当前存储路径
+    let root_path = crate::config::get_current_storage_path();
+    println!("🔍 开始在 {} 查找备份文件...", root_path.display());
+
+    // 2. 扫描目录下所有以 backup_ 开头 .zip 结尾的文件，并找到最新的一个
+    let mut zip_files: Vec<PathBuf> = Vec::new();
+    let entries = fs::read_dir(&root_path).map_err(|e| format!("读取目录失败: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with("backup_") && name.ends_with(".zip") {
+                    zip_files.push(path);
+                }
+            }
+        }
+    }
+
+    // 如果没有找到备份
+    if zip_files.is_empty() {
+        return Err("未找到任何以 backup_ 开头的 zip 备份文件".to_string());
+    }
+
+    // 按文件名排序（因为文件名包含时间戳，排序后最后一个就是最新的）
+    zip_files.sort();
+    let latest_zip_path = zip_files.last().unwrap();
+    println!("📦 找到最新备份: {}", latest_zip_path.display());
+
+    // 3. 预检查 ZIP 内容
+    let file = fs::File::open(latest_zip_path).map_err(|e| format!("无法打开 ZIP: {}", e))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("ZIP 格式错误: {}", e))?;
+
+    let mut has_config = false;
+    let mut has_db = false;
+    let mut has_files_dir = false;
+
+    for i in 0..archive.len() {
+        let file = archive.by_index(i).map_err(|e| e.to_string())?;
+        let name = file.name();
+
+        // 检查关键文件是否存在
+        if name == "config.json" { has_config = true; }
+        else if name == "smartpaste.db" { has_db = true; }
+        // 只要有任何文件或目录以 files/ 开头，就认为包含 files 文件夹
+        else if name.starts_with("files/") || name.starts_with("files\\") { has_files_dir = true; }
+    }
+
+    if !has_config || !has_db || !has_files_dir {
+        return Err(format!(
+            "备份文件不完整! 检查结果: config.json={}, db={}, files={}", 
+            has_config, has_db, has_files_dir
+        ));
+    }
+
+    println!("✅ 备份文件校验通过，准备恢复...");
+
+    // 4. 清理旧数据 (Config, DB, Files)
+    // 注意：Windows 下如果文件被占用这里会报错，建议前端做个 loading 状态
+    
+    let target_config = root_path.join("config.json");
+    let target_db = root_path.join("smartpaste.db");
+    let target_files_dir = root_path.join("files");
+
+    // 尝试删除旧配置
+    if target_config.exists() {
+        fs::remove_file(&target_config).map_err(|e| format!("无法删除旧 config.json: {}", e))?;
+    }
+    
+    // 尝试删除旧数据库
+    // ⚠️ 警告：如果数据库连接未释放，这里会失败。
+    // db.rs 是按需打开连接的，理论上只要没有正在进行的查询就可以删除。
+    if target_db.exists() {
+        fs::remove_file(&target_db).map_err(|e| format!("无法删除旧 smartpaste.db (可能正在使用中): {}", e))?;
+    }
+
+    // 尝试删除旧 files 目录
+    if target_files_dir.exists() {
+        fs::remove_dir_all(&target_files_dir).map_err(|e| format!("无法删除旧 files 目录: {}", e))?;
+    }
+
+    // 5. 解压文件
+    println!("🔄 正在解压...");
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        
+        // 获取输出路径
+        // ⚠️ 安全检查：防止 Zip Slip 漏洞 (文件名包含 ../ 试图跳出目录)
+        let outpath = match file.enclosed_name() {
+            Some(path) => root_path.join(path),
+            None => continue, // 跳过非法路径
+        };
+
+        // 只解压我们需要的那三个目标，防止 ZIP 里有垃圾文件
+        let file_name_str = file.name();
+        if file_name_str != "config.json" 
+           && file_name_str != "smartpaste.db" 
+           && !file_name_str.starts_with("files/") 
+           && !file_name_str.starts_with("files\\") {
+            continue;
+        }
+
+        if (*file.name()).ends_with('/') || (*file.name()).ends_with('\\') {
+            fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    fs::create_dir_all(p).map_err(|e| e.to_string())?;
+                }
+            }
+            let mut outfile = fs::File::create(&outpath).map_err(|e| e.to_string())?;
+            io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+        }
+    }
+    println!("🔧 正在修正 config.json 中的存储路径...");
+    let config_file_path = root_path.join("config.json");
+
+    if config_file_path.exists() {
+        // 1. 读取解压出来的配置文件
+        let config_content = fs::read_to_string(&config_file_path).map_err(|e| format!("读取配置失败: {}", e))?;
+        
+        // 2. 解析 JSON
+        let mut json_val: serde_json::Value = serde_json::from_str(&config_content).map_err(|e| format!("解析配置失败: {}", e))?;
+
+        // 3. 获取当前的物理路径字符串
+        let current_path_str = root_path.to_string_lossy().to_string();
+
+        // 4. 规范化路径 (Windows下强制使用反斜杠，防止混合斜杠Bug复发)
+        #[cfg(target_os = "windows")]
+        let final_path_str = current_path_str.replace("\\", "/");
+        
+        #[cfg(not(target_os = "windows"))]
+        let final_path_str = current_path_str;
+
+        println!("📍 将 storage_path 修正为: {}", final_path_str);
+
+        // 5. 修改字段
+        json_val["storage_path"] = serde_json::Value::String(final_path_str);
+
+        // 6. 写回文件
+        let new_content = serde_json::to_string_pretty(&json_val).map_err(|e| format!("序列化配置失败: {}", e))?;
+        fs::write(&config_file_path, new_content).map_err(|e| format!("写入配置失败: {}", e))?;
+        
+        println!("✅ storage_path 修正完成");
+    } else {
+        eprintln!("⚠️ 警告: 解压后未找到 config.json，跳过路径修正");
+    }
+    // 6. 恢复完成后，必须重新加载配置到内存
+    println!("🔄 恢复完成，正在刷新配置...");
+    let reload_msg = crate::config::reload_config();
+    println!("配置刷新结果: {}", reload_msg);
+
+    // 7. 发送事件通知前端刷新页面 (可选)
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("data-restored", "success");
+    }
+
+    Ok(format!("恢复成功！已从 {} 还原数据。", latest_zip_path.file_name().unwrap().to_string_lossy()))
+}
 #[tauri::command]
 fn write_to_clipboard(
     text: String,
@@ -177,7 +447,6 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     Ok(final_path)
 }
 
-// --- 核心 helper：将路径列表写入剪贴板 ---
 fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
     let ctx = ClipboardContext::new().map_err(|e| e.to_string())?;
 
@@ -526,6 +795,8 @@ fn main() {
             get_all_shortcuts,
             get_file_icon,
             write_files_to_clipboard,
+            export_to_zip,
+            import_data_from_zip,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
