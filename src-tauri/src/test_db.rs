@@ -871,9 +871,26 @@ fn test_delete_all_and_count_folder_and_item() {
         }
     }
 
+    // 删除单个数据
+    let deleted_single = delete_data_by_id("d-1").expect("delete d-1 failed");
+    assert_eq!(1, deleted_single, "should delete 1 item");
+
+    // 验证 DelFolderA 的 num_items 减少
+    let all_folders_json = get_all_folders().expect("get all folders after single delete failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders after single delete");
+    let fa = all_folders
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("DelFolderA missing after single delete");
+    assert_eq!(
+        fa.num_items, 1,
+        "DelFolderA should have 1 item after deleting d-1"
+    );
+
     // 删除所有数据
     let deleted_count = delete_all_data().expect("delete all data failed");
-    assert_eq!(deleted_count, 5, "should delete 5 items");
+    assert_eq!(deleted_count, 4, "should delete 4 items");
 
     // 再次获取 folders 列表，验证 num_items 都为 0
     let all_folders_json = get_all_folders().expect("get all folders after delete failed");
