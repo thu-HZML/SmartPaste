@@ -251,6 +251,10 @@ pub fn delete_all_data() -> Result<usize, String> {
         .execute("DELETE FROM data", [])
         .map_err(|e| e.to_string())?;
 
+    // 更新所有收藏夹的 item 数量为 0
+    conn.execute("UPDATE folders SET num_items = 0", [])
+        .map_err(|e| e.to_string())?;
+
     Ok(rows_affected)
 }
 
@@ -266,6 +270,13 @@ pub fn delete_unfavorited_data() -> Result<usize, String> {
     let rows_affected = conn
         .execute("DELETE FROM data WHERE is_favorite = 0", [])
         .map_err(|e| e.to_string())?;
+
+    // 重新计算所有收藏夹的 item 数量
+    conn.execute(
+        "UPDATE folders SET num_items = (SELECT COUNT(*) FROM folder_items WHERE folder_items.folder_id = folders.id)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(rows_affected)
 }
@@ -370,6 +381,13 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
     let rows_affected = conn
         .execute("DELETE FROM data WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
+
+    // 重新计算所有收藏夹的 item 数量
+    conn.execute(
+        "UPDATE folders SET num_items = (SELECT COUNT(*) FROM folder_items WHERE folder_items.folder_id = folders.id)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(rows_affected)
 }

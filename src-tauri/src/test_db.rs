@@ -830,6 +830,86 @@ fn test_folder_functions() {
 }
 
 #[test]
+fn test_delete_all_and_count_folder_and_item() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 插入 5 个 item
+    let items = vec![
+        make_item("d-1", "text", "one"),
+        make_item("d-2", "text", "two"),
+        make_item("d-3", "image", "/img/1"),
+        make_item("d-4", "text", "four"),
+        make_item("d-5", "image", "/img/2"),
+    ];
+    for it in &items {
+        insert_received_db_data(it.clone()).expect("insert failed");
+    }
+
+    // 创建两个收藏夹，并将部分 item 添加进去
+    let folder_a = create_new_folder("DelFolderA").expect("create folder A");
+    let folder_b = create_new_folder("DelFolderB").expect("create folder B");
+
+    add_item_to_folder(&folder_a, "d-1").expect("add d-1 to DelFolderA failed");
+    add_item_to_folder(&folder_a, "d-2").expect("add d-2 to DelFolderA failed");
+    add_item_to_folder(&folder_b, "d-3").expect("add d-3 to DelFolderB failed");
+    add_item_to_folder(&folder_b, "d-4").expect("add d-4 to DelFolderB failed");
+
+    // 获取folders列表并验证
+    let all_folders_json = get_all_folders().expect("get all folders before delete failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders before delete");
+    assert_eq!(all_folders.len(), 2, "should have 2 folders before delete");
+    for f in &all_folders {
+        if f.id == folder_a {
+            assert_eq!(f.num_items, 2, "DelFolderA should have 2 items");
+        } else if f.id == folder_b {
+            assert_eq!(f.num_items, 2, "DelFolderB should have 2 items");
+        } else {
+            panic!("unexpected folder id");
+        }
+    }
+
+    // 删除单个数据
+    let deleted_single = delete_data_by_id("d-1").expect("delete d-1 failed");
+    assert_eq!(1, deleted_single, "should delete 1 item");
+
+    // 验证 DelFolderA 的 num_items 减少
+    let all_folders_json = get_all_folders().expect("get all folders after single delete failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders after single delete");
+    let fa = all_folders
+        .iter()
+        .find(|f| f.id == folder_a)
+        .expect("DelFolderA missing after single delete");
+    assert_eq!(
+        fa.num_items, 1,
+        "DelFolderA should have 1 item after deleting d-1"
+    );
+
+    // 删除所有数据
+    let deleted_count = delete_all_data().expect("delete all data failed");
+    assert_eq!(deleted_count, 4, "should delete 4 items");
+
+    // 再次获取 folders 列表，验证 num_items 都为 0
+    let all_folders_json = get_all_folders().expect("get all folders after delete failed");
+    let all_folders: Vec<FolderItem> =
+        serde_json::from_str(&all_folders_json).expect("parse all folders after delete");
+    assert_eq!(
+        all_folders.len(),
+        2,
+        "should still have 2 folders after delete"
+    );
+    for f in &all_folders {
+        assert_eq!(
+            f.num_items, 0,
+            "all folders should have 0 items after delete"
+        );
+    }
+}
+
+#[test]
 fn test_filter_data_by_favorite() {
     let _g = test_lock();
     set_test_db_path();
