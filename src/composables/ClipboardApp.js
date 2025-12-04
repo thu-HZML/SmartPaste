@@ -99,7 +99,7 @@ export function useClipboardApp() {
   // 计算属性：规范化路径
   const normalizedPath = computed(() => {
     if (!settings.storage_path) return '未设置路径'
-    return settings.storage_path.replace(/\//g, '\\')
+    return settings.storage_path.replace(/\//g, '\\') + '\\'
   })
 
   // 监听搜索类型变化
@@ -323,7 +323,8 @@ export function useClipboardApp() {
         showMessage('已复制文本')
       } else {
         // 对于文件和图片类型，使用新的文件复制方法
-        await invoke('write_file_to_clipboard', { filePath: item.content })
+        const filePath = normalizedPath.value + item.content
+        await invoke('write_file_to_clipboard', { filePath: filePath })
         showMessage(`已复制文件: ${getFileName(item.content)}`)
       }
     } catch (error) {
@@ -981,7 +982,7 @@ export function useClipboardApp() {
         // 多选文件
         selectedItems.value.forEach(item => {
           if (item.item_type === 'file' || item.item_type === 'image' || item.item_type === 'folder') {
-            filePaths.push(item.content)
+            filePaths.push(normalizedPath.value + item.content)
             successCount++
           }     
         })
