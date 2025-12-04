@@ -310,7 +310,7 @@ export function useClipboardApp() {
   const openSettings = async () => {
     // 移除窗口焦点监听器
     removeWindowListeners()
-    toggleSetWindow()
+    await toggleSetWindow()
     currentWindow.close()
   }
 
