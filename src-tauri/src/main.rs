@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_notification;
 
 
 fn main() {

@@ -484,9 +484,11 @@ export async function clearClipboardHistory() {
             const message = settings.keep_favorites_on_delete
                 ? '确定要清空所有未收藏的剪贴板历史吗？'
                 : '确定要清空所有历史记录吗？';            
-            confirmed = window.confirm(message);
+            confirmed = await window.confirm(message);;
+            console.log(`[DEBUG] window.confirm 返回值 (confirmed): ${confirmed}`);
         }
         if (!confirmed) {
+            console.log(`[DEBUG] window.confirm 返回值 (confirmed): ${confirmed}`);
             return;
         }
         let messageText = '';
@@ -504,20 +506,23 @@ export async function clearClipboardHistory() {
         console.log(`快捷键清空操作完成: ${messageText}，共 ${rowsAffected} 条记录被删除`);
 
 
-        // 3. **发送 Tauri 系统通知 (实现全局反馈)**
+        //  **发送 Tauri 系统通知 (实现全局反馈)**
         let permissionGranted = await isPermissionGranted();
+        console.log('通知权限状态 (初始):', permissionGranted); // 检查初始权限
+
         if (!permissionGranted) {
             const permission = await requestPermission();
             permissionGranted = permission === 'granted';
+            console.log('通知权限状态 (请求后):', permissionGranted); // 检查请求后的权限
         }
 
         if (permissionGranted) {
+            console.log('正在发送通知...'); // 确认 sendNotification 即将执行
             sendNotification({
                 title: '剪贴板历史清理',
                 body: `${messageText}。共删除 ${rowsAffected} 条记录。`
             });
         }
-
 
         // 4. 通知前端主组件进行 UI 刷新 (如果 ClipboardApp.vue 正在运行，它将刷新)
         await emit('clipboard-history-cleared', { 
