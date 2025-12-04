@@ -534,9 +534,10 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         // 只有是非前端复制时，才执行保存文件和数据库操作
                         let image_id = Uuid::new_v4().to_string();
                         // let dest_path = files_dir.join(format!("{}.png", image_id));
-                        let dest_path = db_root_dir.join(format!("{}.png", image_id));
+                        let dest_relative_path = db_root_dir.join(format!("{}.png", image_id));
+                        let dest_absolute_path = utils::resolve_absolute_path(&dest_relative_path);
                         if image::save_buffer(
-                            &dest_path,
+                            &dest_absolute_path,
                             &image.rgba(),
                             image.width(),
                             image.height(),
@@ -547,22 +548,25 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             let new_item = ClipboardItem {
                                 id: image_id.clone(),
                                 item_type: "image".to_string(),
-                                content: dest_path.to_str().unwrap().to_string(),
-                                size: fs::metadata(&dest_path).ok().map(|m| m.len()),
+                                content: dest_relative_path.to_str().unwrap().to_string(),
+                                size: fs::metadata(&dest_absolute_path).map(|m| m.len()).ok(),
                                 is_favorite: false,
                                 notes: "".to_string(),
                                 timestamp: Utc::now().timestamp_millis(),
                             };
 
+                            // println!("✅ 图片保存到文件: {:?}", dest_path);
                             if let Err(e) = db::insert_received_db_data(new_item) {
                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                             } else {
                                 // OCR识别（异步）
-                                let ocr_path = dest_path.clone().to_str().unwrap().to_string();
+                                let ocr_path =
+                                    dest_absolute_path.clone().to_str().unwrap().to_string();
                                 let ocr_item_id = image_id.clone();
                                 tauri::async_runtime::spawn(async move {
                                     match ocr::ocr_image(ocr_path).await {
                                         Ok(res) => {
+                                            println!("✅ OCR识别成功: {}", res);
                                             // 识别成功，保存结果到数据库
                                             let ocr_text =
                                                 match serde_json::from_str::<Vec<Value>>(&res) {
