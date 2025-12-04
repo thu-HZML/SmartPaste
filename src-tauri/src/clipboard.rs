@@ -15,7 +15,7 @@ pub struct ClipboardItem {
     pub content: String,
     /// 文件大小（字节数），对text类型，为文本长度（字符数）；对file/image类型，为文件字节大小
     pub size: Option<u64>,
-    /// 是否为默认收藏夹项
+    /// 是否为全部收藏夹项
     pub is_favorite: bool,
     /// 备注信息
     pub notes: String,

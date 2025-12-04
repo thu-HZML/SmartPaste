@@ -140,6 +140,12 @@ export function useClipboardApp() {
     // 清除之前的定时器
     clearTimeout(searchTimeout)
     
+    // 如果是收藏夹模式，不执行全局搜索(奇怪的bug: 收藏夹操作时可能会触发这里的搜索，导致内容被覆盖)
+    if (activeCategory.value === 'folder') {
+      console.log('收藏夹模式下跳过全局搜索')
+      return
+    }
+
     // 空查询立即返回
     if (query.trim() === '' && searchType.value !== 'time') {
       await getAllHistory()
@@ -172,6 +178,7 @@ export function useClipboardApp() {
       folders.value[0].num_items = result
     }
     else if (category.trim() === 'folder') {
+      console.log('当前收藏夹：', currentFolder.value.name)
       await performFolder()
     }
 
@@ -254,19 +261,23 @@ export function useClipboardApp() {
 
   // 收藏夹过滤
   const performFolder = async () => { 
-    if (currentFolder.value.name === '默认收藏夹') {
-      console.log('进入默认收藏夹')
+    if (currentFolder.value.name === '全部') {
+      console.log('进入全部收藏夹')
       try {
         const result = await invoke('filter_data_by_favorite', { 
           isFavorite: true
         })    
         filteredHistory.value = JSON.parse(result)
 
+        console.log('全部收藏夹内容:', filteredHistory.value) 
         // 为数组添加前端额外字段
         await optimizeHistoryItems(filteredHistory)
+        console.log('添加字段后全部收藏夹内容:', filteredHistory.value)
       } catch (err) {
-        console.error('默认收藏夹获取失败:', err)
-      }
+        console.error('全部收藏夹获取失败:', err)
+      } finally {
+      searchLoading.value = false
+    }
     }
     else {
       console.log('进入收藏夹：', currentFolder.value.name)
@@ -379,9 +390,9 @@ export function useClipboardApp() {
           }
         })
         
-        // 如果项目已被收藏但不在任何收藏夹中，确保默认收藏夹被选中
+        // 如果项目已被收藏但不在任何收藏夹中，确保全部收藏夹被选中
         if (item.is_favorite) {
-          const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+          const defaultFolder = folders.value.find(folder => folder.name === '全部')
           if (defaultFolder && !defaultFolder.isSelected) {
             defaultFolder.isSelected = true
           }
@@ -617,19 +628,19 @@ export function useClipboardApp() {
       const jsonString = await invoke('get_all_folders')
       folders.value = JSON.parse(jsonString)
 
-      // 创建默认收藏夹
+      // 创建全部收藏夹
       if (!folders.value || folders.value.length === 0) {
-        console.log('收藏夹为空，正在创建默认收藏夹...')
+        console.log('收藏夹为空，正在创建全部收藏夹...')
         try {
-          await invoke('create_new_folder', { name: '默认收藏夹' })
-          console.log('默认收藏夹创建成功')
+          await invoke('create_new_folder', { name: '全部' })
+          console.log('全部收藏夹创建成功')
           
           // 重新获取收藏夹列表
           const updatedJsonString = await invoke('get_all_folders')
           folders.value = JSON.parse(updatedJsonString)
           console.log('更新后的收藏夹:', folders.value)
         } catch (createError) {
-          console.error('创建默认收藏夹失败:', createError)
+          console.error('创建全部收藏夹失败:', createError)
         }
       }
 
@@ -717,30 +728,30 @@ export function useClipboardApp() {
 
   // 切换收藏夹选中状态
   const selectFolder = (item) => {
-    // 如果是默认收藏夹
-    if (item.name === '默认收藏夹') {
-      // 如果取消选中默认收藏夹，则取消所有其他收藏夹
+    // 如果是全部收藏夹
+    if (item.name === '全部') {
+      // 如果取消选中全部收藏夹，则取消所有其他收藏夹
       if (item.isSelected) {
-        // 取消选中默认收藏夹
+        // 取消选中全部收藏夹
         item.isSelected = false
         // 取消所有其他收藏夹的选中
         folders.value.forEach(folder => {
-          if (folder.name !== '默认收藏夹') {
+          if (folder.name !== '全部') {
             folder.isSelected = false
           }
         })
       } else {
-        // 选中默认收藏夹
+        // 选中全部收藏夹
         item.isSelected = true
       }
     } else {
-      // 非默认收藏夹
+      // 非全部收藏夹
       // 切换当前项的选中状态
       item.isSelected = !item.isSelected
       
-      // 如果选中了任何非默认收藏夹，确保默认收藏夹也被选中
+      // 如果选中了任何非全部收藏夹，确保全部收藏夹也被选中
       if (item.isSelected) {
-        const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+        const defaultFolder = folders.value.find(folder => folder.name === '全部')
         if (defaultFolder && !defaultFolder.isSelected) {
           defaultFolder.isSelected = true
         }
@@ -752,7 +763,7 @@ export function useClipboardApp() {
   const addToFolder = async () => {
     try {
       const selectedFolders = folders.value.filter(item => 
-        item.isSelected && item.name !== '默认收藏夹'
+        item.isSelected && item.name !== '全部'
       )
       const previouslySelectedFolders = folders.value.filter(item => 
         initialSelectedFolders.value.includes(item.id) && !item.isSelected
@@ -1021,14 +1032,12 @@ export function useClipboardApp() {
   async function optimizeHistoryItems(historyRef, options = {}) {
     const { defaultFocus = false, defaultSelected = false } = options
     const array = historyRef.value
-    
     // 批量处理基础字段
     for (let i = 0; i < array.length; i++) {
       const item = array[i]
       item.is_focus = defaultFocus
       item.is_selected = defaultSelected
     }
-
     // 并行获取图标数据（带重试功能）
     const fileItems = array.filter(item => item.item_type === 'file' || item.item_type === 'folder')
     const promises = fileItems.map(item => 
