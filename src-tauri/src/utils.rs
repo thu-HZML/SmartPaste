@@ -1,7 +1,4 @@
-use crate::app_setup::{
-    get_all_shortcuts, get_current_shortcut, update_shortcut, AppShortcutManager,
-    ClipboardSourceState,
-};
+use crate::app_setup::ClipboardSourceState;
 use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
 use clipboard_rs::{Clipboard as ClipboardRsTrait, ClipboardContext};
@@ -16,7 +13,6 @@ use std::io;
 use std::io::Cursor;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use tauri::{Manager, State,Emitter}; 
 use tauri_plugin_autostart::MacosLauncher;
 use uuid::Uuid;
@@ -30,7 +26,7 @@ use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 // main.rs 头部引入
-use windows::Win32::System::Com::{CoInitialize, CoUninitialize, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 #[tauri::command]
 pub fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -306,7 +302,7 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn write_to_clipboard(
     text: String,
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
     state: State<'_, ClipboardSourceState>,
 ) -> Result<(), String> {
     // 设置标志，表示这是前端触发的复制
