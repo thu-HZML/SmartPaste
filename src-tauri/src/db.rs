@@ -1321,5 +1321,5 @@ pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
 
 /// # 单元测试
 #[cfg(test)]
-#[path = "test_db.rs"]
-mod tests;
+#[path = "test_unit/test_db.rs"]
+mod test_db;

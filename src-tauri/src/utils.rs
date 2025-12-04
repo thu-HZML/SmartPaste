@@ -7,13 +7,12 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::fs::File;
-use zip::write::FileOptions;
-use std::io::{Read, Write, Seek};
 use std::io;
 use std::io::Cursor;
+use std::io::{Read, Seek, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use tauri::{Manager, State,Emitter}; 
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
 use uuid::Uuid;
 use windows::core::PCWSTR;
@@ -25,6 +24,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
+use zip::write::FileOptions;
 // main.rs 头部引入
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 #[tauri::command]
@@ -49,10 +49,10 @@ where
     for entry in std::fs::read_dir(src_dir)? {
         let entry = entry?;
         let path = entry.path();
-        
+
         // 获取文件名
         let name = path.file_name().unwrap().to_string_lossy();
-        
+
         // 组合 ZIP 中的路径 (例如: files/image.png)
         // 注意：ZIP 规范要求使用正斜杠 /，即使在 Windows 上
         let zip_entry_name = if prefix.is_empty() {
@@ -83,7 +83,7 @@ where
 pub fn export_to_zip() -> Result<String, String> {
     // 1. 获取当前存储根目录
     let root_path = crate::config::get_current_storage_path();
-    
+
     // 2. 生成 ZIP 文件名 (backup_时间戳.zip)
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let zip_filename = format!("backup_{}.zip", timestamp);
@@ -92,7 +92,7 @@ pub fn export_to_zip() -> Result<String, String> {
     // 3. 创建 ZIP 文件
     let file = File::create(&zip_path).map_err(|e| format!("无法创建 ZIP 文件: {}", e))?;
     let mut zip = zip::ZipWriter::new(file);
-    
+
     // 设置压缩选项 (Deflated 压缩率较高)
     let options = FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
@@ -107,16 +107,18 @@ pub fn export_to_zip() -> Result<String, String> {
 
     for (target_name, is_dir) in targets {
         let target_path = root_path.join(target_name);
-        
+
         if target_path.exists() {
             if is_dir {
                 // 压缩文件夹
-                zip.add_directory(target_name, options).map_err(|e| e.to_string())?;
+                zip.add_directory(target_name, options)
+                    .map_err(|e| e.to_string())?;
                 zip_dir(&mut zip, &target_path, target_name, options)
                     .map_err(|e| format!("压缩目录 {} 失败: {}", target_name, e))?;
             } else {
                 // 压缩单个文件
-                zip.start_file(target_name, options).map_err(|e| e.to_string())?;
+                zip.start_file(target_name, options)
+                    .map_err(|e| e.to_string())?;
                 // 读取文件内容
                 // 注意：如果数据库正在被频繁写入，这里可能会有读取冲突，但一般备份操作能接受
                 let mut f = File::open(&target_path).map_err(|e| e.to_string())?;
@@ -131,7 +133,7 @@ pub fn export_to_zip() -> Result<String, String> {
     zip.finish().map_err(|e| format!("ZIP 写入失败: {}", e))?;
 
     println!("✅ 数据已备份至: {}", zip_path.display());
-    
+
     // 返回生成的 ZIP 文件名或完整路径
     Ok(zip_path.to_string_lossy().to_string())
 }
@@ -182,15 +184,20 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
         let name = file.name();
 
         // 检查关键文件是否存在
-        if name == "config.json" { has_config = true; }
-        else if name == "smartpaste.db" { has_db = true; }
+        if name == "config.json" {
+            has_config = true;
+        } else if name == "smartpaste.db" {
+            has_db = true;
+        }
         // 只要有任何文件或目录以 files/ 开头，就认为包含 files 文件夹
-        else if name.starts_with("files/") || name.starts_with("files\\") { has_files_dir = true; }
+        else if name.starts_with("files/") || name.starts_with("files\\") {
+            has_files_dir = true;
+        }
     }
 
     if !has_config || !has_db || !has_files_dir {
         return Err(format!(
-            "备份文件不完整! 检查结果: config.json={}, db={}, files={}", 
+            "备份文件不完整! 检查结果: config.json={}, db={}, files={}",
             has_config, has_db, has_files_dir
         ));
     }
@@ -199,7 +206,7 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
 
     // 4. 清理旧数据 (Config, DB, Files)
     // 注意：Windows 下如果文件被占用这里会报错，建议前端做个 loading 状态
-    
+
     let target_config = root_path.join("config.json");
     let target_db = root_path.join("smartpaste.db");
     let target_files_dir = root_path.join("files");
@@ -208,24 +215,26 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
     if target_config.exists() {
         fs::remove_file(&target_config).map_err(|e| format!("无法删除旧 config.json: {}", e))?;
     }
-    
+
     // 尝试删除旧数据库
     // ⚠️ 警告：如果数据库连接未释放，这里会失败。
     // db.rs 是按需打开连接的，理论上只要没有正在进行的查询就可以删除。
     if target_db.exists() {
-        fs::remove_file(&target_db).map_err(|e| format!("无法删除旧 smartpaste.db (可能正在使用中): {}", e))?;
+        fs::remove_file(&target_db)
+            .map_err(|e| format!("无法删除旧 smartpaste.db (可能正在使用中): {}", e))?;
     }
 
     // 尝试删除旧 files 目录
     if target_files_dir.exists() {
-        fs::remove_dir_all(&target_files_dir).map_err(|e| format!("无法删除旧 files 目录: {}", e))?;
+        fs::remove_dir_all(&target_files_dir)
+            .map_err(|e| format!("无法删除旧 files 目录: {}", e))?;
     }
 
     // 5. 解压文件
     println!("🔄 正在解压...");
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
-        
+
         // 获取输出路径
         // ⚠️ 安全检查：防止 Zip Slip 漏洞 (文件名包含 ../ 试图跳出目录)
         let outpath = match file.enclosed_name() {
@@ -235,10 +244,11 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
 
         // 只解压我们需要的那三个目标，防止 ZIP 里有垃圾文件
         let file_name_str = file.name();
-        if file_name_str != "config.json" 
-           && file_name_str != "smartpaste.db" 
-           && !file_name_str.starts_with("files/") 
-           && !file_name_str.starts_with("files\\") {
+        if file_name_str != "config.json"
+            && file_name_str != "smartpaste.db"
+            && !file_name_str.starts_with("files/")
+            && !file_name_str.starts_with("files\\")
+        {
             continue;
         }
 
@@ -259,10 +269,12 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
 
     if config_file_path.exists() {
         // 1. 读取解压出来的配置文件
-        let config_content = fs::read_to_string(&config_file_path).map_err(|e| format!("读取配置失败: {}", e))?;
-        
+        let config_content =
+            fs::read_to_string(&config_file_path).map_err(|e| format!("读取配置失败: {}", e))?;
+
         // 2. 解析 JSON
-        let mut json_val: serde_json::Value = serde_json::from_str(&config_content).map_err(|e| format!("解析配置失败: {}", e))?;
+        let mut json_val: serde_json::Value =
+            serde_json::from_str(&config_content).map_err(|e| format!("解析配置失败: {}", e))?;
 
         // 3. 获取当前的物理路径字符串
         let current_path_str = root_path.to_string_lossy().to_string();
@@ -270,7 +282,7 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
         // 4. 规范化路径 (Windows下强制使用反斜杠，防止混合斜杠Bug复发)
         #[cfg(target_os = "windows")]
         let final_path_str = current_path_str.replace("\\", "/");
-        
+
         #[cfg(not(target_os = "windows"))]
         let final_path_str = current_path_str;
 
@@ -280,9 +292,10 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
         json_val["storage_path"] = serde_json::Value::String(final_path_str);
 
         // 6. 写回文件
-        let new_content = serde_json::to_string_pretty(&json_val).map_err(|e| format!("序列化配置失败: {}", e))?;
+        let new_content = serde_json::to_string_pretty(&json_val)
+            .map_err(|e| format!("序列化配置失败: {}", e))?;
         fs::write(&config_file_path, new_content).map_err(|e| format!("写入配置失败: {}", e))?;
-        
+
         println!("✅ storage_path 修正完成");
     } else {
         eprintln!("⚠️ 警告: 解压后未找到 config.json，跳过路径修正");
@@ -297,7 +310,10 @@ pub fn import_data_from_zip(app: tauri::AppHandle) -> Result<String, String> {
         let _ = window.emit("data-restored", "success");
     }
 
-    Ok(format!("恢复成功！已从 {} 还原数据。", latest_zip_path.file_name().unwrap().to_string_lossy()))
+    Ok(format!(
+        "恢复成功！已从 {} 还原数据。",
+        latest_zip_path.file_name().unwrap().to_string_lossy()
+    ))
 }
 #[tauri::command]
 pub fn write_to_clipboard(
@@ -358,6 +374,17 @@ fn update_clipboard_monitor_path(app_handle: &tauri::AppHandle, data_root: &Path
     // 使其能够接收和使用 data_root 路径，而不是硬编码的 app_dir
     println!("📁 剪贴板监控使用目录: {}", data_root.to_string_lossy());
 }
+
+/// 将文件的相对路径按配置设置转化为绝对路径
+/// Param:
+/// relative_path: &PathBuf - 相对路径
+/// Returns:
+/// PathBuf - 绝对路径
+pub fn resolve_absolute_path(relative_path: &PathBuf) -> PathBuf {
+    let storage_path = crate::config::get_current_storage_path();
+    storage_path.join(relative_path)
+}
+
 // --- 辅助函数：处理单个文件（去除时间戳，复制到临时目录，返回绝对路径） ---
 fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     let path = Path::new(file_path);
@@ -614,7 +641,7 @@ pub fn extract_icon_base64(path: &str) -> Result<String, String> {
         let com_init = CoInitialize(None);
         let _com_guard = ScopeGuard((), |_| {
             if com_init.is_ok() {
-               CoUninitialize();
+                CoUninitialize();
             }
         });
 
@@ -648,7 +675,10 @@ pub fn extract_icon_base64(path: &str) -> Result<String, String> {
         );
 
         if result == 0 || shfi.hIcon.is_invalid() {
-            return Err(format!("SHGetFileInfoW 失败或未找到图标，路径: {}", clean_path));
+            return Err(format!(
+                "SHGetFileInfoW 失败或未找到图标，路径: {}",
+                clean_path
+            ));
         }
 
         let hicon = shfi.hIcon;

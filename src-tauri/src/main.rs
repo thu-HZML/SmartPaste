@@ -9,8 +9,10 @@ mod config;
 mod db;
 mod ocr;
 mod utils;
+
 // 注册性能测试模块 (仅在测试模式下编译)
 #[cfg(test)]
+#[path = "test_unit/test_performance.rs"]
 mod test_performance;
 
 use app_setup::{
@@ -21,7 +23,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
-
 
 fn main() {
     let result = tauri::Builder::default()
@@ -83,7 +84,6 @@ fn main() {
             config::get_config_json,
             config::set_config_item,
         ])
-        
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录
             let app_default_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
@@ -105,17 +105,17 @@ fn main() {
             } else {
                 None
             };
-              // 接着使用提取出来的字符串进行逻辑处理
+            // 接着使用提取出来的字符串进行逻辑处理
             if let Some(ref path_str) = custom_storage_path {
                 let custom_path = PathBuf::from(path_str);
-                
+
                 // 规范化路径逻辑
                 #[cfg(target_os = "windows")]
                 let custom_path = PathBuf::from(path_str.replace("/", "\\"));
 
                 if !path_str.trim().is_empty() {
                     println!("✅ 检测到配置的存储路径: {}", custom_path.display());
-                    
+
                     // 检查自定义路径是否存在，如果不存在则创建
                     if !custom_path.exists() {
                         println!("📁 创建存储路径: {}", custom_path.display());
@@ -127,13 +127,16 @@ fn main() {
                     } else {
                         data_root = custom_path.clone();
                     }
-                    
+
                     // 检查新路径下是否有配置文件
                     let new_config_path = data_root.join("config.json");
                     if new_config_path.exists() {
-                        println!("📄 检测到新路径下的配置文件，切换到: {}", new_config_path.display());
+                        println!(
+                            "📄 检测到新路径下的配置文件，切换到: {}",
+                            new_config_path.display()
+                        );
                         config::set_config_path(new_config_path.clone());
-                        
+
                         // 🔥 这里现在可以安全地调用 reload_config 了，因为外面没有持有读锁
                         let reload_result = config::reload_config();
                         println!("重新加载配置结果: {}", reload_result);
@@ -141,7 +144,7 @@ fn main() {
                         println!("ℹ️ 新路径下没有配置文件，将使用默认配置路径");
                         // 如果新路径没有配置文件，但存储路径已设置，我们创建一个
                         println!("📝 在新路径创建配置文件");
-                        
+
                         // 这里需要再次获取读锁来复制配置，但这没问题，因为上面的锁已经释放了
                         if let Some(lock) = config::CONFIG.get() {
                             let config_to_save = lock.read().unwrap().clone();
@@ -174,13 +177,13 @@ fn main() {
             // 7. 打印最终使用的配置路径
             let current_config_path = config::get_config_path();
             println!("📄 最终配置文件路径: {}", current_config_path.display());
-            
+
             // 打印当前配置的存储路径用于验证
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
                 println!("📍 配置中记录的存储路径: {:?}", cfg.storage_path);
                 println!("📍 最终数据根目录: {}", data_root.display());
-                
+
                 // 验证存储路径是否与最终数据根目录一致
                 if let Some(ref storage_path) = cfg.storage_path {
                     let storage_path_buf = PathBuf::from(storage_path);
@@ -200,14 +203,14 @@ fn main() {
 
             if tray_icon_visible {
                 // 只有在 visible 为 true 时才创建托盘图标
-                app_setup::setup_tray(app)?; 
+                app_setup::setup_tray(app)?;
                 println!("✅ 托盘图标已创建");
             } else {
                 // 如果是 false，则不创建托盘图标
                 println!("🚫 托盘图标配置为不可见，跳过创建");
             }
             app_setup::setup_global_shortcuts(app.handle().clone())?;
-            
+
             let handle = app.handle().clone();
             app_setup::start_clipboard_monitor(handle);
 
