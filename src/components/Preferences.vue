@@ -836,7 +836,7 @@
                 v-model="registerData.password"
                 type="password"
                 required
-                placeholder="请输入密码（至少6位）"
+                placeholder="请输入密码（至少9位）"
                 class="form-input"
                 :class="{ 'error': registerErrors.password }"
               />
@@ -882,13 +882,13 @@
         <div class="modal-body">
           <form @submit.prevent="handleLogin">
             <div class="form-group">
-              <label for="login-email">邮箱</label>
+              <label for="login-username">用户名</label>
               <input
-                id="login-email"
-                v-model="loginData.email"
-                type="email"
+                id="login-username"
+                v-model="loginData.username"
+                type="text"
                 required
-                placeholder="请输入注册邮箱"
+                placeholder="请输入用户名"
                 class="form-input"
               />
             </div>
@@ -1784,7 +1784,7 @@ input:checked + .slider:before {
   padding: 12px 24px;
   border-radius: 8px;
   font-size: 14px;
-  z-index: 1000;
+  z-index: 10000;
   animation: slideUp 0.3s ease;
 }
 
