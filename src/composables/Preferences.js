@@ -99,7 +99,7 @@ export function usePreferences() {
     global_shortcut: '显示/隐藏主窗口',
     global_shortcut_2: '显示/隐藏剪贴板', 
     global_shortcut_3: '显示/隐藏AI助手',
-    global_shortcut_4: '快速粘贴',
+    global_shortcut_4: '显示/隐藏设置页面',
     global_shortcut_5: '清空剪贴板历史'
   }
   const shortcutKeys = Object.keys(shortcutDisplayNames)
