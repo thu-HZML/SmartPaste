@@ -176,7 +176,14 @@ export async function createClipboardWindow(options = {}) {
     })
     
     webview.once('tauri://error', (e) => {
-      console.error('剪贴板窗口创建失败:', e)
+      const currentWindowId = 'clipboard';
+      // 检查是否是已知的 'already exists' 竞态错误
+      if (e.payload && typeof e.payload === 'string' && e.payload.includes('already exists')) {
+        console.warn(`剪贴板窗口创建警告: 窗口 '${currentWindowId}' 正在清理中，无法立即创建。已忽略此错误。`);
+      } else {
+        // 其他错误，需要报告
+        console.error('剪贴板窗口创建失败:', e)
+      }
     })
     
     // 监听窗口关闭
@@ -195,18 +202,18 @@ export async function createClipboardWindow(options = {}) {
  * 获取或切换剪贴板窗口
  */
 export async function toggleClipboardWindow() {
-  // 查找已存在的剪贴板窗口
-  const clipboardWindow = Array.from(windowInstances.entries())
-    .find(([key]) => key === 'clipboard')
+  const windowId = 'clipboard'
+  const allWindows = await WebviewWindow.getAll()
+  const clipboardWindowInstance = allWindows.find(w => w.label === windowId)
 
-  if (clipboardWindow) {
+  if (clipboardWindowInstance) {
     // 如果存在剪贴板窗口，关闭
     try {
-      const [windowId, window] = clipboardWindow
-      await window.close()
-      windowInstances.delete(windowId)
+      console.log('关闭剪贴板窗口 (通过 getAll 获得的完整实例)')
+      await clipboardWindowInstance.close()
     } catch (error) {
       console.error('关闭剪贴板窗口失败:', error)
+      return
     }
     return null
   } else {
@@ -214,7 +221,12 @@ export async function toggleClipboardWindow() {
     try {
       await createClipboardWindow() // 创建默认位置的窗口
     } catch (error) {
-      console.error('创建剪贴板窗口错误:', error)
+      // 捕获并忽略 'already exists' 错误
+      if (error.payload && typeof error.payload === 'string' && error.payload.includes('already exists')) {
+          console.warn('⚠️ 窗口标签仍被占用（正在清理中），无法立即创建新窗口。')
+      } else {
+          console.error('创建剪贴板窗口错误:', error)
+      }
     }
   }
 }
@@ -325,7 +337,7 @@ export async function createSetWindow(options = {}) {
       x,
       y,
       resizable: true,
-      minimizable: false,
+      minimizable: true,
       maximizable: false,
       decorations: true,
       alwaysOnTop: true,
@@ -340,7 +352,13 @@ export async function createSetWindow(options = {}) {
     })
     
     webview.once('tauri://error', (e) => {
-      console.error('设置窗口创建失败:', e)
+      // 检查是否是已知的 'already exists' 竞态错误
+      if (e.payload && typeof e.payload === 'string' && e.payload.includes('already exists')) {
+        // 忽略此错误，因为它是异步清理未完成时尝试重新创建导致的常见错误
+        console.warn(`设置窗口创建警告: 窗口 '${windowId}' 正在清理中，无法立即创建。已忽略此错误。`);
+      } else {
+        console.error('设置窗口创建失败:', e);
+      }
     })
     
     // 监听窗口关闭
@@ -359,27 +377,31 @@ export async function createSetWindow(options = {}) {
  * 获取或切换设置窗口
  */
 export async function toggleSetWindow() {
-  // 查找已存在的设置窗口
-  const setsWindow = Array.from(windowInstances.entries())
-    .find(([key]) => key === 'preferences')
+  const windowId = 'preferences'
+  const allWindows = await WebviewWindow.getAll()
+  const setsWindowInstance = allWindows.find(w => w.label === windowId)
   
-  if (setsWindow) {
+  if (setsWindowInstance) {
     // 如果存在设置窗口，关闭
     try {
-      const [windowId, window] = setsWindow
-      await window.close()
-      windowInstances.delete(windowId)
+      console.log('关闭设置窗口 (全局查找)')
+      await setsWindowInstance.close()
+
     } catch (error) {
       console.error('关闭设置窗口失败:', error)
+      return
     }
-    return null
   } else {
     // 如果不存在，创建新窗口
     try {
       await createSetWindow() // 创建默认位置的窗口
 
     } catch (error) {
-      console.error('创建设置窗口错误:', error)
+      if (error.payload && typeof error.payload === 'string' && error.payload.includes('already exists')) {
+          console.warn('⚠️ 窗口标签仍被占用（正在清理中），无法立即创建新窗口。')
+      } else {
+          console.error('创建设置窗口失败:', error)
+      }
     }
   }
 }
