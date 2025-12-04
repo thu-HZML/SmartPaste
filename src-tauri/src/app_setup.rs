@@ -107,17 +107,17 @@ lazy_static::lazy_static! {
                 }
             },
         });
-        m.insert("quickPaste", ShortcutConfig {
+        m.insert("setWindow", ShortcutConfig {
             storage_key: "global_shortcut_4",
             default_value: "Ctrl+Shift+V",
             handler: |app, shortcut| {
-                println!("📋 执行快速粘贴，快捷键: {}", shortcut);
+                println!("⚙️ 执行设置窗口切换，快捷键: {}", shortcut);
                 if let Some(window) = app.get_webview_window("main") {
                     match window.eval(
-                        "if (typeof quickPaste === 'function') { console.log('Rust: 调用快速粘贴'); quickPaste(); } else { console.error('Rust: quickPaste 未找到'); }"
+                        "if (typeof toggleSetWindow === 'function') { console.log('Rust: 调用设置页面切换'); toggleSetWindow(); } else { console.error('Rust: toggleSetWindow 未找到'); }"
                     ) {
-                        Ok(_) => println!("✅ 快速粘贴命令发送成功"),
-                        Err(e) => println!("❌ 快速粘贴执行失败: {:?}", e),
+                        Ok(_) => println!("✅ 设置窗口切换命令发送成功"),
+                        Err(e) => println!("❌ 设置窗口切换执行失败: {:?}", e),
                     }
                 }
             },
