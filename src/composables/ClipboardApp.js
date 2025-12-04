@@ -1086,6 +1086,8 @@ export function useClipboardApp() {
     return `${year}-${month}-${day}T${hours}:${minutes}`
   }
 
+
+  let unlistenShortcutEvent;
   // 生命周期
   onMounted(async () => {
 
@@ -1146,10 +1148,31 @@ export function useClipboardApp() {
     // 获取收藏夹记录
     await getAllFolders()
     console.log('数据长度:', filteredHistory.value.length)
+
+    // 注册全局快捷键清空事件监听器
+    unlistenShortcutEvent = await listen('clipboard-history-cleared', (event) => {
+        const { message } = event.payload; // 从事件负载中获取消息
+        
+        console.log('Clipboard history cleared via shortcut event received:', message);
+        
+        // 1. 显示消息 (showMessage)
+        showMessage(message); 
+        
+        // 2. 刷新列表 (handleSearch, handleCategoryChange)
+        // 使用当前搜索框内容和活动分类进行刷新
+        handleSearch(searchQuery.value); 
+        handleCategoryChange(activeCategory.value); 
+        
+        // 3. 关闭可能的删除确认 UI (cancelDeleteAll)
+        cancelDeleteAll(); 
+    });
    
   })
 
   onUnmounted(() => {
+    if (unlistenShortcutEvent) {
+        unlistenShortcutEvent();
+    }
     removeWindowListeners()
   })
 

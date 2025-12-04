@@ -32,6 +32,7 @@
     "core:event:allow-listen",
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
-    "dialog:default"
+    "dialog:default",
+    "notification:default"
   ]
 }

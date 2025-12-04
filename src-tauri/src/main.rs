@@ -33,6 +33,7 @@ fn main() {
             MacosLauncher::LaunchAgent,
             Some(vec![]), // 可以传递启动参数，这里为空
         ))
+        .plugin(tauri_plugin_notification::init()) 
         .manage(AppShortcutManager::new())
         .manage(ClipboardSourceState {
             is_frontend_copy: Mutex::new(false),

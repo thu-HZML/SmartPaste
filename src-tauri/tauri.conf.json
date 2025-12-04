@@ -47,6 +47,7 @@
       "defaultIcon": {
         "icon": "icons/logo.png"
       }
-    }
+    },
+    "notification":null
   }
 }
