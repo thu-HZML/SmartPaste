@@ -1,6 +1,10 @@
 // src/utils/actions.js
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { LogicalPosition } from '@tauri-apps/api/window'
+import { emit } from '@tauri-apps/api/event';
+import { useSettingsStore } from '../stores/settings'; 
+import { deleteAllData, deleteUnfavoritedData } from '../services/api';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 // 存储所有窗口实例
 export const windowInstances = new Map()
@@ -465,6 +469,75 @@ export async function closeAllMenuWindows() {
   }
 }
 
+export async function clearClipboardHistory() {
+    console.log('JS: clearClipboardHistory called by shortcut');
+
+    try {
+        const settingsStore = useSettingsStore();
+        await settingsStore.initializeSettings();
+        const settings = settingsStore.settings; 
+        
+        let confirmed = true;
+        
+        // 删除确认对话框
+        if (settings.delete_confirmation) {
+            const message = settings.keep_favorites_on_delete
+                ? '确定要清空所有未收藏的剪贴板历史吗？'
+                : '确定要清空所有历史记录吗？';            
+            confirmed = await window.confirm(message);;
+            console.log(`[DEBUG] window.confirm 返回值 (confirmed): ${confirmed}`);
+        }
+        if (!confirmed) {
+            console.log(`[DEBUG] window.confirm 返回值 (confirmed): ${confirmed}`);
+            return;
+        }
+        let messageText = '';
+        let rowsAffected = 0;
+
+        // 执行删除操作
+        if (settings.keep_favorites_on_delete) {
+            rowsAffected = await deleteUnfavoritedData();
+            messageText = '已清除所有未收藏记录';
+        } else {
+            rowsAffected = await deleteAllData();
+            messageText = '已清除所有历史记录';
+        }
+
+        console.log(`快捷键清空操作完成: ${messageText}，共 ${rowsAffected} 条记录被删除`);
+
+
+        //  **发送 Tauri 系统通知 (实现全局反馈)**
+        let permissionGranted = await isPermissionGranted();
+        console.log('通知权限状态 (初始):', permissionGranted); // 检查初始权限
+
+        if (!permissionGranted) {
+            const permission = await requestPermission();
+            permissionGranted = permission === 'granted';
+            console.log('通知权限状态 (请求后):', permissionGranted); // 检查请求后的权限
+        }
+
+        if (permissionGranted) {
+            console.log('正在发送通知...'); // 确认 sendNotification 即将执行
+            sendNotification({
+                title: '剪贴板历史清理',
+                body: `${messageText}。共删除 ${rowsAffected} 条记录。`
+            });
+        }
+
+        // 4. 通知前端主组件进行 UI 刷新 (如果 ClipboardApp.vue 正在运行，它将刷新)
+        await emit('clipboard-history-cleared', { 
+            message: messageText, 
+            rows: rowsAffected
+        }); 
+
+    } catch (error) {
+        console.error('清空剪贴板历史失败:', error);
+        sendNotification({
+            title: '剪贴板历史清理失败',
+            body: `操作失败: ${error.message || error}`
+        });
+    }
+}
 
 // 将函数暴露给全局，方便 Tauri 调用
 if (typeof window !== 'undefined') {
@@ -474,5 +547,5 @@ if (typeof window !== 'undefined') {
   window.toggleSetWindow = toggleSetWindow;
   window.updateMenuWindowPosition = updateMenuWindowPosition;
   window.hasMenuWindow = hasMenuWindow;
-
+  window.clearClipboardHistory = clearClipboardHistory;
 }

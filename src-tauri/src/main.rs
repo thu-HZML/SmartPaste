@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_notification;
 
 fn main() {
     let result = tauri::Builder::default()
@@ -34,6 +35,7 @@ fn main() {
             MacosLauncher::LaunchAgent,
             Some(vec![]), // 可以传递启动参数，这里为空
         ))
+        .plugin(tauri_plugin_notification::init()) 
         .manage(AppShortcutManager::new())
         .manage(ClipboardSourceState {
             is_frontend_copy: Mutex::new(false),

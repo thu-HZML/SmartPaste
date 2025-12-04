@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 class ApiService {
@@ -68,3 +70,31 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
+
+/**
+ * 清空所有剪贴板历史，包括收藏的内容 (调用 Rust 的 delete_all_data)。
+ * @returns {Promise<number>} 受影响的行数
+ */
+export async function deleteAllData() {
+    try {
+        const rowsAffected = await invoke('delete_all_data');
+        return rowsAffected;
+    } catch (error) {
+        console.error('Failed to delete all data:', error);
+        throw error;
+    }
+}
+
+/**
+ * 清空剪贴板历史，保留已收藏的内容 (调用 Rust 的 delete_unfavorited_data)。
+ * @returns {Promise<number>} 受影响的行数
+ */
+export async function deleteUnfavoritedData() {
+    try {
+        const rowsAffected = await invoke('delete_unfavorited_data');
+        return rowsAffected;
+    } catch (error) {
+        console.error('Failed to delete unfavorited data:', error);
+        throw error;
+    }
+}
