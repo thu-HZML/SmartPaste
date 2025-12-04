@@ -1,22 +1,24 @@
 // src/utils/actions.js
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { LogicalPosition } from '@tauri-apps/api/window'
+import { emit } from '@tauri-apps/api/event';
+import { useSettingsStore } from '../stores/settings'; 
+import { deleteAllData, deleteUnfavoritedData } from '../services/api';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 // 存储所有窗口实例
 export const windowInstances = new Map()
 
 // 全局状态存储主窗口位置
-let mainWindowPosition = { x: 100, y: 100, width: 200, height: 200 }
+let mainWindowPosition = { x: 100, y: 100 }
 
 /**
  * 更新主窗口位置
  */
-export function updateMainWindowPosition(position, size) {
+export function updateMainWindowPosition(position) {
   mainWindowPosition = {
     x: position.x,
     y: position.y,
-    width: size.width,
-    height: size.height
   }
   console.log('更新主窗口位置:', mainWindowPosition)
 }
@@ -92,14 +94,14 @@ export async function toggleMenuWindow() {
     // 如果不存在，创建新窗口
     try {
       // 使用全局存储的主窗口位置
-      const { x, y, width, height } = mainWindowPosition
+      const { x, y } = mainWindowPosition
       
       // 计算新窗口位置（在桌宠右侧）
-      const newX = x + width + 10
+      const newX = x + 150
       const newY = y
       
       console.log('使用主窗口位置创建菜单窗口:', { 
-        mainWindow: { x, y, width, height },
+        mainWindow: { x, y },
         menuWindow: { newX, newY }
       })
       
@@ -118,23 +120,22 @@ export async function toggleMenuWindow() {
 
 // 新增：更新菜单窗口位置函数
 export async function updateMenuWindowPosition() {
-  const menuWindows = Array.from(windowInstances.entries())
+  const menuWindow = Array.from(windowInstances.entries())
     .find(([key]) => key === 'menu')
   
-  if (menuWindows.length > 0 && mainWindowPosition) {
-    const { x, y, width, height } = mainWindowPosition
-    const newX = x + width + 10
+  if (menuWindow) {
+    const { x, y } = mainWindowPosition
+    const newX = x + 150
     const newY = y
     
     console.log('📱 更新菜单窗口位置:', { newX, newY, mainWindowPosition })
 
-    for (const [windowId, window] of menuWindows) {
-      try {
-        await window.setPosition(new LogicalPosition(newX, newY))
-        console.log('更新菜单窗口位置:', { newX, newY })
-      } catch (error) {
-        console.error('更新菜单窗口位置失败:', error)
-      }
+    const [windowId, window] = menuWindow
+    try {
+      await window.setPosition(new LogicalPosition(newX, newY))
+      console.log('更新菜单窗口位置:', { newX, newY })
+    } catch (error) {
+      console.error('更新菜单窗口位置失败:', error)
     }
   }
 }
@@ -144,30 +145,6 @@ export async function updateMenuWindowPosition() {
  */
 export function hasMenuWindow() {
   return Array.from(windowInstances.keys()).some(key => key.startsWith('menu'))
-}
-
-/**
- * 实时更新菜单窗口位置（基于当前主窗口位置）
- */
-export async function updateMenuWindowPositionRealTime() {
-  const menuWindows = Array.from(windowInstances.entries())
-    .find(([key]) => key === 'menu')
-  
-  if (menuWindows.length > 0 && mainWindowPosition) {
-    const { x, y, width, height } = mainWindowPosition
-    const newX = x + width + 10
-    const newY = y
-    
-    console.log('🔄 实时更新菜单窗口位置:', { newX, newY })
-    
-    for (const [windowId, window] of menuWindows) {
-      try {
-        await window.setPosition(new LogicalPosition(newX, newY))
-      } catch (error) {
-        console.error('❌ 实时更新菜单窗口位置失败:', error)
-      }
-    }
-  }
 }
 
 /**
@@ -203,7 +180,14 @@ export async function createClipboardWindow(options = {}) {
     })
     
     webview.once('tauri://error', (e) => {
-      console.error('剪贴板窗口创建失败:', e)
+      const currentWindowId = 'clipboard';
+      // 检查是否是已知的 'already exists' 竞态错误
+      if (e.payload && typeof e.payload === 'string' && e.payload.includes('already exists')) {
+        console.warn(`剪贴板窗口创建警告: 窗口 '${currentWindowId}' 正在清理中，无法立即创建。已忽略此错误。`);
+      } else {
+        // 其他错误，需要报告
+        console.error('剪贴板窗口创建失败:', e)
+      }
     })
     
     // 监听窗口关闭
@@ -222,18 +206,18 @@ export async function createClipboardWindow(options = {}) {
  * 获取或切换剪贴板窗口
  */
 export async function toggleClipboardWindow() {
-  // 查找已存在的剪贴板窗口
-  const clipboardWindow = Array.from(windowInstances.entries())
-    .find(([key]) => key === 'clipboard')
+  const windowId = 'clipboard'
+  const allWindows = await WebviewWindow.getAll()
+  const clipboardWindowInstance = allWindows.find(w => w.label === windowId)
 
-  if (clipboardWindow) {
+  if (clipboardWindowInstance) {
     // 如果存在剪贴板窗口，关闭
     try {
-      const [windowId, window] = clipboardWindow
-      await window.close()
-      windowInstances.delete(windowId)
+      console.log('关闭剪贴板窗口 (通过 getAll 获得的完整实例)')
+      await clipboardWindowInstance.close()
     } catch (error) {
       console.error('关闭剪贴板窗口失败:', error)
+      return
     }
     return null
   } else {
@@ -241,7 +225,12 @@ export async function toggleClipboardWindow() {
     try {
       await createClipboardWindow() // 创建默认位置的窗口
     } catch (error) {
-      console.error('创建剪贴板窗口错误:', error)
+      // 捕获并忽略 'already exists' 错误
+      if (error.payload && typeof error.payload === 'string' && error.payload.includes('already exists')) {
+          console.warn('⚠️ 窗口标签仍被占用（正在清理中），无法立即创建新窗口。')
+      } else {
+          console.error('创建剪贴板窗口错误:', error)
+      }
     }
   }
 }
@@ -352,7 +341,7 @@ export async function createSetWindow(options = {}) {
       x,
       y,
       resizable: true,
-      minimizable: true,
+      minimizable: false,
       maximizable: false,
       decorations: true,
       alwaysOnTop: true,
@@ -367,7 +356,13 @@ export async function createSetWindow(options = {}) {
     })
     
     webview.once('tauri://error', (e) => {
-      console.error('设置窗口创建失败:', e)
+      // 检查是否是已知的 'already exists' 竞态错误
+      if (e.payload && typeof e.payload === 'string' && e.payload.includes('already exists')) {
+        // 忽略此错误，因为它是异步清理未完成时尝试重新创建导致的常见错误
+        console.warn(`设置窗口创建警告: 窗口 '${windowId}' 正在清理中，无法立即创建。已忽略此错误。`);
+      } else {
+        console.error('设置窗口创建失败:', e);
+      }
     })
     
     // 监听窗口关闭
@@ -386,27 +381,31 @@ export async function createSetWindow(options = {}) {
  * 获取或切换设置窗口
  */
 export async function toggleSetWindow() {
-  // 查找已存在的设置窗口
-  const setsWindow = Array.from(windowInstances.entries())
-    .find(([key]) => key === 'preferences')
+  const windowId = 'preferences'
+  const allWindows = await WebviewWindow.getAll()
+  const setsWindowInstance = allWindows.find(w => w.label === windowId)
   
-  if (setsWindow) {
+  if (setsWindowInstance) {
     // 如果存在设置窗口，关闭
     try {
-      const [windowId, window] = setsWindow
-      await window.close()
-      windowInstances.delete(windowId)
+      console.log('关闭设置窗口 (全局查找)')
+      await setsWindowInstance.close()
+
     } catch (error) {
       console.error('关闭设置窗口失败:', error)
+      return
     }
-    return null
   } else {
     // 如果不存在，创建新窗口
     try {
       await createSetWindow() // 创建默认位置的窗口
 
     } catch (error) {
-      console.error('创建设置窗口错误:', error)
+      if (error.payload && typeof error.payload === 'string' && error.payload.includes('already exists')) {
+          console.warn('⚠️ 窗口标签仍被占用（正在清理中），无法立即创建新窗口。')
+      } else {
+          console.error('创建设置窗口失败:', error)
+      }
     }
   }
 }
@@ -470,6 +469,75 @@ export async function closeAllMenuWindows() {
   }
 }
 
+export async function clearClipboardHistory() {
+    console.log('JS: clearClipboardHistory called by shortcut');
+
+    try {
+        const settingsStore = useSettingsStore();
+        await settingsStore.initializeSettings();
+        const settings = settingsStore.settings; 
+        
+        let confirmed = true;
+        
+        // 删除确认对话框
+        if (settings.delete_confirmation) {
+            const message = settings.keep_favorites_on_delete
+                ? '确定要清空所有未收藏的剪贴板历史吗？'
+                : '确定要清空所有历史记录吗？';            
+            confirmed = await window.confirm(message);;
+            console.log(`[DEBUG] window.confirm 返回值 (confirmed): ${confirmed}`);
+        }
+        if (!confirmed) {
+            console.log(`[DEBUG] window.confirm 返回值 (confirmed): ${confirmed}`);
+            return;
+        }
+        let messageText = '';
+        let rowsAffected = 0;
+
+        // 执行删除操作
+        if (settings.keep_favorites_on_delete) {
+            rowsAffected = await deleteUnfavoritedData();
+            messageText = '已清除所有未收藏记录';
+        } else {
+            rowsAffected = await deleteAllData();
+            messageText = '已清除所有历史记录';
+        }
+
+        console.log(`快捷键清空操作完成: ${messageText}，共 ${rowsAffected} 条记录被删除`);
+
+
+        //  **发送 Tauri 系统通知 (实现全局反馈)**
+        let permissionGranted = await isPermissionGranted();
+        console.log('通知权限状态 (初始):', permissionGranted); // 检查初始权限
+
+        if (!permissionGranted) {
+            const permission = await requestPermission();
+            permissionGranted = permission === 'granted';
+            console.log('通知权限状态 (请求后):', permissionGranted); // 检查请求后的权限
+        }
+
+        if (permissionGranted) {
+            console.log('正在发送通知...'); // 确认 sendNotification 即将执行
+            sendNotification({
+                title: '剪贴板历史清理',
+                body: `${messageText}。共删除 ${rowsAffected} 条记录。`
+            });
+        }
+
+        // 4. 通知前端主组件进行 UI 刷新 (如果 ClipboardApp.vue 正在运行，它将刷新)
+        await emit('clipboard-history-cleared', { 
+            message: messageText, 
+            rows: rowsAffected
+        }); 
+
+    } catch (error) {
+        console.error('清空剪贴板历史失败:', error);
+        sendNotification({
+            title: '剪贴板历史清理失败',
+            body: `操作失败: ${error.message || error}`
+        });
+    }
+}
 
 // 将函数暴露给全局，方便 Tauri 调用
 if (typeof window !== 'undefined') {
@@ -479,5 +547,5 @@ if (typeof window !== 'undefined') {
   window.toggleSetWindow = toggleSetWindow;
   window.updateMenuWindowPosition = updateMenuWindowPosition;
   window.hasMenuWindow = hasMenuWindow;
-
+  window.clearClipboardHistory = clearClipboardHistory;
 }

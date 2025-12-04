@@ -2,6 +2,7 @@ use crate::clipboard::ClipboardItem;
 use crate::config::{self, CONFIG};
 use crate::db;
 use crate::ocr;
+use crate::utils;
 use chrono::Utc;
 use image::buffer::EnumeratePixelsMut;
 use image::ColorType;
@@ -10,17 +11,21 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{
     GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState,
 };
 use uuid::Uuid;
+
+// 全局静态变量存储托盘图标的句柄
+static TRAY_ICON_GLOBAL: OnceLock<TrayIcon> = OnceLock::new();
+
 pub struct ClipboardSourceState {
     pub is_frontend_copy: Mutex<bool>,
 }
@@ -102,17 +107,17 @@ lazy_static::lazy_static! {
                 }
             },
         });
-        m.insert("quickPaste", ShortcutConfig {
+        m.insert("setWindow", ShortcutConfig {
             storage_key: "global_shortcut_4",
             default_value: "Ctrl+Shift+V",
             handler: |app, shortcut| {
-                println!("📋 执行快速粘贴，快捷键: {}", shortcut);
+                println!("⚙️ 执行设置窗口切换，快捷键: {}", shortcut);
                 if let Some(window) = app.get_webview_window("main") {
                     match window.eval(
-                        "if (typeof quickPaste === 'function') { console.log('Rust: 调用快速粘贴'); quickPaste(); } else { console.error('Rust: quickPaste 未找到'); }"
+                        "if (typeof toggleSetWindow === 'function') { console.log('Rust: 调用设置页面切换'); toggleSetWindow(); } else { console.error('Rust: toggleSetWindow 未找到'); }"
                     ) {
-                        Ok(_) => println!("✅ 快速粘贴命令发送成功"),
-                        Err(e) => println!("❌ 快速粘贴执行失败: {:?}", e),
+                        Ok(_) => println!("✅ 设置窗口切换命令发送成功"),
+                        Err(e) => println!("❌ 设置窗口切换执行失败: {:?}", e),
                     }
                 }
             },
@@ -134,25 +139,43 @@ lazy_static::lazy_static! {
         });
         m
     };
+    // 通过 Storage Key 查找 Handler Key 的反向映射
+    static ref STORAGE_KEY_TO_HANDLER_KEY: std::collections::HashMap<&'static str, &'static str> = {
+        let mut m = std::collections::HashMap::new();
+        for (handler_key, config) in SHORTCUT_CONFIGS.iter() {
+            m.insert(config.storage_key, *handler_key);
+        }
+        m
+    };
 }
 
 /// 从 Config 中加载快捷键配置
 fn load_shortcut_from_storage(shortcut_type: &str) -> String {
-    if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type) {
-        if let Some(lock) = CONFIG.get() {
-            let cfg = lock.read().unwrap();
-            match config.storage_key {
-                "global_shortcut" => cfg.global_shortcut.clone(),
-                "global_shortcut_2" => cfg.global_shortcut_2.clone(),
-                "global_shortcut_3" => cfg.global_shortcut_3.clone(),
-                "global_shortcut_4" => cfg.global_shortcut_4.clone(),
-                "global_shortcut_5" => cfg.global_shortcut_5.clone(),
-                _ => config.default_value.to_string(),
+    // 确保我们能通过 storage_key 找到对应的配置，以获取默认值
+    if let Some(handler_key) = STORAGE_KEY_TO_HANDLER_KEY.get(shortcut_type) {
+        if let Some(config) = SHORTCUT_CONFIGS.get(handler_key) {
+            // 拿到对应的配置对象
+            if let Some(lock) = CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                // 简化匹配，直接使用传入的 storage_key
+                match shortcut_type {
+                    "global_shortcut" => cfg.global_shortcut.clone(),
+                    "global_shortcut_2" => cfg.global_shortcut_2.clone(),
+                    "global_shortcut_3" => cfg.global_shortcut_3.clone(),
+                    "global_shortcut_4" => cfg.global_shortcut_4.clone(),
+                    "global_shortcut_5" => cfg.global_shortcut_5.clone(),
+                    _ => config.default_value.to_string(),
+                }
+            } else {
+                config.default_value.to_string()
             }
         } else {
-            config.default_value.to_string()
+            // fallback to default if config map lookup fails
+            // Since we use STORAGE_KEY_TO_HANDLER_KEY, this path is unlikely
+            "".to_string()
         }
     } else {
+        // Unknown shortcut type
         "".to_string()
     }
 }
@@ -247,10 +270,10 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let menu = Menu::new(app)?;
     menu.append(&show_hide)?;
     menu.append(&quit)?;
-    TrayIconBuilder::new()
+    let tray_handle = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
-        .tooltip("桌面宠物")
+        .tooltip("SmartPaste")
         .on_menu_event(move |app, event| {
             if let Some(window) = app.get_webview_window("main") {
                 match event.id().as_ref() {
@@ -276,54 +299,58 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .build(app)?;
-    println!("✅ 托盘图标创建成功");
+    // 存储 handle
+    if TRAY_ICON_GLOBAL.set(tray_handle).is_err() {
+        eprintln!("⚠️ 托盘图标句柄重复设置失败");
+    }
     Ok(())
 }
 
+// 供 config.rs 调用的获取句柄函数
+pub fn get_tray_icon_handle() -> Option<&'static TrayIcon> {
+    TRAY_ICON_GLOBAL.get()
+}
+
 pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let handle_for_closure = handle.clone();
     let shortcut_manager = handle.state::<AppShortcutManager>();
 
-    // 1. 设置统一的全局事件处理器 - 修复格式匹配问题
+    // 1. 设置统一的全局事件处理器
     handle.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |app, shortcut, event| {
-                //println!("🔧 收到快捷键事件: {}, 状态: {:?}", shortcut, event.state());
-
                 if event.state() != PluginShortcutState::Pressed {
                     return;
                 }
 
                 let shortcut_str = shortcut.to_string();
-                //println!("🔍 查找快捷键: {}", shortcut_str);
-
                 let manager = app.state::<AppShortcutManager>();
                 let shortcuts = manager.shortcuts.lock().unwrap();
 
-                // 打印所有已注册的快捷键用于调试
-                //println!("📋 已注册快捷键: {:?}", *shortcuts);
-
                 // 统一快捷键格式进行比较
                 let normalized_received = normalize_shortcut_format(&shortcut_str);
-                //println!("🔄 标准化后的快捷键: {}", normalized_received);
 
                 // 检查所有注册的快捷键
-                for (shortcut_type, registered_shortcut) in shortcuts.iter() {
+                // storage_key 是 &String 类型，需要 .as_str() 才能用作 HashMap<&str, ...> 的查找键
+                for (storage_key, registered_shortcut) in shortcuts.iter() {
                     let normalized_registered = normalize_shortcut_format(registered_shortcut);
-                    //println!("🔍 比较: {} vs {}", normalized_received, normalized_registered);
 
                     if normalized_received == normalized_registered {
-                        println!(
-                            "✅ 匹配到快捷键: {} - {}",
-                            shortcut_type, registered_shortcut
-                        );
+                        println!("✅ 匹配到快捷键: {} - {}", storage_key, registered_shortcut);
 
-                        // 调用对应的处理器
-                        if let Some(config) = SHORTCUT_CONFIGS.get(shortcut_type.as_str()) {
-                            println!("🚀 执行处理器: {}", shortcut_type);
-                            (config.handler)(app, registered_shortcut);
+                        // 使用 storage_key.as_str() 转换为 &str 进行查找
+                        if let Some(handler_key) =
+                            STORAGE_KEY_TO_HANDLER_KEY.get(storage_key.as_str())
+                        {
+                            // 找到对应的处理器配置并执行
+                            if let Some(config) = SHORTCUT_CONFIGS.get(handler_key) {
+                                println!("🚀 执行处理器: {}", handler_key);
+                                (config.handler)(app, registered_shortcut);
+                            } else {
+                                println!("❌ 未找到处理器配置 (Handler Key: {})", handler_key);
+                            }
                         } else {
-                            println!("❌ 未找到处理器: {}", shortcut_type);
+                            // 错误：找不到与存储键对应的处理器
+                            println!("❌ 未找到处理器: {}", storage_key);
                         }
                         return;
                     }
@@ -335,7 +362,9 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     )?;
 
     // 2. 初始化并注册所有快捷键
-    for (&shortcut_type, config) in SHORTCUT_CONFIGS.iter() {
+    // 迭代 SHORTCUT_CONFIGS 的值，确保使用 config.storage_key 作为 AppShortcutManager 的键
+    for config in SHORTCUT_CONFIGS.values() {
+        let shortcut_type = config.storage_key; // shortcut_type 即为 storage_key (e.g., "global_shortcut")
         let shortcut_str = load_shortcut_from_storage(shortcut_type);
         println!("ℹ️ 正在尝试注册快捷键 {}: {}", shortcut_type, shortcut_str);
 
@@ -348,6 +377,7 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
                 );
             } else {
                 println!("✅ 已成功注册快捷键 {}: {}", shortcut_type, shortcut_str);
+                // 使用 Storage Key (shortcut_type) 存储到 AppShortcutManager
                 shortcut_manager.set_shortcut(shortcut_type, shortcut_str);
             }
         } else {
@@ -410,9 +440,35 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
         let mut frontend_ignore_countdown = 0;
 
         // 定义相对路径根目录 (保持不变，因为这是存入数据库的相对路径)
-        let db_root_dir = PathBuf::from("files"); 
-
+        let db_root_dir = PathBuf::from("files");
+        // 辅助函数
+        fn get_path_size(path: &Path) -> u64 {
+            if path.is_dir() {
+                // 递归计算文件夹大小
+                let mut total = 0;
+                if let Ok(entries) = fs::read_dir(path) {
+                    for entry in entries.flatten() {
+                        total += get_path_size(&entry.path());
+                    }
+                }
+                total
+            } else {
+                // 文件大小
+                fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+            }
+        }
         loop {
+            // 每次循环都重新读取配置，以支持运行时修改
+            let size_limit_mb = {
+                if let Some(lock) = CONFIG.get() {
+                    let cfg = lock.read().unwrap();
+                    cfg.ignore_big_file_mb
+                } else {
+                    5 // 默认值 5MB
+                }
+            };
+            let size_limit_bytes = size_limit_mb as u64 * 1024 * 1024;
+
             let current_storage_path = crate::config::get_current_storage_path();
             let files_dir = current_storage_path.join("files");
 
@@ -422,7 +478,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                     eprintln!("❌ 无法创建文件存储目录 {:?}: {}", files_dir, e);
                     // 如果目录创建失败，本次循环暂停，避免后续报错
                     thread::sleep(Duration::from_millis(1000));
-                    continue; 
+                    continue;
                 }
             }
             {
@@ -478,9 +534,10 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                         // 只有是非前端复制时，才执行保存文件和数据库操作
                         let image_id = Uuid::new_v4().to_string();
                         // let dest_path = files_dir.join(format!("{}.png", image_id));
-                        let dest_path = db_root_dir.join(format!("{}.png", image_id));
+                        let dest_relative_path = db_root_dir.join(format!("{}.png", image_id));
+                        let dest_absolute_path = utils::resolve_absolute_path(&dest_relative_path);
                         if image::save_buffer(
-                            &dest_path,
+                            &dest_absolute_path,
                             &image.rgba(),
                             image.width(),
                             image.height(),
@@ -491,22 +548,25 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             let new_item = ClipboardItem {
                                 id: image_id.clone(),
                                 item_type: "image".to_string(),
-                                content: dest_path.to_str().unwrap().to_string(),
-                                size: fs::metadata(&dest_path).ok().map(|m| m.len()),
+                                content: dest_relative_path.to_str().unwrap().to_string(),
+                                size: fs::metadata(&dest_absolute_path).map(|m| m.len()).ok(),
                                 is_favorite: false,
                                 notes: "".to_string(),
                                 timestamp: Utc::now().timestamp_millis(),
                             };
 
+                            // println!("✅ 图片保存到文件: {:?}", dest_path);
                             if let Err(e) = db::insert_received_db_data(new_item) {
                                 eprintln!("❌ 保存图片数据到数据库失败: {:?}", e);
                             } else {
                                 // OCR识别（异步）
-                                let ocr_path = dest_path.clone().to_str().unwrap().to_string();
+                                let ocr_path =
+                                    dest_absolute_path.clone().to_str().unwrap().to_string();
                                 let ocr_item_id = image_id.clone();
                                 tauri::async_runtime::spawn(async move {
                                     match ocr::ocr_image(ocr_path).await {
                                         Ok(res) => {
+                                            println!("✅ OCR识别成功: {}", res);
                                             // 识别成功，保存结果到数据库
                                             let ocr_text =
                                                 match serde_json::from_str::<Vec<Value>>(&res) {
@@ -554,6 +614,17 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
                         for path in paths {
+                            // 检查文件/文件夹大小是否超过限制
+                            let path_size = get_path_size(&path);
+                            if size_limit_mb > 0 && path_size > size_limit_bytes {
+                                println!(
+                                    "❌ 文件/文件夹大小超过限制: {:?} ({} MB > {} MB)，跳过复制",
+                                    path,
+                                    path_size as f64 / (1024.0 * 1024.0),
+                                    size_limit_mb
+                                );
+                                continue; // 跳过这个文件/文件夹
+                            }
                             // 1. 判断类型：如果是目录则为 "folder"，否则按扩展名判断
                             let item_type = if path.is_dir() {
                                 "folder".to_string()
@@ -643,7 +714,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                                 // 记录图标提取开始时间
                                                 let icon_extract_start = Instant::now();
 
-                                                match crate::get_file_icon(
+                                                match utils::get_file_icon(
                                                     dest_path_for_icon.clone(),
                                                 )
                                                 .await
@@ -719,12 +790,26 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             timestamp: Utc::now().timestamp_millis(),
                         };
 
-                        if let Err(e) = db::insert_received_db_data(new_item) {
-                            eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
-                        } else {
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.emit("clipboard-updated", "");
+                        // 能否被插入，取决于配置中的筛选条件
+                        let can_insert = {
+                            if let Some(lock) = CONFIG.get() {
+                                let cfg = lock.read().unwrap();
+                                cfg.ignore_short_text_len == 0 // 0 表示不限制（不忽略短文本）
+                                    || size.unwrap_or(0) >= cfg.ignore_short_text_len as u64
+                            } else {
+                                true // 默认允许插入
                             }
+                        };
+                        if can_insert {
+                            if let Err(e) = db::insert_received_db_data(new_item) {
+                                eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
+                            } else {
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.emit("clipboard-updated", "");
+                                }
+                            }
+                        } else {
+                            println!("⚠️ 文本长度不足，忽略插入");
                         }
                     }
                 }

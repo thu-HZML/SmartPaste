@@ -1,3 +1,6 @@
+/// 性能测试模块
+/// 测试数据库插入操作的性能，确保在合理时间内完成
+/// 依赖于 src-tauri/src/db/mod.rs 中的数据库操作功能
 #[cfg(test)]
 mod tests {
     use crate::clipboard::ClipboardItem;

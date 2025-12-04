@@ -26,6 +26,7 @@ export function useClipboardApp() {
   const showFoldersModal = ref(false)
   const showOcrModal = ref(false)
   const showDeleteModal = ref(false)
+  const showDeleteSingleModal = ref(false)
   const editingText = ref('')
   const editingItem = ref(null)
   const notingText = ref('')
@@ -98,7 +99,7 @@ export function useClipboardApp() {
   // 计算属性：规范化路径
   const normalizedPath = computed(() => {
     if (!settings.storage_path) return '未设置路径'
-    return settings.storage_path.replace(/\//g, '\\')
+    return settings.storage_path.replace(/\//g, '\\') + '\\'
   })
 
   // 监听搜索类型变化
@@ -139,6 +140,12 @@ export function useClipboardApp() {
     // 清除之前的定时器
     clearTimeout(searchTimeout)
     
+    // 如果是收藏夹模式，不执行全局搜索(奇怪的bug: 收藏夹操作时可能会触发这里的搜索，导致内容被覆盖)
+    if (activeCategory.value === 'folder') {
+      console.log('收藏夹模式下跳过全局搜索')
+      return
+    }
+
     // 空查询立即返回
     if (query.trim() === '' && searchType.value !== 'time') {
       await getAllHistory()
@@ -171,6 +178,7 @@ export function useClipboardApp() {
       folders.value[0].num_items = result
     }
     else if (category.trim() === 'folder') {
+      console.log('当前收藏夹：', currentFolder.value.name)
       await performFolder()
     }
 
@@ -253,19 +261,23 @@ export function useClipboardApp() {
 
   // 收藏夹过滤
   const performFolder = async () => { 
-    if (currentFolder.value.name === '默认收藏夹') {
-      console.log('进入默认收藏夹')
+    if (currentFolder.value.name === '全部') {
+      console.log('进入全部收藏夹')
       try {
         const result = await invoke('filter_data_by_favorite', { 
           isFavorite: true
         })    
         filteredHistory.value = JSON.parse(result)
 
+        console.log('全部收藏夹内容:', filteredHistory.value) 
         // 为数组添加前端额外字段
         await optimizeHistoryItems(filteredHistory)
+        console.log('添加字段后全部收藏夹内容:', filteredHistory.value)
       } catch (err) {
-        console.error('默认收藏夹获取失败:', err)
-      }
+        console.error('全部收藏夹获取失败:', err)
+      } finally {
+      searchLoading.value = false
+    }
     }
     else {
       console.log('进入收藏夹：', currentFolder.value.name)
@@ -309,7 +321,7 @@ export function useClipboardApp() {
   const openSettings = async () => {
     // 移除窗口焦点监听器
     removeWindowListeners()
-    toggleSetWindow()
+    await toggleSetWindow()
     currentWindow.close()
   }
 
@@ -322,7 +334,8 @@ export function useClipboardApp() {
         showMessage('已复制文本')
       } else {
         // 对于文件和图片类型，使用新的文件复制方法
-        await invoke('write_file_to_clipboard', { filePath: item.content })
+        const filePath = normalizedPath.value + item.content
+        await invoke('write_file_to_clipboard', { filePath: filePath })
         showMessage(`已复制文件: ${getFileName(item.content)}`)
       }
     } catch (error) {
@@ -377,9 +390,9 @@ export function useClipboardApp() {
           }
         })
         
-        // 如果项目已被收藏但不在任何收藏夹中，确保默认收藏夹被选中
+        // 如果项目已被收藏但不在任何收藏夹中，确保全部收藏夹被选中
         if (item.is_favorite) {
-          const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+          const defaultFolder = folders.value.find(folder => folder.name === '全部')
           if (defaultFolder && !defaultFolder.isSelected) {
             defaultFolder.isSelected = true
           }
@@ -391,20 +404,19 @@ export function useClipboardApp() {
 
   // 弹出"确认删除"提示框
   const showDeleteAll = () => {
-    // 根据 delete_confirmation 设置决定是否显示确认对话框
-    if (settings.delete_confirmation) {
-      showDeleteModal.value = true
-    } else {
-      // 如果不需要确认，直接执行删除操作
-      deleteAllHistory()
-    }
+    showDeleteModal.value = true
   }
 
   // 删除所有历史记录
   const deleteAllHistory = async () => {
     try {
-      await invoke('delete_unfavorited_data')
-      showMessage('已清除所有未收藏记录')
+      if (settings.keep_favorites_on_delete) {
+        await invoke('delete_unfavorited_data')
+        showMessage('已清除所有未收藏记录')
+      } else {
+        await invoke('delete_all_data')
+        showMessage('已清除所有历史记录')
+      }
       handleSearch(searchQuery.value)
       handleCategoryChange(activeCategory.value)
     } catch(err) {
@@ -416,6 +428,21 @@ export function useClipboardApp() {
   // "确认删除"提示框消失
   const cancelDeleteAll = () => {
     showDeleteModal.value = false
+  }
+
+  // 弹出"确认删除"提示框
+  const showDeleteSingle = (item) => {
+    currentItem.value = item
+    if (settings.delete_confirmation) {
+      showDeleteSingleModal.value = true
+    } else {
+      removeItem()
+    }    
+  }
+
+  // "确认删除"提示框消失
+  const cancelDeleteSingle = () => {
+    showDeleteSingleModal.value = false
   }
 
   // 编辑项目
@@ -510,7 +537,8 @@ export function useClipboardApp() {
   }
 
   // 删除历史记录
-  const removeItem = async (item) => {
+  const removeItem = async () => {
+    const item = currentItem.value
     try {
       // 如果记录被收藏，先从所有收藏夹中移除
       if (item.is_favorite) {
@@ -537,7 +565,7 @@ export function useClipboardApp() {
       if (index !== -1) {
         filteredHistory.value.splice(index, 1)
       }
-      
+      cancelDeleteSingle()
       showMessage('已删除记录')
     } catch (error) {
       console.error('删除记录失败:', error)
@@ -600,19 +628,19 @@ export function useClipboardApp() {
       const jsonString = await invoke('get_all_folders')
       folders.value = JSON.parse(jsonString)
 
-      // 创建默认收藏夹
+      // 创建全部收藏夹
       if (!folders.value || folders.value.length === 0) {
-        console.log('收藏夹为空，正在创建默认收藏夹...')
+        console.log('收藏夹为空，正在创建全部收藏夹...')
         try {
-          await invoke('create_new_folder', { name: '默认收藏夹' })
-          console.log('默认收藏夹创建成功')
+          await invoke('create_new_folder', { name: '全部' })
+          console.log('全部收藏夹创建成功')
           
           // 重新获取收藏夹列表
           const updatedJsonString = await invoke('get_all_folders')
           folders.value = JSON.parse(updatedJsonString)
           console.log('更新后的收藏夹:', folders.value)
         } catch (createError) {
-          console.error('创建默认收藏夹失败:', createError)
+          console.error('创建全部收藏夹失败:', createError)
         }
       }
 
@@ -700,30 +728,30 @@ export function useClipboardApp() {
 
   // 切换收藏夹选中状态
   const selectFolder = (item) => {
-    // 如果是默认收藏夹
-    if (item.name === '默认收藏夹') {
-      // 如果取消选中默认收藏夹，则取消所有其他收藏夹
+    // 如果是全部收藏夹
+    if (item.name === '全部') {
+      // 如果取消选中全部收藏夹，则取消所有其他收藏夹
       if (item.isSelected) {
-        // 取消选中默认收藏夹
+        // 取消选中全部收藏夹
         item.isSelected = false
         // 取消所有其他收藏夹的选中
         folders.value.forEach(folder => {
-          if (folder.name !== '默认收藏夹') {
+          if (folder.name !== '全部') {
             folder.isSelected = false
           }
         })
       } else {
-        // 选中默认收藏夹
+        // 选中全部收藏夹
         item.isSelected = true
       }
     } else {
-      // 非默认收藏夹
+      // 非全部收藏夹
       // 切换当前项的选中状态
       item.isSelected = !item.isSelected
       
-      // 如果选中了任何非默认收藏夹，确保默认收藏夹也被选中
+      // 如果选中了任何非全部收藏夹，确保全部收藏夹也被选中
       if (item.isSelected) {
-        const defaultFolder = folders.value.find(folder => folder.name === '默认收藏夹')
+        const defaultFolder = folders.value.find(folder => folder.name === '全部')
         if (defaultFolder && !defaultFolder.isSelected) {
           defaultFolder.isSelected = true
         }
@@ -735,7 +763,7 @@ export function useClipboardApp() {
   const addToFolder = async () => {
     try {
       const selectedFolders = folders.value.filter(item => 
-        item.isSelected && item.name !== '默认收藏夹'
+        item.isSelected && item.name !== '全部'
       )
       const previouslySelectedFolders = folders.value.filter(item => 
         initialSelectedFolders.value.includes(item.id) && !item.isSelected
@@ -965,7 +993,7 @@ export function useClipboardApp() {
         // 多选文件
         selectedItems.value.forEach(item => {
           if (item.item_type === 'file' || item.item_type === 'image' || item.item_type === 'folder') {
-            filePaths.push(item.content)
+            filePaths.push(normalizedPath.value + item.content)
             successCount++
           }     
         })
@@ -1004,14 +1032,12 @@ export function useClipboardApp() {
   async function optimizeHistoryItems(historyRef, options = {}) {
     const { defaultFocus = false, defaultSelected = false } = options
     const array = historyRef.value
-    
     // 批量处理基础字段
     for (let i = 0; i < array.length; i++) {
       const item = array[i]
       item.is_focus = defaultFocus
       item.is_selected = defaultSelected
     }
-
     // 并行获取图标数据（带重试功能）
     const fileItems = array.filter(item => item.item_type === 'file' || item.item_type === 'folder')
     const promises = fileItems.map(item => 
@@ -1069,6 +1095,8 @@ export function useClipboardApp() {
     return `${year}-${month}-${day}T${hours}:${minutes}`
   }
 
+
+  let unlistenShortcutEvent;
   // 生命周期
   onMounted(async () => {
 
@@ -1129,10 +1157,31 @@ export function useClipboardApp() {
     // 获取收藏夹记录
     await getAllFolders()
     console.log('数据长度:', filteredHistory.value.length)
+
+    // 注册全局快捷键清空事件监听器
+    unlistenShortcutEvent = await listen('clipboard-history-cleared', (event) => {
+        const { message } = event.payload; // 从事件负载中获取消息
+        
+        console.log('Clipboard history cleared via shortcut event received:', message);
+        
+        // 1. 显示消息 (showMessage)
+        showMessage(message); 
+        
+        // 2. 刷新列表 (handleSearch, handleCategoryChange)
+        // 使用当前搜索框内容和活动分类进行刷新
+        handleSearch(searchQuery.value); 
+        handleCategoryChange(activeCategory.value); 
+        
+        // 3. 关闭可能的删除确认 UI (cancelDeleteAll)
+        cancelDeleteAll(); 
+    });
    
   })
 
   onUnmounted(() => {
+    if (unlistenShortcutEvent) {
+        unlistenShortcutEvent();
+    }
     removeWindowListeners()
   })
 
@@ -1148,6 +1197,7 @@ export function useClipboardApp() {
     showFoldersModal,
     showOcrModal,
     showDeleteModal,
+    showDeleteSingleModal,
     editingText,
     editingItem,
     notingText,
@@ -1176,6 +1226,7 @@ export function useClipboardApp() {
     selectedItemsCount,
     searchPlaceholder,
     normalizedPath,
+    settings,
 
     // 方法
     convertFileSrc,
@@ -1208,8 +1259,10 @@ export function useClipboardApp() {
     addToFolder,
     cancelAddToFolder,
     showDeleteAll,
+    showDeleteSingle,
     deleteAllHistory,
     cancelDeleteAll,
+    cancelDeleteSingle,
     handleItemClick,
     copySelectedItems,
     exitMultiSelectMode,

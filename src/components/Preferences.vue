@@ -41,8 +41,8 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <h3>启动时最小化到托盘</h3>
-              <p>启动时不弹出窗口，挂载在后台</p>
+              <h3>显示系统托盘图标</h3>
+              <p>在系统托盘显示应用图标</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -50,40 +50,6 @@
                   type="checkbox" 
                   :checked="settings.tray_icon_visible" 
                   @change="updateSetting('tray_icon_visible', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>显示系统托盘图标</h3>
-              <p>在系统托盘显示应用图标，方便快速访问</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.minimize_to_tray" 
-                  @change="updateSetting('minimize_to_tray', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动保存剪贴板历史</h3>
-              <p>自动保存剪贴板内容到历史记录</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.auto_save" 
-                  @change="updateSetting('auto_save', $event.target.checked)"
                 >
                 <span class="slider"></span>
               </label>
@@ -118,6 +84,24 @@
             <p>提示：点击快捷键输入框，然后按下您想要设置的组合键</p>
             <p>按 ESC 键可取消设置</p>
           </div>
+
+          <div v-for="key in shortcutKeys" :key="key" class="setting-item">
+            <div class="setting-info">
+              <h3>{{ shortcutDisplayNames[key] }}</h3>
+              <p>自定义全局快捷键</p>
+            </div>
+            <div class="setting-control">
+              <input 
+                type="text" 
+                :value="settings[key]" 
+                :class="['shortcut-input', { 'recording-active': shortcutManager.isRecording && shortcutManager.currentType === key }]"
+                @click="startRecording(key)"
+                readonly
+                :placeholder="shortcutManager.isRecording && shortcutManager.currentType === key ? '正在录制...' : '点击设置'"
+              >
+            </div>
+          </div>
+          
         </div>
 
         <!-- 剪贴板参数设置 -->
@@ -174,40 +158,6 @@
                 @change="updateSetting('ignore_big_file_mb', Number($event.target.value))"
               >
               <span class="unit">MB</span>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动分类</h3>
-              <p>自动分类开关</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.auto_classify" 
-                  @change="updateSetting('auto_classify', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>OCR自动识别</h3>
-              <p>OCR自动识别开关</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.ocr_auto_recognition" 
-                  @change="updateSetting('ocr_auto_recognition', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
             </div>
           </div>
 
@@ -623,41 +573,6 @@
             </div>
           </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动备份</h3>
-              <p>定期自动备份数据</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  :checked="settings.auto_backup" 
-                  @change="updateSetting('auto_backup', $event.target.checked)"
-                >
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div v-if="settings.auto_backup" class="setting-item">
-            <div class="setting-info">
-              <h3>备份频率</h3>
-              <p>自动备份的频率</p>
-            </div>
-            <div class="setting-control">
-              <select 
-                v-model="settings.backup_frequency" 
-                @change="updateSetting('backup_frequency', $event.target.value)" 
-                class="select-input"
-              >
-                <option value="daily">每天</option>
-                <option value="weekly">每周</option>
-                <option value="monthly">每月</option>
-              </select>
-            </div>
-          </div>
-
           <div class="backup-actions">
             <h3>数据操作</h3>
 
@@ -678,13 +593,6 @@
                 <button class="btn btn-secondary" @click="importData">导入数据</button>
               </div>
 
-              <div class="action-item">
-                <div class="action-info">
-                  <h4>立即备份</h4>
-                  <p>立即创建数据备份</p>
-                </div>
-                <button class="btn btn-secondary" @click="createBackup">立即备份</button>
-              </div>
             </div>
           </div>
         </div>
@@ -805,12 +713,18 @@
             
             <div class="account-status" v-if="!userLoggedIn">
               <p>您尚未登录，请登录以启用云端同步功能</p>
-              <button class="btn btn-primary" @click="login">登录账户</button>
+              <div class="account-buttons">
+                <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
+                <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
+              </div>
             </div>
             
             <div class="account-status" v-else>
               <p>已登录为: {{ userEmail }}</p>
-              <button class="btn btn-secondary" @click="logout">退出登录</button>
+              <div class="account-buttons">
+                <button class="btn btn-secondary" @click="logout">退出登录</button>
+                <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
+              </div>
             </div>
           </div>
         </div>
@@ -876,6 +790,138 @@
     <div v-if="showToast" class="toast">
       {{ toastMessage }}
     </div>
+
+    <!-- 注册对话框 -->
+    <div v-if="showRegisterDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>注册新账户</h3>
+          <button @click="closeRegisterDialog" class="close-btn">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <form @submit.prevent="handleRegister">
+            <div class="form-group">
+              <label for="username">用户名</label>
+              <input
+                id="username"
+                v-model="registerData.username"
+                type="text"
+                required
+                placeholder="请输入用户名（至少3个字符）"
+                class="form-input"
+                :class="{ 'error': registerErrors.username }"
+              />
+              <div v-if="registerErrors.username" class="error-message">{{ registerErrors.username }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="email">邮箱</label>
+              <input
+                id="email"
+                v-model="registerData.email"
+                type="email"
+                required
+                placeholder="请输入邮箱"
+                class="form-input"
+                :class="{ 'error': registerErrors.email }"
+              />
+              <div v-if="registerErrors.email" class="error-message">{{ registerErrors.email }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="password">密码</label>
+              <input
+                id="password"
+                v-model="registerData.password"
+                type="password"
+                required
+                placeholder="请输入密码（至少9位）"
+                class="form-input"
+                :class="{ 'error': registerErrors.password }"
+              />
+              <div v-if="registerErrors.password" class="error-message">{{ registerErrors.password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="password2">确认密码</label>
+              <input
+                id="password2"
+                v-model="registerData.password2"
+                type="password"
+                required
+                placeholder="请再次输入密码"
+                class="form-input"
+                :class="{ 'error': registerErrors.password2 }"
+              />
+              <div v-if="registerErrors.password2" class="error-message">{{ registerErrors.password2 }}</div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeRegisterDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="registerLoading" class="btn btn-primary">
+                <span v-if="registerLoading">注册中...</span>
+                <span v-else>注册</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登录对话框 -->
+    <div v-if="showLoginDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>登录账户</h3>
+          <button @click="closeLoginDialog" class="close-btn">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <form @submit.prevent="handleLogin">
+            <div class="form-group">
+              <label for="login-username">用户名</label>
+              <input
+                id="login-username"
+                v-model="loginData.username"
+                type="text"
+                required
+                placeholder="请输入用户名"
+                class="form-input"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label for="login-password">密码</label>
+              <input
+                id="login-password"
+                v-model="loginData.password"
+                type="password"
+                required
+                placeholder="请输入密码"
+                class="form-input"
+              />
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeLoginDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="loginLoading" class="btn btn-primary">
+                <span v-if="loginLoading">登录中...</span>
+                <span v-else>登录</span>
+              </button>
+            </div>
+            
+            <div class="form-footer">
+              <p>还没有账户？ <a href="#" @click.prevent="showLoginDialog = false; openRegisterDialog()">立即注册</a></p>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div> 
   </div>
 </template>
 
@@ -904,31 +950,62 @@ const {
   userInfo,
   navItems,
   settings,
+  shortcutDisplayNames,
+  shortcutKeys,
 
-  // 方法
+  // 注册登录相关状态
+  showRegisterDialog,
+  showLoginDialog,
+  registerData,
+  loginData,
+  registerErrors,
+  registerLoading,
+  loginLoading,
+
+  // 基础方法
   setActiveNav,
   goBack,
   login,
   logout,
   resetUserInfo,
   showMessage,
+
+  // 注册登录方法
+  handleRegister,
+  handleLogin,
+  openRegisterDialog,
+  openLoginDialog,
+  closeRegisterDialog,
+  closeLoginDialog,
+  
+  // 快捷键方法
   startRecording,
   cancelRecording,
   setShortcut,
+
+  // 设置方法
   updateSetting,
   toggleOCRLanguage,
   changeStoragePath,
+
+  // 数据管理方法
   clearAiHistory,
   exportData,
   importData,
   createBackup,
+
+  // 云端同步方法
   formatTime,
   manualSync,
   syncNow,
   checkSyncStatus,
+
+  // 用户管理方法
   changeAvatar,
   changePassword,
   deleteAccount,
+
+  // 辅助方法
   getAIServiceName,
   getBackupFrequencyName
 } = usePreferences()
@@ -1198,11 +1275,23 @@ input:checked + .slider:before {
   text-align: center;
   min-width: 120px;
   transition: all 0.2s;
+  user-select: none;
 }
 
 .shortcut-input:hover {
   border-color: #3498db;
   background: #f8f9fa;
+}
+
+.shortcut-status-messages {
+    margin-top: 24px;
+}
+
+.shortcut-input.recording-active {
+  border-color: #e67e22; /* Orange color for active recording */
+  background: #fdf3e9; /* Light orange background */
+  box-shadow: 0 0 5px rgba(230, 126, 34, 0.5);
+  animation: pulse-border 1s infinite alternate;
 }
 
 .hint {
@@ -1494,6 +1583,196 @@ input:checked + .slider:before {
   background: #c0392b;
 }
 
+/* 未登录用户界面 */
+.unlogged-user {
+  padding: 40px 20px;
+  text-align: center;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+}
+
+.unlogged-message h3 {
+  margin-bottom: 10px;
+  color: #2c3e50;
+  font-size: 18px;
+}
+
+.unlogged-message p {
+  margin-bottom: 20px;
+  color: #7f8c8d;
+}
+
+.unlogged-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* 账户按钮组 */
+.account-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #2c3e50;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+/* 表单样式 */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.25);
+}
+
+.form-input.error {
+  border-color: #e74c3c;
+}
+
+.error-message {
+  color: #e74c3c;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 30px;
+}
+
+.form-footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #7f8c8d;
+}
+
+.form-footer a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+.form-footer a:hover {
+  text-decoration: underline;
+}
+
+/* 按钮样式更新 */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #3498db;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2980b9;
+}
+
+.btn-primary:disabled {
+  background: #a0c9e5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #ecf0f1;
+  color: #2c3e50;
+  border: 1px solid #bdc3c7;
+}
+
+.btn-secondary:hover {
+  background: #d5dbdb;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
 /* 提示信息样式 */
 .toast {
   position: fixed;
@@ -1505,7 +1784,7 @@ input:checked + .slider:before {
   padding: 12px 24px;
   border-radius: 8px;
   font-size: 14px;
-  z-index: 1000;
+  z-index: 10000;
   animation: slideUp 0.3s ease;
 }
 
@@ -1517,6 +1796,15 @@ input:checked + .slider:before {
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes pulse-border {
+  from {
+    border-color: #e67e22;
+  }
+  to {
+    border-color: #f1c40f;
   }
 }
 

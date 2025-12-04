@@ -166,7 +166,7 @@
                 </button>
                 <button 
                   class="icon-btn-small" 
-                  @click="removeItem(item)"
+                  @click="showDeleteSingle(item)"
                   title="删除"
                 >
                   <TrashIcon class="icon-default" />
@@ -184,7 +184,7 @@
                 <div v-else-if="item.item_type === 'image'" class="image-container">
                   <img 
                     v-if="item.content"
-                    :src="convertFileSrc(normalizedPath + '\\' + item.content)" 
+                    :src="convertFileSrc(normalizedPath + item.content)" 
                     :alt="'图片: ' + getFileName(item.content)"
                     class="preview-image"
                     @error="handleImageError"
@@ -263,13 +263,25 @@
       {{ toastMessage }}
     </div>
 
-    <!-- 删除提醒模态框 -->
+    <!-- 删除全部提醒模态框 -->
     <div v-if="showDeleteModal" class="modal">
       <div class="modal-content">
-        <h3>确定要清空所有未收藏的历史记录吗？此操作不可撤销！</h3>
+        <h3 v-if="settings.keep_favorites_on_delete">确定要清空所有未收藏的历史记录吗？此操作不可撤销！</h3>
+        <h3 v-else>确定要清空所有历史记录吗？此操作不可撤销！</h3>
         <div class="modal-actions-center">
           <button @click="cancelDeleteAll" class="btn btn-secondary">取消</button>
           <button @click="deleteAllHistory" class="btn btn-least">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除单条提醒模态框 -->
+    <div v-if="showDeleteSingleModal" class="modal">
+      <div class="modal-content">
+        <h3>确定要删除这条历史记录吗？此操作不可撤销！</h3>
+        <div class="modal-actions-center">
+          <button @click="cancelDeleteSingle" class="btn btn-secondary">取消</button>
+          <button @click="removeItem" class="btn btn-least">删除</button>
         </div>
       </div>
     </div>
@@ -414,6 +426,7 @@ const {
   showFoldersModal,
   showOcrModal,
   showDeleteModal,
+  showDeleteSingleModal,
   editingText,
   editingItem,
   notingText,
@@ -442,6 +455,7 @@ const {
   selectedItemsCount,
   searchPlaceholder,
   normalizedPath,
+  settings,
 
   // 方法
   convertFileSrc,
@@ -474,8 +488,11 @@ const {
   addToFolder,
   cancelAddToFolder,
   showDeleteAll,
+  showDeleteSingle,
   deleteAllHistory,
   cancelDeleteAll,
+  deleteSingle,
+  cancelDeleteSingle,
   handleItemClick,
   copySelectedItems,
   exitMultiSelectMode,
