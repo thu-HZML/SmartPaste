@@ -1,5 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension, Result, Result as SqlResult};
-use std::fs;
+use std::{fs, path};
 use uuid::Uuid;
 // use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -1321,5 +1321,9 @@ pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
 
 /// # 单元测试
 #[cfg(test)]
-#[path = "test_unit/test_db.rs"]
-mod test_db;
+#[path = "test_unit/test_db_base.rs"]
+mod test_db_base;
+#[path = "test_unit/test_db_adv.rs"]
+mod test_db_adv;
+#[path = "test_unit/test_db_folder.rs"]
+mod test_db_folder;
