@@ -1,3 +1,5 @@
+/// config 单元测试
+/// 测试 update_simple_config_item 函数，确保其正确更新配置项
 use super::*;
 use serde_json::json;
 

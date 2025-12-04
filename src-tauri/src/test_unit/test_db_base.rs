@@ -1,3 +1,6 @@
+/// 单元测试数据库相关操作
+/// 此文件提供基础功能点测试，包括增删改查等
+/// 测试使用临时数据库文件，避免污染真实数据
 use super::*;
 use serde_json;
 use std::fs;
@@ -242,4 +245,3 @@ fn test_delete_data() {
         "database should be empty after delete_all"
     );
 }
-

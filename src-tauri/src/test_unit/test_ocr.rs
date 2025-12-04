@@ -1,3 +1,7 @@
+/// OCR 单元测试
+/// 测试 OCR 引擎的配置和图像识别功能
+/// 依赖于 src-tauri/src/ocr/mod.rs 中的 OCR 功能
+/// 需确保测试环境中有适当的 OCR 测试图片
 use super::*;
 use std::path::Path;
 
