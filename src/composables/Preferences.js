@@ -183,6 +183,7 @@ export function usePreferences() {
       if (response.success) {
         // 注册成功
         showMessage('注册成功！', 'success')
+        console.log('登录成功返回信息:', response.data)
         
         // 保存用户信息到本地存储
         if (response.data) {
@@ -211,7 +212,34 @@ export function usePreferences() {
         })
       } else {
         // 注册失败
-        showMessage(`注册失败：${response.message}`, 'error')
+        let errorMessage = '注册失败'
+        
+        if (response.data && typeof response.data === 'object') {
+          // 创建更易读的错误信息
+          const errorLines = []
+          
+          for (const [field, errors] of Object.entries(response.data)) {
+            if (Array.isArray(errors)) {
+              // 将字段名转换为中文
+              const fieldName = field === 'email' ? '邮箱' : 
+                              field === 'password' ? '密码' : 
+                              field === 'username' ? '用户名' : field
+              
+              // 处理每个错误项
+              errors.forEach(error => {
+                errorLines.push(`• ${fieldName}: ${error}`)
+              })
+            }
+          }
+          
+          if (errorLines.length > 0) {
+            // 分行显示，更清晰
+            errorMessage = `注册失败：\n${errorLines.join('\n')}`
+          }
+        }
+        
+        showMessage(errorMessage)
+        console.error('注册失败返回信息:', response.data)
       }
     } catch (error) {
       console.error('注册错误:', error)
@@ -223,8 +251,8 @@ export function usePreferences() {
 
   // 登录方法
   const handleLogin = async () => {
-    if (!loginData.email || !loginData.password) {
-      showMessage('请输入邮箱和密码', 'error')
+    if (!loginData.username || !loginData.password) {
+      showMessage('请输入用户名和密码', 'error')
       return
     }
     
@@ -233,14 +261,14 @@ export function usePreferences() {
     try {
       // 这里调用登录API
       const response = await apiService.login({
-        email: loginData.email,
+        username: loginData.username,
         password: loginData.password
       })
 
       if (response.success) {
         // 登录成功
         showMessage('登录成功！', 'success')
-        
+        console.log('登录成功返回信息:', response.data)
         // 保存用户信息到本地存储
         if (response.data) {
           localStorage.setItem('user', JSON.stringify(response.data))
@@ -263,6 +291,7 @@ export function usePreferences() {
       } else {
         // 登录失败
         showMessage(`登录失败：${response.message}`, 'error')
+        console.error('登录失败返回信息:', response.data)
       }
     } catch (error) {
       console.error('登录错误:', error)
