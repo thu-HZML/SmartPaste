@@ -456,28 +456,65 @@ pub fn get_config_path() -> PathBuf {
         PathBuf::from("config.json")
     })
 }
-
+/// 将路径转换为正斜杠格式（跨平台统一）
+fn normalize_to_forward_slashes(path: &str) -> String {
+    path.replace("\\", "/")
+}
 /// 初始化全局配置。如果存在配置文件则加载，否则使用默认配置并创建文件。
 /// # Returns
 /// String - 初始化结果信息
 pub fn init_config() -> String {
     let config_path = get_config_path();
 
-    let config = if config_path.exists() {
+    let mut config = if config_path.exists() {
         // 读取现有配置文件
         let data = fs::read_to_string(&config_path).unwrap_or_default();
         serde_json::from_str(&data).unwrap_or_default()
     } else {
         // 使用默认配置并创建文件
-        let default_config = Config::default();
-        if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent).ok();
-        }
-        let mut file = fs::File::create(&config_path).unwrap();
-        let data = serde_json::to_string_pretty(&default_config).unwrap();
-        file.write_all(data.as_bytes()).ok();
-        default_config
+        Config::default()
     };
+
+    if config.storage_path.is_none() || config.storage_path.as_ref().unwrap().trim().is_empty() {
+        // 获取配置文件的父目录作为默认存储路径
+        let default_storage_path = if let Some(parent) = config_path.parent() {
+            parent.to_path_buf()
+        } else {
+            // 如果无法获取父目录，使用当前目录
+            PathBuf::from(".")
+        };
+        
+        // 统一使用正斜杠
+        let default_path_str = normalize_to_forward_slashes(&default_storage_path.to_string_lossy());
+        println!("🔄 设置默认存储路径: {}", default_path_str);
+        config.storage_path = Some(default_path_str);
+        
+        // 确保目录存在
+        if let Err(e) = fs::create_dir_all(&default_storage_path) {
+            eprintln!("⚠️ 创建默认存储目录失败: {}", e);
+        }
+    }
+
+    // 确保目录存在
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    
+    // 创建配置文件
+    let mut file = match fs::File::create(&config_path) {
+        Ok(file) => file,
+        Err(e) => return format!("创建配置文件失败: {}", e),
+    };
+    
+    let data = match serde_json::to_string_pretty(&config) {
+        Ok(data) => data,
+        Err(e) => return format!("序列化配置失败: {}", e),
+    };
+    
+    match file.write_all(data.as_bytes()) {
+        Ok(_) => println!("✅ 配置文件已创建/更新: {}", config_path.display()),
+        Err(e) => return format!("写入配置文件失败: {}", e),
+    }
 
     CONFIG
         .set(RwLock::new(config))
