@@ -29,6 +29,18 @@ export function useDesktopPet() {
   const animationFrame = ref('cover') // 当前动画帧
   const currentKey = ref('') // 当前按下的按键
 
+  // 可用按键集合
+  const availableKeyImages = new Set([
+    'Alt', 'AltGr', 'BackQuote', 'Backspace', 'CapsLock', 'Control', 
+    'ControlLeft', 'ControlRight', 'Delete', 'Escape', 'Fn', 'KeyA', 
+    'KeyB', 'KeyC', 'KeyD', 'KeyE', 'KeyF', 'KeyG', 'KeyH', 'KeyI', 
+    'KeyJ', 'KeyK', 'KeyL', 'KeyM', 'KeyN', 'KeyO', 'KeyP', 'KeyQ', 
+    'KeyR', 'KeyS', 'KeyT', 'KeyU', 'KeyV', 'KeyW', 'KeyX', 'KeyY', 
+    'KeyZ', 'Meta', 'Num0', 'Num1', 'Num2', 'Num3', 'Num4', 'Num5', 
+    'Num6', 'Num7', 'Num8', 'Num9', 'Return', 'Shift', 'ShiftLeft', 
+    'ShiftRight', 'Slash', 'Space', 'Tab'
+  ])
+
   // 初始化动画管理器
   const animationManager = new AnimationManager()
 
@@ -213,8 +225,11 @@ export function useDesktopPet() {
 
   // 处理键盘按下
   const handleKeyPress = (key) => {
+    if (!availableKeyImages.has(key)) {
+      console.log('按键不在图片列表中，显示默认 Enter 键')
+      key = 'Return'
+    }
     currentKey.value = key
-    
     // 设置按键动画状态，并传递自定义帧
     animationManager.setState(AnimationState.KEY_PRESS, [key])
   }
