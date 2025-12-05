@@ -12,7 +12,7 @@ use std::io::Cursor;
 use std::io::{Read, Seek, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, Manager, State,AppHandle};
 use tauri_plugin_autostart::MacosLauncher;
 use uuid::Uuid;
 use windows::core::PCWSTR;
@@ -27,6 +27,11 @@ use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, I
 use zip::write::FileOptions;
 // main.rs 头部引入
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
+use rdev::{listen, EventType, Key};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+use std::thread;
+use serde_json::json;
 #[tauri::command]
 pub fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -780,4 +785,58 @@ impl<T: Copy, F: FnMut(T)> Drop for ScopeGuard<T, F> {
     fn drop(&mut self) {
         (self.1)(self.0);
     }
+}
+// 控制开关：是否向前端发送数据
+static IS_MONITORING: AtomicBool = AtomicBool::new(false);
+// 保证线程只启动一次
+static MONITOR_THREAD_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// 开始监听：前端调用此方法后，Rust 开始向前端 emit 事件
+#[tauri::command]
+pub fn start_key_listener(app: AppHandle) {
+    println!("▶️ 开启键盘监听");
+    IS_MONITORING.store(true, Ordering::SeqCst);
+
+    // 如果线程还没启动，则启动它
+    if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
+        MONITOR_THREAD_STARTED.store(true, Ordering::SeqCst);
+        
+        thread::spawn(move || {
+            // rdev::listen 是阻塞的，会一直运行
+            if let Err(error) = listen(move |event| {
+                // 1. 检查开关，如果前端没让开始，就什么都不做
+                if !IS_MONITORING.load(Ordering::SeqCst) {
+                    return;
+                }
+
+                // 2. 匹配事件类型
+                let (key_name, event_type) = match event.event_type {
+                    EventType::KeyPress(key) => (format!("{:?}", key), "down"),
+                    EventType::KeyRelease(key) => (format!("{:?}", key), "up"),
+                    _ => return, // 忽略鼠标等其他事件
+                };
+
+                // 3. 动态构建 JSON 数据 (不使用结构体)
+                let payload = json!({
+                    "key": key_name,   // 例如 "KeyA", "ControlLeft"
+                    "type": event_type // "down" 或 "up"
+                });
+
+                // 4. 发送事件给前端
+                // 前端需要监听 'key-monitor-event'
+                if let Err(e) = app.emit("key-monitor-event", payload) {
+                    eprintln!("❌ 发送事件失败: {}", e);
+                }
+            }) {
+                eprintln!("❌ 键盘监听线程错误: {:?}", error);
+            }
+        });
+    }
+}
+
+/// 停止监听：前端调用此方法后，Rust 暂停发送事件
+#[tauri::command]
+pub fn stop_key_listener() {
+    println!("⏸️ 暂停键盘监听");
+    IS_MONITORING.store(false, Ordering::SeqCst);
 }
