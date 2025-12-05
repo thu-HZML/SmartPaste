@@ -45,6 +45,8 @@ fn main() {
             utils::write_to_clipboard,
             utils::write_file_to_clipboard,
             utils::copy_file_to_clipboard,
+            utils::start_key_listener,
+            utils::stop_key_listener,
             update_shortcut,
             get_current_shortcut,
             get_all_shortcuts,

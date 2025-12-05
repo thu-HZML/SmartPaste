@@ -1,5 +1,7 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
+import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import { 
   windowInstances, 
   updateMainWindowPosition, 
@@ -7,6 +9,11 @@ import {
   updateMenuWindowPosition,
   hasMenuWindow as checkMenuWindowExists
 } from '../utils/actions.js'
+import { 
+  AnimationManager, 
+  AnimationState, 
+  getAnimationForMouse,
+} from '../utils/animations.js'
 
 export function useDesktopPet() {
   const isHovering = ref(false)
@@ -19,10 +26,37 @@ export function useDesktopPet() {
   const scaleFactor = ref(1.486)
   const allowClickPet = ref(true)
   const currentPosition = ref({ x: 0, y: 0 })
+  const animationFrame = ref('cover') // 当前动画帧
+  const currentKey = ref('') // 当前按下的按键
+
+  // 可用按键集合
+  const availableKeyImages = new Set([
+    'Alt', 'AltGr', 'BackQuote', 'Backspace', 'CapsLock', 'Control', 
+    'ControlLeft', 'ControlRight', 'Delete', 'Escape', 'Fn', 'KeyA', 
+    'KeyB', 'KeyC', 'KeyD', 'KeyE', 'KeyF', 'KeyG', 'KeyH', 'KeyI', 
+    'KeyJ', 'KeyK', 'KeyL', 'KeyM', 'KeyN', 'KeyO', 'KeyP', 'KeyQ', 
+    'KeyR', 'KeyS', 'KeyT', 'KeyU', 'KeyV', 'KeyW', 'KeyX', 'KeyY', 
+    'KeyZ', 'Meta', 'Num0', 'Num1', 'Num2', 'Num3', 'Num4', 'Num5', 
+    'Num6', 'Num7', 'Num8', 'Num9', 'Return', 'Shift', 'ShiftLeft', 
+    'ShiftRight', 'Slash', 'Space', 'Tab'
+  ])
+
+  // 初始化动画管理器
+  const animationManager = new AnimationManager()
 
   let clickPetTimeout = null
-  let positionUpdateInterval = null
-  let dragUpdateInterval = null
+
+  // 根据动画帧计算图片路径
+  const petImagePath = computed(() => {
+    const state = animationManager.currentState
+    
+    // 按键状态：使用按键对应的图片
+    if (state === AnimationState.KEY_PRESS) {
+      const keyImage = currentKey.value || 'key'
+      return `/resources/left-keys/${keyImage}.png`
+    }
+    return `/resources/${animationFrame.value}.png`
+  })
 
   const handlePointerDown = async (event) => {
     event.stopPropagation()
@@ -50,7 +84,6 @@ export function useDesktopPet() {
   }
 
   const handlePointerMove = async (event) => {  
-    console.log('删除点击定时器')
     clearTimeout(clickPetTimeout)
 
     if (event.buttons === 0) {
@@ -68,7 +101,7 @@ export function useDesktopPet() {
     try {
       await currentWindow.setPosition(new LogicalPosition(newX, newY))
       currentPosition.value = { x: newX, y: newY }
-      await updateMainWindowPosition(currentPosition.value)
+      updateMainWindowPosition(currentPosition.value)
       await updateMenuWindowPosition()
     } catch (error) {
       console.error('移动窗口失败:', error)
@@ -137,6 +170,99 @@ export function useDesktopPet() {
     document.removeEventListener('pointerup', handlePointerUp)
   }
 
+  // 设置动画回调 - 修复帧更新逻辑
+  const setupAnimationCallbacks = () => {
+    animationManager.on('onFrameChange', (state, frameIndex) => {
+      const currentFrame = animationManager.getCurrentFrame()
+      console.log('动画帧更新:', state, '->', currentFrame)
+      animationFrame.value = currentFrame
+    })
+
+    animationManager.on('onStateChange', (oldState, newState) => {
+      console.log(`动画状态变化: ${oldState} → ${newState}`)
+      
+      // 如果从按键状态切换到其他状态，清空当前按键
+      if (oldState === AnimationState.KEY_PRESS) {
+        currentKey.value = null
+      }
+    })
+  }
+
+  // 监听全局键盘事件
+  const setupGlobalListeners = async () => {
+    try {
+      // 开启全局键盘监听
+      await invoke('start_key_listener');
+
+      // 监听键盘事件
+      await listen('key-monitor-event', (event) => {
+        const data = event.payload;
+        if (data.type === 'down') {
+          console.log('⬇️ 按下:', data.key);
+          handleKeyPress(data.key)
+        } else if (data.type === 'up') {
+          console.log('⬆️ 松开:', data.key);
+          handleKeyUp(data.key)
+        }
+      });
+
+      /*
+      // 监听全局鼠标点击事件
+      await listen('global-mouse-down', (event) => {
+        handleGlobalMouseDown(event.payload)
+      })
+
+      // 监听全局鼠标释放事件
+      await listen('global-mouse-up', (event) => {
+        handleGlobalMouseUp(event.payload)
+      })
+        */
+
+    } catch (error) {
+      console.error('设置全局监听器失败:', error)
+    }
+  }
+
+  // 处理键盘按下
+  const handleKeyPress = (key) => {
+    if (!availableKeyImages.has(key)) {
+      console.log('按键不在图片列表中，显示默认 Enter 键')
+      key = 'Return'
+    }
+    currentKey.value = key
+    // 设置按键动画状态，并传递自定义帧
+    animationManager.setState(AnimationState.KEY_PRESS, [key])
+  }
+
+  const handleKeyUp = (key) => {
+    // 如果是按键状态，返回空闲状态
+    if (animationManager.currentState === AnimationState.KEY_PRESS) {
+      // 可以设置一个延迟，让按键图片显示一段时间
+      animationManager.setState(AnimationState.IDLE)
+    }
+  }
+
+  // 处理全局鼠标按下
+  const handleGlobalMouseDown = (mouseEvent) => {
+    if (!mouseEvent || !mouseEvent.button) return
+    
+    const button = mouseEvent.button === 0 ? 'left' : 
+                   mouseEvent.button === 1 ? 'middle' : 'right'
+    
+    const animationState = getAnimationForMouse(button)
+    animationManager.setState(animationState)
+  }
+
+  // 处理全局鼠标释放
+  const handleGlobalMouseUp = (mouseEvent) => {
+    // 鼠标释放后，如果不是正在动画，返回空闲状态
+    if (!animationManager.isAnimating) {
+      setTimeout(() => {
+        animationManager.setState(AnimationState.IDLE)
+      }, 100)
+    }
+  }
+
   onMounted(async () => {
     console.log('[DesktopPet] mounted')
     try {
@@ -151,25 +277,43 @@ export function useDesktopPet() {
         x: Math.round(position.x / scaleFactor.value),
         y: Math.round(position.y / scaleFactor.value)
       }
+      updateMainWindowPosition(currentPosition.value, { width: 120, height: 120 })
+      
+      // 初始化动画系统
+      animationManager.setState(AnimationState.IDLE, true)
+      setupAnimationCallbacks()    
+
+      // 设置全局事件监听
+      await setupGlobalListeners()
+
       await updateMainWindowPosition(currentPosition.value)
     } catch (error) {
       console.error('设置窗口大小失败:', error)
     }
   })
 
-  onUnmounted(() => {
+  onUnmounted(async () => {
     cleanupEventListeners()
+    animationManager.destroy()
+    await invoke('stop_key_listener');
   })
 
   return {
+    // 响应式状态
     isHovering,
     hasClipboardWindow,
     hasMenuWindow,
     isDragging,
+
+    // 计算属性
+    petImagePath,
+
+    // 事件处理函数
     handlePointerEnter,
     handlePointerLeave,
     handlePointerDown,
     handleLeftClick,
-    handleContextMenu
+    handleContextMenu,
+    animationFrame
   }
 }
