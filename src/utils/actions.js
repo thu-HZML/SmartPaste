@@ -20,7 +20,6 @@ export function updateMainWindowPosition(position) {
     x: position.x,
     y: position.y,
   }
-  console.log('更新主窗口位置:', mainWindowPosition)
 }
 
 /**

@@ -279,8 +279,6 @@ export function useDesktopPet() {
       // 设置全局事件监听
       await setupGlobalListeners()
 
-      // 启动位置跟踪
-      startPositionTracking()
       await updateMainWindowPosition(currentPosition.value)
     } catch (error) {
       console.error('设置窗口大小失败:', error)

@@ -13,7 +13,7 @@ export const ANIMATION_CONFIG = {
   [AnimationState.IDLE]: {
     duration: 1000, // 毫秒
     loop: true,
-    frames: ['cover', 'background']
+    frames: ['cover']
   },
   [AnimationState.LEFT_CLICK]: {
     duration: 300,
