@@ -3,48 +3,54 @@ export const AnimationState = {
   IDLE: 'idle',
   LEFT_CLICK: 'left_click',
   RIGHT_CLICK: 'right_click',
-  KEY_PRESS: 'key_press',
+  KEY_PRESS: 'key_press',  // 专门用于键盘按键
   DRAGGING: 'dragging',
   HOVER: 'hover'
 }
 
-// 动画配置
-export const ANIMATION_CONFIG = {
+// 动态动画配置
+export const getAnimationConfig = () => ({
   [AnimationState.IDLE]: {
-    duration: 1000, // 毫秒
+    duration: 1000,
     loop: true,
+    animate: true,
     frames: ['cover']
   },
   [AnimationState.LEFT_CLICK]: {
     duration: 300,
     loop: false,
+    animate: true,
     frames: ['left_down', 'left_mid', 'left_up'],
     returnTo: AnimationState.IDLE
   },
   [AnimationState.RIGHT_CLICK]: {
     duration: 300,
     loop: false,
+    animate: true,
     frames: ['right_down', 'right_mid', 'right_up'],
     returnTo: AnimationState.IDLE
   },
   [AnimationState.KEY_PRESS]: {
-    duration: 200,
+    duration: 300,
     loop: false,
-    frames: ['key_press_1', 'key_press_2', 'key_press_3'],
+    animate: false,
+    frames: [], // 动态设置
     returnTo: AnimationState.IDLE
   },
   [AnimationState.DRAGGING]: {
     duration: 500,
     loop: true,
+    animate: true,
     frames: ['drag_1', 'drag_2']
   },
   [AnimationState.HOVER]: {
     duration: 400,
     loop: false,
+    animate: true,
     frames: ['hover_1', 'hover_2'],
     returnTo: AnimationState.IDLE
   }
-}
+})
 
 // 动画管理器
 export class AnimationManager {
@@ -57,16 +63,22 @@ export class AnimationManager {
       onFrameChange: null,
       onStateChange: null
     }
+    this.animationConfig = getAnimationConfig()
   }
 
   // 切换动画状态
-  setState(newState, force = false) {
+  setState(newState, customFrames = [], force = false) {
     if (this.currentState === newState && !force) return
     
     const oldState = this.currentState
     this.currentState = newState
     this.currentFrame = 0
     this.isAnimating = true
+    
+    // 如果有自定义帧，更新配置
+    if (customFrames && customFrames.length > 0) {
+      this.animationConfig[newState].frames = customFrames
+    }
     
     // 停止之前的动画
     if (this.animationTimer) {
@@ -84,8 +96,11 @@ export class AnimationManager {
 
   // 开始播放动画
   startAnimation() {
-    const config = ANIMATION_CONFIG[this.currentState]
-    if (!config || config.frames.length === 0) return
+    const config = this.animationConfig[this.currentState]
+    if (!config || config.frames.length === 0) {
+      console.warn(`没有找到 ${this.currentState} 的动画配置或帧为空`)
+      return
+    }
 
     const frameCount = config.frames.length
     const frameDuration = config.duration / frameCount
@@ -94,6 +109,12 @@ export class AnimationManager {
       // 触发帧改变回调
       if (this.callbacks.onFrameChange) {
         this.callbacks.onFrameChange(this.currentState, this.currentFrame)
+      }
+      
+      if (this.animationConfig[this.currentState].animate === false) {
+        // 如果不需要动画，直接结束
+        this.isAnimating = false
+        return
       }
       
       this.currentFrame++
@@ -123,7 +144,7 @@ export class AnimationManager {
 
   // 获取当前动画帧
   getCurrentFrame() {
-    const config = ANIMATION_CONFIG[this.currentState]
+    const config = this.animationConfig[this.currentState]
     if (!config || config.frames.length === 0) return ''
     
     const frameIndex = this.currentFrame % config.frames.length
@@ -146,39 +167,11 @@ export class AnimationManager {
   }
 }
 
-// 键盘映射到动画
-export const KEY_ANIMATION_MAP = {
-  // 主键盘区
-  'KeyA': 'left_paw',
-  'KeyS': 'left_paw',
-  'KeyD': 'right_paw',
-  'KeyF': 'right_paw',
-  'Space': 'both_paws',
-  // 数字键
-  'Digit1': 'left_paw',
-  'Digit2': 'left_paw',
-  'Digit3': 'right_paw',
-  'Digit4': 'right_paw',
-  // 方向键
-  'ArrowLeft': 'left_paw',
-  'ArrowRight': 'right_paw',
-  'ArrowUp': 'both_paws',
-  'ArrowDown': 'both_paws',
-  // 功能键
-  'Enter': 'both_paws',
-  'Tab': 'right_paw'
-}
-
 // 鼠标事件映射
 export const MOUSE_ANIMATION_MAP = {
   'left': AnimationState.LEFT_CLICK,
   'right': AnimationState.RIGHT_CLICK,
   'middle': AnimationState.KEY_PRESS
-}
-
-// 获取对应的动画类型
-export function getAnimationForKey(keyCode) {
-  return KEY_ANIMATION_MAP[keyCode] || 'key_press'
 }
 
 export function getAnimationForMouse(button) {

@@ -36,11 +36,20 @@ const {
     @contextmenu="handleContextMenu"
   >
     <div class="pet-container">
+      <!-- 背景层 -->
+      <img
+        src="/resources/cover.png"
+        alt="Pet Background"
+        draggable="false"
+        class="pet-background"
+      />
+      
+      <!-- 动画层（按键动画等） -->
       <img
         :src="petImagePath"
-        alt="Desktop Pet"
+        alt="Desktop Pet Animation"
         draggable="false"
-        :class="['pet-image', { 'hover': isHovering, 'has-window': hasMenuWindow }]"
+        :class="['pet-animation', { 'hover': isHovering, 'has-window': hasMenuWindow }]"
       />
     </div>
   </div>
@@ -67,20 +76,21 @@ const {
   position: relative;
 }
 
-.pet-image {
+.pet-background {
+  position: absolute;
   width: 130px;
   height: 75px;
-  filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
-  transition: all 0.3s ease;
-  background: transparent;
-  flex-shrink: 0;
+  z-index: 1; /* 背景在最底层 */
+  pointer-events: none; /* 背景不接收鼠标事件 */
+  object-fit: contain;
 }
 
-.pet-image.hover {
-  transform: scale(1.1);
-}
-
-.pet-image.has-window {
-  filter: drop-shadow(0 0 8px rgba(74, 144, 226, 0.6));
+.pet-animation {
+  position: absolute;
+  width: 130px;
+  height: 75px;
+  z-index: 2; /* 动画层在背景之上 */
+  pointer-events: auto; /* 动画层接收鼠标事件 */
+  object-fit: contain;
 }
 </style>
