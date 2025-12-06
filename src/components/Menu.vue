@@ -6,7 +6,7 @@
         <UserIcon class="icon-default" />
       </div>
       <div class="flex-col user-info">
-        <span class="user-name">用户123</span>
+        <span class="user-name">{{ username }}</span>
       </div>
     </div>
 
@@ -70,9 +70,10 @@ import {
   ChartBarIcon,
   UserIcon
  } from '@heroicons/vue/24/outline'
-import { useMenuFunctions } from '../composables/Menu'
+import { useMenuFunctions, useUsername} from '../composables/Menu'
 
 const currentWindow = getCurrentWindow()
+const { username } = useUsername();
 
 // 使用函数
 const { 

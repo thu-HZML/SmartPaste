@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { apiService } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
+import { loadUsername } from './Menu'
 import { 
   Cog6ToothIcon,
   TvIcon,
@@ -279,7 +280,7 @@ export function usePreferences() {
           userInfo.email = response.data.email || loginData.email
           userInfo.bio = response.data.bio || '剪贴板管理爱好者'
         }
-        
+        loadUsername()
         // 关闭登录对话框
         showLoginDialog.value = false
         
