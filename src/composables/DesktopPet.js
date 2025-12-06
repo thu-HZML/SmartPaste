@@ -14,6 +14,7 @@ import {
   AnimationState, 
   getAnimationForMouse,
 } from '../utils/animations.js'
+import live2d from '../utils/live2dManager.js'
 
 export function useDesktopPet() {
   const isHovering = ref(false)
@@ -26,8 +27,9 @@ export function useDesktopPet() {
   const scaleFactor = ref(1.486)
   const allowClickPet = ref(true)
   const currentPosition = ref({ x: 0, y: 0 })
-  const animationFrame = ref('cover') // 当前动画帧
+  const animationFrame = ref('background') // 当前动画帧
   const currentKey = ref('') // 当前按下的按键
+  const currentAnimationState = ref(AnimationState.IDLE)
 
   // 可用按键集合
   const availableKeyImages = new Set([
@@ -48,8 +50,7 @@ export function useDesktopPet() {
 
   // 根据动画帧计算图片路径
   const petImagePath = computed(() => {
-    const state = animationManager.currentState
-    
+    const state = currentAnimationState.value
     // 按键状态：使用按键对应的图片
     if (state === AnimationState.KEY_PRESS) {
       const keyImage = currentKey.value || 'key'
@@ -60,13 +61,18 @@ export function useDesktopPet() {
 
   // 根据动画帧计算背景图片路径
   const petBackgroundPath = computed(() => {
-    const state = animationManager.currentState
-    
-    // 按键状态：使用按键对应的图片
-    if (state === AnimationState.KEY_PRESS) {
-      return `/resources/background2.png`
+    return `/resources/background.png`
+  })
+
+  // 根据动画状态计算是否显示动画层
+  const showPetAnimation = computed(() => {
+    const state = currentAnimationState.value
+
+    // 待机状态：不显示动画层
+    if (state === AnimationState.IDLE) {
+      return false
     }
-    return `/resources/cover.png`
+    return true
   })
 
   const handlePointerDown = async (event) => {
@@ -192,6 +198,8 @@ export function useDesktopPet() {
     animationManager.on('onStateChange', (oldState, newState) => {
       console.log(`动画状态变化: ${oldState} → ${newState}`)
       
+      currentAnimationState.value = newState
+
       // 如果从按键状态切换到其他状态，清空当前按键
       if (oldState === AnimationState.KEY_PRESS) {
         currentKey.value = null
@@ -209,10 +217,8 @@ export function useDesktopPet() {
       await listen('key-monitor-event', (event) => {
         const data = event.payload;
         if (data.type === 'down') {
-          console.log('⬇️ 按下:', data.key);
           handleKeyPress(data.key)
         } else if (data.type === 'up') {
-          console.log('⬆️ 松开:', data.key);
           handleKeyUp(data.key)
         }
       });
@@ -274,6 +280,28 @@ export function useDesktopPet() {
     }
   }
 
+  // 在 DesktopPet.js 的 initLive2D 函数中
+  const initLive2D = async () => {
+    try {
+      console.log('开始加载模型...')
+      
+      // 使用绝对路径 - 之前成功过的路径
+      const modelPath = 'C:/Users/heyufei/Desktop/bigHW/SmartPaste/public/resources/live2d'
+      console.log('使用路径:', modelPath)
+      
+      const result = await live2d.load(modelPath)
+      
+      // 初始调整大小
+      setTimeout(() => {
+        live2d.resizeModel()
+      }, 100)
+      
+      console.log('模型加载成功', result)
+    } catch (err) {
+      console.error('加载模型失败:', err)
+    }
+  }
+
   onMounted(async () => {
     console.log('[DesktopPet] mounted')
     try {
@@ -297,7 +325,10 @@ export function useDesktopPet() {
       // 设置全局事件监听
       await setupGlobalListeners()
 
-      await updateMainWindowPosition(currentPosition.value)
+      updateMainWindowPosition(currentPosition.value)
+
+      // 初始化 Live2D
+      await initLive2D()
     } catch (error) {
       console.error('设置窗口大小失败:', error)
     }
@@ -319,6 +350,7 @@ export function useDesktopPet() {
     // 计算属性
     petImagePath,
     petBackgroundPath,
+    showPetAnimation,
 
     // 事件处理函数
     handlePointerEnter,

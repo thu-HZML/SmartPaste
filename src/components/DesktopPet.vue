@@ -11,6 +11,7 @@ const {
   // 计算属性
   petImagePath,
   petBackgroundPath,
+  showPetAnimation,
 
   // 事件处理函数
   handlePointerEnter,
@@ -47,11 +48,15 @@ const {
       
       <!-- 动画层（按键动画等） -->
       <img
+        v-if="showPetAnimation"
         :src="petImagePath"
         alt="Desktop Pet Animation"
         draggable="false"
         :class="['pet-animation', { 'hover': isHovering, 'has-window': hasMenuWindow }]"
       />
+
+      <!-- live2d层 -->
+      <canvas id="live2dCanvas" class="pet-live2d"></canvas>
     </div>
   </div>
 </template>
@@ -87,6 +92,15 @@ const {
 }
 
 .pet-animation {
+  position: absolute;
+  width: 130px;
+  height: 75px;
+  z-index: 3; /* 动画层在背景之上 */
+  pointer-events: auto; /* 动画层接收鼠标事件 */
+  object-fit: contain;
+}
+
+.pet-live2d {
   position: absolute;
   width: 130px;
   height: 75px;

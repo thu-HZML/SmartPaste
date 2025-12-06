@@ -27,6 +27,7 @@ use tauri_plugin_notification;
 
 fn main() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())                 // 文件系统插件
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())

@@ -14,7 +14,7 @@ export const getAnimationConfig = () => ({
     duration: 1000,
     loop: true,
     animate: true,
-    frames: ['cover']
+    frames: ['background']
   },
   [AnimationState.LEFT_CLICK]: {
     duration: 300,
