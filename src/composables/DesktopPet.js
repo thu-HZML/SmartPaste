@@ -58,6 +58,17 @@ export function useDesktopPet() {
     return `/resources/${animationFrame.value}.png`
   })
 
+  // 根据动画帧计算背景图片路径
+  const petBackgroundPath = computed(() => {
+    const state = animationManager.currentState
+    
+    // 按键状态：使用按键对应的图片
+    if (state === AnimationState.KEY_PRESS) {
+      return `/resources/background2.png`
+    }
+    return `/resources/cover.png`
+  })
+
   const handlePointerDown = async (event) => {
     event.stopPropagation()
 
@@ -307,6 +318,7 @@ export function useDesktopPet() {
 
     // 计算属性
     petImagePath,
+    petBackgroundPath,
 
     // 事件处理函数
     handlePointerEnter,

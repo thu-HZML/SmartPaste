@@ -10,6 +10,7 @@ const {
 
   // 计算属性
   petImagePath,
+  petBackgroundPath,
 
   // 事件处理函数
   handlePointerEnter,
@@ -38,7 +39,7 @@ const {
     <div class="pet-container">
       <!-- 背景层 -->
       <img
-        src="/resources/cover.png"
+        :src="petBackgroundPath"
         alt="Pet Background"
         draggable="false"
         class="pet-background"
