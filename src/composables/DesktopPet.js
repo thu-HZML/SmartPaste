@@ -247,14 +247,18 @@ export function useDesktopPet() {
       key = 'Return'
     }
     currentKey.value = key
+
+    live2d.setParameterValue("CatParamLeftHandDown", 1)
+
     // 设置按键动画状态，并传递自定义帧
     animationManager.setState(AnimationState.KEY_PRESS, [key])
+
   }
 
   const handleKeyUp = (key) => {
     // 如果是按键状态，返回空闲状态
     if (animationManager.currentState === AnimationState.KEY_PRESS) {
-      // 可以设置一个延迟，让按键图片显示一段时间
+      live2d.setParameterValue("CatParamLeftHandDown", 0)
       animationManager.setState(AnimationState.IDLE)
     }
   }
