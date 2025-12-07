@@ -31,6 +31,11 @@ export function useDesktopPet() {
   const currentKey = ref('') // 当前按下的按键
   const currentAnimationState = ref(AnimationState.IDLE)
 
+  // 全局监听器
+  let unlistenKeyButton = null
+  let unlistenMouseButton = null
+  let unlistenMouseMove = null
+
   // 可用按键集合
   const availableKeyImages = new Set([
     'Alt', 'AltGr', 'BackQuote', 'Backspace', 'CapsLock', 'Control', 
@@ -207,15 +212,18 @@ export function useDesktopPet() {
     })
   }
 
-  // 监听全局键盘事件
+  // 监听全局事件
   const setupGlobalListeners = async () => {
     try {
-      // 开启全局键盘监听
+      // 开启全局监听（键盘点击、鼠标点击、鼠标移动）
       await invoke('start_key_listener');
+      await invoke('start_mouse_button_listener');
+      await invoke('start_mouse_move_listener');
 
       // 监听键盘事件
-      await listen('key-monitor-event', (event) => {
+      unlistenKeyButton = await listen('key-monitor-event', (event) => {
         const data = event.payload;
+        console.log('收到键盘事件:', data);
         if (data.type === 'down') {
           handleKeyPress(data.key)
         } else if (data.type === 'up') {
@@ -223,18 +231,21 @@ export function useDesktopPet() {
         }
       });
 
-      /*
+      
       // 监听全局鼠标点击事件
-      await listen('global-mouse-down', (event) => {
-        handleGlobalMouseDown(event.payload)
+      unlistenMouseButton = await listen('mouse-button-event', (event) => {
+        const { button, type } = event.payload;
+        if (type === 'down') {
+          handleGlobalMouseDown(button)
+        } else if (type === 'up') {
+          handleGlobalMouseUp(button)
+        }
       })
 
-      // 监听全局鼠标释放事件
-      await listen('global-mouse-up', (event) => {
-        handleGlobalMouseUp(event.payload)
+      unlistenMouseMove = await listen('mouse-move-event', (event) => {
+        const { x, y, raw_x, raw_y } = event.payload;
+        handleGlobalMouseMove( x, y )
       })
-        */
-
     } catch (error) {
       console.error('设置全局监听器失败:', error)
     }
@@ -264,24 +275,31 @@ export function useDesktopPet() {
   }
 
   // 处理全局鼠标按下
-  const handleGlobalMouseDown = (mouseEvent) => {
-    if (!mouseEvent || !mouseEvent.button) return
-    
-    const button = mouseEvent.button === 0 ? 'left' : 
-                   mouseEvent.button === 1 ? 'middle' : 'right'
-    
-    const animationState = getAnimationForMouse(button)
-    animationManager.setState(animationState)
+  const handleGlobalMouseDown = (mouseButton) => {   
+    if (mouseButton === 'left') {   
+      live2d.setParameterValue("ParamMouseLeftDown", 1)
+    } else if (mouseButton === 'right') {
+      live2d.setParameterValue("ParamMouseRightDown", 1)
+    }
   }
 
   // 处理全局鼠标释放
-  const handleGlobalMouseUp = (mouseEvent) => {
-    // 鼠标释放后，如果不是正在动画，返回空闲状态
-    if (!animationManager.isAnimating) {
-      setTimeout(() => {
-        animationManager.setState(AnimationState.IDLE)
-      }, 100)
+  const handleGlobalMouseUp = (mouseButton) => {
+    if (mouseButton === 'left') {   
+      live2d.setParameterValue("ParamMouseLeftDown", 0)
+    } else if (mouseButton === 'right') {
+      live2d.setParameterValue("ParamMouseRightDown", 0)
     }
+  }
+
+  // 处理全局鼠标移动
+  const handleGlobalMouseMove = ( x, y ) => {
+    const realx = ( x - 0.5 ) * (-30)
+    const realy = ( y - 0.5 ) * 30
+    live2d.setParameterValue("ParamMouseX", realx)
+    live2d.setParameterValue("ParamAngleX", -realx)
+    live2d.setParameterValue("ParamMouseY", realy)
+    live2d.setParameterValue("ParamAngleY", realy)
   }
 
   // 在 DesktopPet.js 的 initLive2D 函数中
@@ -341,7 +359,14 @@ export function useDesktopPet() {
   onUnmounted(async () => {
     cleanupEventListeners()
     animationManager.destroy()
+
+    // 停止全局监听
     await invoke('stop_key_listener');
+    await invoke('stop_mouse_listener');
+
+    unlistenKeyButton()
+    unlistenMouseButton()
+    unlistenMouseMove()
   })
 
   return {

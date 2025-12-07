@@ -328,8 +328,6 @@ class Live2dManager {
       
       // 更新参数缓存
       param.value = clampedValue
-      
-      console.log(`设置参数 ${id} = ${clampedValue.toFixed(3)}`)
       return true
       
     } catch (error) {
@@ -515,7 +513,7 @@ class Live2dManager {
 
     this.model.scale.set(scale)
     this.model.x = 60
-    this.model.y = 37
+    this.model.y = 37.5
     
     console.log('模型已调整大小')
   }
