@@ -305,17 +305,18 @@ export function useDesktopPet() {
   const initLive2D = async () => {
     try {
       console.log('开始加载模型...')
-      
-      // 使用绝对路径 - 之前成功过的路径
-      const modelPath = 'C:/Users/heyufei/Desktop/bigHW/SmartPaste/public/resources/live2d'
+
+      // 获取 utils 目录路径
+      const utilsDirPath = await invoke('get_utils_dir_path');
+
+      // 替换成live2d资源在的绝对路径
+      const modelPath = utilsDirPath.replace('//?/', '').replace('/src-tauri/src', '') + '/public/resources/live2d';
       console.log('使用路径:', modelPath)
       
       const result = await live2d.load(modelPath)
       
       // 初始调整大小
-      setTimeout(() => {
-        live2d.resizeModel()
-      }, 100)
+      live2d.resizeModel()
       
       console.log('模型加载成功', result)
     } catch (err) {
