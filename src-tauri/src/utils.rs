@@ -1073,3 +1073,33 @@ fn handle_mouse_event(app: &AppHandle, event: &rdev::Event) {
         _ => {}
     }
 }
+#[tauri::command]
+pub fn get_utils_dir_path(_app: AppHandle) -> Result<String, String> {
+    // 方法1: 使用当前模块文件的路径（编译时确定）
+    #[cfg(debug_assertions)]
+    {
+        // 调试模式下，尝试使用源码路径
+        let current_file_path = Path::new(file!());
+        if let Some(dir_path) = current_file_path.parent() {
+            if let Ok(absolute_path) = dir_path.canonicalize() {
+                return Ok(absolute_path.to_string_lossy().replace("\\", "/"));
+            }
+        }
+    }
+    
+    // 方法2: 使用当前可执行文件所在目录（适用于所有环境）
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(dir_path) = exe_path.parent() {
+            // 获取绝对路径并标准化分隔符
+            let canonical_path = dir_path.canonicalize().unwrap_or(dir_path.to_path_buf());
+            return Ok(canonical_path.to_string_lossy().replace("\\", "/"));
+        }
+    }
+    
+    // 方法3: 使用当前工作目录作为备选
+    if let Ok(current_dir) = std::env::current_dir() {
+        return Ok(current_dir.to_string_lossy().replace("\\", "/"));
+    }
+    
+    Err("无法获取当前目录路径".to_string())
+}
