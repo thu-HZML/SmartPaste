@@ -27,6 +27,7 @@ use tauri_plugin_notification;
 
 fn main() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())                 // 文件系统插件
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -54,6 +55,9 @@ fn main() {
             utils::write_files_to_clipboard,
             utils::export_to_zip,
             utils::import_data_from_zip,
+            utils::start_mouse_button_listener,
+            utils::start_mouse_move_listener,
+            utils::stop_mouse_listener,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,

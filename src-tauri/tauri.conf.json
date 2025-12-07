@@ -28,7 +28,16 @@
       "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/*", "$LOCALDATA/*", "**/*.jpg", "**/*.png", "**/*.jpeg", "**/*.gif", "**/*.webp"]
+        "scope": ["$APPDATA/*", "$LOCALDATA/*", "**/*.jpg", "**/*.png", "**/*.jpeg", "**/*.gif", "**/*.webp", 
+          "**/*.moc3",
+          "**/*.model3.json",
+          "**/*.model.json",
+          "**/*.exp3.json",
+          "**/*.motion3.json",
+          "**/*.flac",
+          "**/*.mp3",
+          "**/*.wav",
+          "**/*.cdi3.json"]
       }
     }   
   },
@@ -42,6 +51,9 @@
     ]
   },
   "plugins": {
+    "fs": {
+      "requireLiteralLeadingDot": false
+    },
     "window": {
       "label": "main",
       "defaultIcon": {

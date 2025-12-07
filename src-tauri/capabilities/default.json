@@ -33,6 +33,19 @@
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
     "dialog:default",
-    "notification:default"
+    "notification:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-read-text-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "**",
+          "require": ["read"]
+        }
+      ]
+    }
   ]
 }
