@@ -293,8 +293,8 @@ export function useDesktopPet() {
 
   // 处理全局鼠标移动
   const handleGlobalMouseMove = ( x, y ) => {
-    const realx = ( x - 0.5 ) * (-30)
-    const realy = ( y - 0.5 ) * 30
+    const realx = ( x - 0.5 ) * (-60)
+    const realy = ( y - 0.5 ) * 60
     live2d.setParameterValue("ParamMouseX", realx)
     live2d.setParameterValue("ParamAngleX", -realx)
     live2d.setParameterValue("ParamMouseY", realy)

@@ -509,11 +509,11 @@ class Live2dManager {
     
     const scaleX = containerWidth / this.model.width
     const scaleY = containerHeight / this.model.height
-    const scale = Math.min(scaleX, scaleY)
+    const scale = Math.min(scaleX, scaleY) * 0.9
 
     this.model.scale.set(scale)
-    this.model.x = 60
-    this.model.y = 37.5
+    this.model.x = 62
+    this.model.y = 38
     
     console.log('模型已调整大小')
   }
