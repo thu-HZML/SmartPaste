@@ -223,7 +223,6 @@ export function useDesktopPet() {
       // 监听键盘事件
       unlistenKeyButton = await listen('key-monitor-event', (event) => {
         const data = event.payload;
-        console.log('收到键盘事件:', data);
         if (data.type === 'down') {
           handleKeyPress(data.key)
         } else if (data.type === 'up') {
