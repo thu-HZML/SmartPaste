@@ -54,7 +54,7 @@ fn main() {
             utils::write_files_to_clipboard,
             utils::export_to_zip,
             utils::import_data_from_zip,
-            utils::start_mouse_button_listener,
+            utils::start_mouse_listener,
             utils::start_mouse_move_listener,
             utils::stop_mouse_listener,
             db::insert_received_text_data,
