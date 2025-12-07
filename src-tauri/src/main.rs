@@ -58,6 +58,7 @@ fn main() {
             utils::start_mouse_button_listener,
             utils::start_mouse_move_listener,
             utils::stop_mouse_listener,
+            utils::get_utils_dir_path,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
