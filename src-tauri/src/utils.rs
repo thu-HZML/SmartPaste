@@ -23,15 +23,16 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
+use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, GetSystemMetrics, HICON, ICONINFO,SM_CXSCREEN,SM_CYSCREEN};
 use zip::write::FileOptions;
 // main.rs 头部引入
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
-use rdev::{listen, EventType, Key};
-use std::sync::atomic::{AtomicBool, Ordering};
+use rdev::{listen, EventType, Key,Button};
+use std::sync::atomic::{AtomicBool, Ordering,AtomicU32};
 use std::sync::OnceLock;
 use std::thread;
 use serde_json::json;
+
 #[tauri::command]
 pub fn test_function() -> String {
     "这是来自 Rust 的测试信息".to_string()
@@ -839,4 +840,260 @@ pub fn start_key_listener(app: AppHandle) {
 pub fn stop_key_listener() {
     println!("⏸️ 暂停键盘监听");
     IS_MONITORING.store(false, Ordering::SeqCst);
+}
+
+static IS_MOUSE_MONITORING: AtomicBool = AtomicBool::new(false);
+static IS_MOUSE_MOVE_MONITORING: AtomicBool = AtomicBool::new(false);
+// 用于存储屏幕尺寸，方便坐标归一化
+static SCREEN_WIDTH: AtomicU32 = AtomicU32::new(0);
+static SCREEN_HEIGHT: AtomicU32 = AtomicU32::new(0);
+
+/// 开始监听鼠标按下/松开事件
+#[tauri::command]
+pub fn start_mouse_listener(app: AppHandle) {
+    println!("▶️ 开启鼠标按钮监听");
+    IS_MOUSE_MONITORING.store(true, Ordering::SeqCst);
+    
+    // 启动监听线程（如果还没有的话）
+    if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
+        start_monitor_thread(app.clone());
+    }
+}
+
+/// 开始监听鼠标移动事件（实时位置）
+#[tauri::command]
+pub fn start_mouse_move_listener(app: AppHandle) {
+    println!("▶️ 开启鼠标移动监听");
+    IS_MOUSE_MOVE_MONITORING.store(true, Ordering::SeqCst);
+    
+    // 获取屏幕尺寸用于坐标归一化
+    update_screen_size();
+    
+    // 启动监听线程（如果还没有的话）
+    if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
+        start_monitor_thread(app.clone());
+    }
+}
+
+/// 停止所有鼠标监听
+#[tauri::command]
+pub fn stop_mouse_listener() {
+    println!("⏸️ 停止鼠标监听");
+    IS_MOUSE_MONITORING.store(false, Ordering::SeqCst);
+    IS_MOUSE_MOVE_MONITORING.store(false, Ordering::SeqCst);
+}
+
+/// 获取屏幕尺寸（用于坐标归一化）
+#[cfg(target_os = "windows")]
+fn update_screen_size() {
+    unsafe {
+        let width = GetSystemMetrics(SM_CXSCREEN) as u32;
+        let height = GetSystemMetrics(SM_CYSCREEN) as u32;
+        SCREEN_WIDTH.store(width, Ordering::SeqCst);
+        SCREEN_HEIGHT.store(height, Ordering::SeqCst);
+        println!("📐 屏幕尺寸: {}x{}", width, height);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn update_screen_size() {
+    // macOS 实现
+    use cocoa::appkit::NSScreen;
+    use cocoa::base::id;
+    use cocoa::foundation::NSRect;
+    
+    unsafe {
+        let screens = NSScreen::screens(nil);
+        let main_screen = NSScreen::mainScreen(nil);
+        let frame: NSRect = main_screen.frame();
+        
+        let width = frame.size.width as u32;
+        let height = frame.size.height as u32;
+        
+        SCREEN_WIDTH.store(width, Ordering::SeqCst);
+        SCREEN_HEIGHT.store(height, Ordering::SeqCst);
+        println!("📐 屏幕尺寸: {}x{}", width, height);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn update_screen_size() {
+    // Linux 实现（使用 xrandr）
+    use std::process::Command;
+    
+    match Command::new("xrandr").arg("--current").output() {
+        Ok(output) => {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            
+            // 解析 xrandr 输出获取主屏幕尺寸
+            for line in output_str.lines() {
+                if line.contains(" connected") && line.contains("primary") {
+                    if let Some(resolution_part) = line.split_whitespace().nth(3) {
+                        if let Some((width_str, height_str)) = resolution_part.split_once('x') {
+                            if let (Ok(width), Ok(height)) = (
+                                width_str.parse::<u32>(),
+                                height_str.parse::<u32>(),
+                            ) {
+                                SCREEN_WIDTH.store(width, Ordering::SeqCst);
+                                SCREEN_HEIGHT.store(height, Ordering::SeqCst);
+                                println!("📐 屏幕尺寸: {}x{}", width, height);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 如果没有找到主屏幕，使用默认值
+            SCREEN_WIDTH.store(1920, Ordering::SeqCst);
+            SCREEN_HEIGHT.store(1080, Ordering::SeqCst);
+        }
+        Err(_) => {
+            // 如果命令失败，使用默认值
+            SCREEN_WIDTH.store(1920, Ordering::SeqCst);
+            SCREEN_HEIGHT.store(1080, Ordering::SeqCst);
+        }
+    }
+}
+
+/// 归一化鼠标坐标（转换为0-1范围，左下角为原点）
+fn normalize_mouse_position(x: f64, y: f64) -> (f64, f64) {
+    let width = SCREEN_WIDTH.load(Ordering::SeqCst) as f64;
+    let height = SCREEN_HEIGHT.load(Ordering::SeqCst) as f64;
+    
+    if width == 0.0 || height == 0.0 {
+        return (0.0, 0.0);
+    }
+    
+    // 归一化到 [0, 1]，注意Y坐标需要翻转（因为屏幕坐标原点在左上角）
+    let normalized_x = x / width;
+    let normalized_y = 1.0 - (y / height); // 翻转Y轴，使左下角为原点
+    
+    // 确保在[0, 1]范围内
+    let clamped_x = normalized_x.clamp(0.0, 1.0);
+    let clamped_y = normalized_y.clamp(0.0, 1.0);
+    
+    (clamped_x, clamped_y)
+}
+
+/// 启动监听线程（处理键盘和鼠标事件）
+fn start_monitor_thread(app: AppHandle) {
+    MONITOR_THREAD_STARTED.store(true, Ordering::SeqCst);
+    
+    thread::spawn(move || {
+        if let Err(error) = listen(move |event| {
+            // 处理键盘事件
+            if IS_MONITORING.load(Ordering::SeqCst) {
+                handle_keyboard_event(&app, &event);
+            }
+            
+            // 处理鼠标事件
+            if IS_MOUSE_MONITORING.load(Ordering::SeqCst) || IS_MOUSE_MOVE_MONITORING.load(Ordering::SeqCst) {
+                handle_mouse_event(&app, &event);
+            }
+        }) {
+            eprintln!("❌ 监听线程错误: {:?}", error);
+        }
+    });
+}
+
+/// 处理键盘事件
+fn handle_keyboard_event(app: &AppHandle, event: &rdev::Event) {
+    let (key_name, event_type) = match event.event_type {
+        EventType::KeyPress(key) => (format!("{:?}", key), "down"),
+        EventType::KeyRelease(key) => (format!("{:?}", key), "up"),
+        _ => return,
+    };
+
+    let payload = json!({
+        "key": key_name,
+        "type": event_type
+    });
+
+    if let Err(e) = app.emit("key-monitor-event", payload) {
+        eprintln!("❌ 发送键盘事件失败: {}", e);
+    }
+}
+
+/// 处理鼠标事件
+fn handle_mouse_event(app: &AppHandle, event: &rdev::Event) {
+    match &event.event_type {
+        // 鼠标按钮按下
+        EventType::ButtonPress(button) => {
+            if IS_MOUSE_MONITORING.load(Ordering::SeqCst) {
+                let button_str = match button {
+                    Button::Left => "left",
+                    Button::Right => "right",
+                    Button::Middle => "middle",
+                    Button::Unknown(code) => {
+                        // 处理未知按钮
+                        if *code == 4 { "back" }
+                        else if *code == 5 { "forward" }
+                        else { "unknown" }
+                    }
+                    _ => "other",
+                };
+                
+                let payload = json!({
+                    "button": button_str,
+                    "type": "down",
+                    "x": 0.0,
+                    "y": 0.0
+                });
+                
+                if let Err(e) = app.emit("mouse-button-event", payload) {
+                    eprintln!("❌ 发送鼠标按钮事件失败: {}", e);
+                }
+            }
+        }
+        
+        // 鼠标按钮松开
+        EventType::ButtonRelease(button) => {
+            if IS_MOUSE_MONITORING.load(Ordering::SeqCst) {
+                let button_str = match button {
+                    Button::Left => "left",
+                    Button::Right => "right",
+                    Button::Middle => "middle",
+                    Button::Unknown(code) => {
+                        if *code == 4 { "back" }
+                        else if *code == 5 { "forward" }
+                        else { "unknown" }
+                    }
+                    _ => "other",
+                };
+                
+                let payload = json!({
+                    "button": button_str,
+                    "type": "up",
+                    "x": 0.0,
+                    "y": 0.0
+                });
+                
+                if let Err(e) = app.emit("mouse-button-event", payload) {
+                    eprintln!("❌ 发送鼠标按钮事件失败: {}", e);
+                }
+            }
+        }
+        
+        // 鼠标移动
+        EventType::MouseMove { x, y } => {
+            if IS_MOUSE_MOVE_MONITORING.load(Ordering::SeqCst) {
+                let (normalized_x, normalized_y) = normalize_mouse_position(*x, *y);
+                
+                let payload = json!({
+                    "x": normalized_x,
+                    "y": normalized_y,
+                    "raw_x": x,
+                    "raw_y": y,
+                    "type": "move"
+                });
+                
+                if let Err(e) = app.emit("mouse-move-event", payload) {
+                    eprintln!("❌ 发送鼠标移动事件失败: {}", e);
+                }
+            }
+        }
+        
+        _ => {}
+    }
 }
