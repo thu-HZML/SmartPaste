@@ -789,22 +789,78 @@ impl<T: Copy, F: FnMut(T)> Drop for ScopeGuard<T, F> {
 }
 
 
-// 在静态变量区域添加鼠标相关的静态变量
+// 在静态变量区域添加以下内容
+static IS_MONITORING: AtomicBool = AtomicBool::new(false);
 static IS_MOUSE_BUTTON_MONITORING: AtomicBool = AtomicBool::new(false);
 static IS_MOUSE_MOVE_MONITORING: AtomicBool = AtomicBool::new(false);
+static MONITOR_THREAD_STARTED: AtomicBool = AtomicBool::new(false);
+
 // 用于存储屏幕尺寸，方便坐标归一化
 static SCREEN_WIDTH: AtomicU32 = AtomicU32::new(0);
 static SCREEN_HEIGHT: AtomicU32 = AtomicU32::new(0);
 
-// 修改原有的键盘监听线程，使其同时处理键盘和鼠标事件
+// 控制开关：是否向前端发送数据
+/// 开始监听：前端调用此方法后，Rust 开始向前端 emit 事件
+#[tauri::command]
+pub fn start_key_listener(app: AppHandle) {
+    println!("▶️ 开启键盘监听");
+    IS_MONITORING.store(true, Ordering::SeqCst);
+
+    // 如果线程还没启动，则启动它
+    if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
+        MONITOR_THREAD_STARTED.store(true, Ordering::SeqCst);
+        
+        thread::spawn(move || {
+            // rdev::listen 是阻塞的，会一直运行
+            if let Err(error) = listen(move |event| {
+                // 处理键盘事件
+                if IS_MONITORING.load(Ordering::SeqCst) {
+                    let (key_name, event_type) = match event.event_type {
+                        EventType::KeyPress(key) => (format!("{:?}", key), "down"),
+                        EventType::KeyRelease(key) => (format!("{:?}", key), "up"),
+                        _ => ("".to_string(), ""), // 返回空字符串
+                    };
+                    
+                    if !key_name.is_empty() {
+                        let payload = json!({
+                            "key": key_name,
+                            "type": event_type
+                        });
+                        
+                        if let Err(e) = app.emit("key-monitor-event", payload) {
+                            eprintln!("❌ 发送键盘事件失败: {}", e);
+                        }
+                    }
+                }
+                
+                // 处理鼠标事件
+                handle_mouse_event(&app, &event);
+            }) {
+                eprintln!("❌ 监听线程错误: {:?}", error);
+            }
+        });
+        println!("🚀 启动了全局监听线程");
+    }
+}
+
+/// 停止键盘监听：前端调用此方法后，Rust 暂停发送键盘事件
+#[tauri::command]
+pub fn stop_key_listener() {
+    println!("⏸️ 暂停键盘监听");
+    IS_MONITORING.store(false, Ordering::SeqCst);
+}
+
 /// 开始监听鼠标按下/松开事件
 #[tauri::command]
 pub fn start_mouse_button_listener(app: AppHandle) {
     println!("▶️ 开启鼠标按钮监听");
     IS_MOUSE_BUTTON_MONITORING.store(true, Ordering::SeqCst);
     
-    // 使用已有的键盘监听线程，不需要启动新线程
-    // 监听线程已经在 start_key_listener 中启动了
+    // 确保监听线程已启动
+    if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
+        // 如果监听线程没有启动，就启动它
+        start_key_listener(app.clone());
+    }
 }
 
 /// 开始监听鼠标移动事件（实时位置）
@@ -815,6 +871,12 @@ pub fn start_mouse_move_listener(app: AppHandle) {
     
     // 获取屏幕尺寸用于坐标归一化
     update_screen_size();
+    
+    // 确保监听线程已启动
+    if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
+        // 如果监听线程没有启动，就启动它
+        start_key_listener(app.clone());
+    }
 }
 
 /// 停止所有鼠标监听
@@ -828,8 +890,6 @@ pub fn stop_mouse_listener() {
 /// 获取屏幕尺寸（用于坐标归一化）
 #[cfg(target_os = "windows")]
 fn update_screen_size() {
-    use windows::Win32::UI::WindowsAndMessaging::{SM_CXSCREEN, SM_CYSCREEN};
-    
     unsafe {
         let width = GetSystemMetrics(SM_CXSCREEN) as u32;
         let height = GetSystemMetrics(SM_CYSCREEN) as u32;
@@ -927,61 +987,6 @@ fn normalize_mouse_position(x: f64, y: f64) -> (f64, f64) {
     let clamped_y = normalized_y.clamp(0.0, 1.0);
     
     (clamped_x, clamped_y)
-}
-
-// 修改原有的 listen 回调，添加鼠标事件处理
-// 找到原来的 listen 回调，修改为：
-// 控制开关：是否向前端发送数据
-static IS_MONITORING: AtomicBool = AtomicBool::new(false);
-// 保证线程只启动一次
-static MONITOR_THREAD_STARTED: AtomicBool = AtomicBool::new(false);
-
-/// 开始监听：前端调用此方法后，Rust 开始向前端 emit 事件
-#[tauri::command]
-pub fn start_key_listener(app: AppHandle) {
-    println!("▶️ 开启键盘监听");
-    IS_MONITORING.store(true, Ordering::SeqCst);
-
-    // 如果线程还没启动，则启动它
-    if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
-        MONITOR_THREAD_STARTED.store(true, Ordering::SeqCst);
-        
-        thread::spawn(move || {
-            // rdev::listen 是阻塞的，会一直运行
-            if let Err(error) = listen(move |event| {
-                // 处理键盘事件
-                if IS_MONITORING.load(Ordering::SeqCst) {
-                    let (key_name, event_type) = match event.event_type {
-                        EventType::KeyPress(key) => (format!("{:?}", key), "down"),
-                        EventType::KeyRelease(key) => (format!("{:?}", key), "up"),
-                        _ => return, // 忽略鼠标等其他事件
-                    };
-
-                    let payload = json!({
-                        "key": key_name,   // 例如 "KeyA", "ControlLeft"
-                        "type": event_type // "down" 或 "up"
-                    });
-
-                    // 发送事件给前端
-                    if let Err(e) = app.emit("key-monitor-event", payload) {
-                        eprintln!("❌ 发送键盘事件失败: {}", e);
-                    }
-                }
-                
-                // 处理鼠标事件
-                handle_mouse_event(&app, &event);
-            }) {
-                eprintln!("❌ 键盘监听线程错误: {:?}", error);
-            }
-        });
-    }
-}
-
-/// 停止监听：前端调用此方法后，Rust 暂停发送事件
-#[tauri::command]
-pub fn stop_key_listener() {
-    println!("⏸️ 暂停键盘监听");
-    IS_MONITORING.store(false, Ordering::SeqCst);
 }
 
 /// 处理鼠标事件
