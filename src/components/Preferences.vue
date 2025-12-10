@@ -722,7 +722,7 @@
             <div class="account-status" v-else>
               <p>已登录为: {{ userEmail }}</p>
               <div class="account-buttons">
-                <button class="btn btn-secondary" @click="logout">退出登录</button>
+                <button class="btn btn-secondary" @click.prevent="logout">退出登录</button>
                 <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
               </div>
             </div>
