@@ -7,6 +7,8 @@ import {
   updateMainWindowPosition, 
   toggleMenuWindow,
   updateMenuWindowPosition,
+  toggleAiWindow,
+  updateAiWindowPosition,
   hasMenuWindow as checkMenuWindowExists
 } from '../utils/actions.js'
 import { 
@@ -125,6 +127,7 @@ export function useDesktopPet() {
       currentPosition.value = { x: newX, y: newY }
       updateMainWindowPosition(currentPosition.value)
       await updateMenuWindowPosition()
+      await updateAiWindowPosition()
     } catch (error) {
       console.error('移动窗口失败:', error)
     }
@@ -215,6 +218,9 @@ export function useDesktopPet() {
   // 监听全局事件
   const setupGlobalListeners = async () => {
     try {
+      // 开启后端剪贴板监听
+      await setupClipboardRelay()
+
       // 开启全局监听（键盘点击、鼠标点击、鼠标移动）
       await invoke('start_key_listener');
       await invoke('start_mouse_button_listener');
@@ -322,6 +328,18 @@ export function useDesktopPet() {
     } catch (err) {
       console.error('加载模型失败:', err)
     }
+  }
+
+  // 主窗口监听剪贴板事件
+  const setupClipboardRelay = async () => {
+    const unlisten = await listen('clipboard-updated', async (event) => {
+      console.log('接受后端更新消息')
+
+      // 打开AI窗口
+      await toggleAiWindow()
+    })
+    
+    return unlisten
   }
 
   onMounted(async () => {
