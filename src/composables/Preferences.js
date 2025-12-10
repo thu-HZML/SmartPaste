@@ -190,10 +190,13 @@ export function usePreferences() {
         if (response.data) {
           localStorage.setItem('user', JSON.stringify(response.data))
           userLoggedIn.value = true
-          userEmail.value = response.data.email || registerData.email
-          userInfo.username = response.data.username || registerData.username
-          userInfo.email = response.data.email || registerData.email
-          userInfo.bio = response.data.bio || '剪贴板管理爱好者'
+          userEmail.value = response.data.user.email || registerData.email
+          userInfo.username = response.data.user.username || registerData.username
+          userInfo.email = response.data.user.email || registerData.email
+          userInfo.bio = response.data.user.bio || '剪贴板管理爱好者'
+          await updateSetting('username', userInfo.username)
+          await updateSetting('email', userInfo.email)
+          await updateSetting('bio', userInfo.bio)
         }
         
         // 关闭注册对话框
@@ -275,10 +278,13 @@ export function usePreferences() {
           localStorage.setItem('user', JSON.stringify(response.data))
           localStorage.setItem('token', response.data.token || '')
           userLoggedIn.value = true
-          userEmail.value = response.data.email || loginData.email
-          userInfo.username = response.data.username || '当前用户'
-          userInfo.email = response.data.email || loginData.email
-          userInfo.bio = response.data.bio || '剪贴板管理爱好者'
+          userEmail.value = response.data.user.email || loginData.email
+          userInfo.username = response.data.user.username || '当前用户'
+          userInfo.email = response.data.user.email || loginData.email
+          userInfo.bio = response.data.user.bio || '剪贴板管理爱好者'
+          await updateSetting('username', userInfo.username)
+          await updateSetting('email', userInfo.email)
+          await updateSetting('bio', userInfo.bio)
         }
         loadUsername()
         // 关闭登录对话框
@@ -338,8 +344,10 @@ export function usePreferences() {
   }
 
   // 修改logout方法
-  const logout = () => {
-    if (confirm('确定要退出登录吗？')) {
+  const logout = async () => {
+    const message = '确定要退出登录吗？';
+    const confirmed = await window.confirm(message);
+    if (confirmed) {
       localStorage.removeItem('user')
       localStorage.removeItem('token')
       userLoggedIn.value = false
@@ -349,6 +357,9 @@ export function usePreferences() {
         email: '',
         bio: ''
       })
+      await updateSetting('username', '')
+      await updateSetting('email', '')
+      await updateSetting('bio', '')
       showMessage('已退出登录', 'success')
     }
   }
@@ -817,10 +828,13 @@ const updateRetentionDays = async () => {
       if (savedUser) {
         const userData = JSON.parse(savedUser)
         userLoggedIn.value = true
-        userEmail.value = userData.email || ''
-        userInfo.username = userData.username || ''
-        userInfo.email = userData.email || ''
-        userInfo.bio = userData.bio || ''
+        userEmail.value = userData.user.email || ''
+        userInfo.username = userData.user.username || ''
+        userInfo.email = userData.user.email || ''
+        userInfo.bio = userData.user.bio || '剪贴板管理爱好者'
+        await updateSetting('username', userInfo.username)
+        await updateSetting('email', userInfo.email)
+        await updateSetting('bio', userInfo.bio)
       }
     } catch (error) {
       console.error('加载用户信息失败:', error)

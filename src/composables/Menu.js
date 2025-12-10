@@ -6,7 +6,7 @@ const username = ref("未登录");
 
 export function loadUsername() {
   console.log('尝试从本地存储加载用户名...');
-  // 关键：读取您存储的 'user' 键下的 JSON 字符串
+  // 读取存储的 'user' 键下的 JSON 字符串
   const storedUserJson = localStorage.getItem("user"); 
 
   if (storedUserJson) {
@@ -14,7 +14,7 @@ export function loadUsername() {
     try {
       const userData = JSON.parse(storedUserJson);
       console.log('读取到的 userData:', userData);
-      // 关键：访问 userData 中的 user.username 字段
+      // 访问 userData 中的 user.username 字段
       if (userData && userData.user ) {
         username.value = userData.user.username; // 更新全局 ref 的值
         console.log(`用户名已更新为: ${username.value}`);
