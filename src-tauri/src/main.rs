@@ -27,7 +27,7 @@ use tauri_plugin_notification;
 
 fn main() {
     let result = tauri::Builder::default()
-        .plugin(tauri_plugin_fs::init())                 // 文件系统插件
+        .plugin(tauri_plugin_fs::init()) // 文件系统插件
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -36,7 +36,7 @@ fn main() {
             MacosLauncher::LaunchAgent,
             Some(vec![]), // 可以传递启动参数，这里为空
         ))
-        .plugin(tauri_plugin_notification::init()) 
+        .plugin(tauri_plugin_notification::init())
         .manage(AppShortcutManager::new())
         .manage(ClipboardSourceState {
             is_frontend_copy: Mutex::new(false),
@@ -92,6 +92,7 @@ fn main() {
             ocr::ocr_image,
             config::get_config_json,
             config::set_config_item,
+            config::get_config_item,
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录
