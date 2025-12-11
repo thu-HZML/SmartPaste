@@ -755,7 +755,7 @@
                 <textarea 
                   :value="userInfo.bio" 
                   @input="userInfo.bio = $event.target.value"
-                  @blur="updateSetting('bio', $event.target.value)"
+                  @blur="updateUserInfo()"
                   class="textarea-input" 
                   rows="3"
                 ></textarea>
@@ -965,6 +965,7 @@ const {
   openLoginDialog,
   closeRegisterDialog,
   closeLoginDialog,
+  updateUserInfo,
   
   // 快捷键方法
   startRecording,

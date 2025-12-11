@@ -193,7 +193,7 @@ export function usePreferences() {
           userEmail.value = response.data.user.email || registerData.email
           userInfo.username = response.data.user.username || registerData.username
           userInfo.email = response.data.user.email || registerData.email
-          userInfo.bio = response.data.user.bio || '剪贴板管理爱好者'
+          userInfo.bio = response.data.user.bio 
         }
         
         // 关闭注册对话框
@@ -278,7 +278,7 @@ export function usePreferences() {
           userEmail.value = response.data.user.email || loginData.email
           userInfo.username = response.data.user.username || '当前用户'
           userInfo.email = response.data.user.email || loginData.email
-          userInfo.bio = response.data.user.bio || '剪贴板管理爱好者'
+          userInfo.bio = response.data.user.bio
         }
         loadUsername()
         // 关闭登录对话框
@@ -355,6 +355,26 @@ export function usePreferences() {
     }
   }
 
+  // 更新本地存储中的用户信息
+  const updateUserInfo = () => {
+    try {
+       const savedUserJson = localStorage.getItem('user')
+       if (savedUserJson) {
+         let userData = JSON.parse(savedUserJson)
+         
+         // 确保结构存在，并更新 user.bio 字段
+         if (userData) {
+           userData.user.bio = userInfo.bio
+           localStorage.setItem('user', JSON.stringify(userData))
+           showMessage('个人简介已保存', 'success')
+         } else {
+           console.error('localStorage 中的 user 数据结构不正确或缺失 user.user 属性')
+         }
+       }
+     } catch (error) {
+       console.error('保存个人简介到 localStorage 失败:', error)
+     }
+  };
 
   const resetUserInfo = () => {
     Object.assign(userInfo, {
@@ -822,7 +842,7 @@ const updateRetentionDays = async () => {
         userEmail.value = userData.user.email || ''
         userInfo.username = userData.user.username || ''
         userInfo.email = userData.user.email || ''
-        userInfo.bio = userData.user.bio || '剪贴板管理爱好者'
+        userInfo.bio = userData.user.bio || ''
       }
     } catch (error) {
       console.error('加载用户信息失败:', error)
@@ -897,6 +917,7 @@ const updateRetentionDays = async () => {
     openLoginDialog,
     closeRegisterDialog,
     closeLoginDialog,
+    updateUserInfo,
 
     // 快捷键方法
     startRecording,
