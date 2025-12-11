@@ -12,6 +12,8 @@ export const windowInstances = new Map()
 // 全局状态存储主窗口位置
 let mainWindowPosition = { x: 100, y: 100 }
 
+let aiAgentWindowHeight = 70
+
 /**
  * 更新主窗口位置
  */
@@ -20,6 +22,14 @@ export function updateMainWindowPosition(position) {
     x: position.x,
     y: position.y,
   }
+}
+
+/**
+ * 更新ai窗口高度
+ */
+export function updateAiWindowHeight(height) {
+  aiAgentWindowHeight = height
+  console.log('更新全局ai窗口高度:', aiAgentWindowHeight)
 }
 
 /**
@@ -409,6 +419,127 @@ export async function toggleSetWindow() {
   }
 }
 
+// 创建ai窗口
+export async function createAiWindow(options = {}) {
+  const windowId = 'aiAgent'
+  
+  try {
+    const { x = 100, y = 100, width = 800, height = 580 } = options
+    
+    const webview = new WebviewWindow(windowId, {
+      url: '/aiagent',
+      title: 'ai助手',
+      width,
+      height,
+      x,
+      y,
+      resizable: true,
+      minimizable: false,
+      maximizable: false,
+      decorations: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hiddenTitle: true,
+      focus: false,
+      transparent: true,
+      shadow: false,
+    })
+    
+    webview.once('tauri://created', () => {
+      console.log('ai窗口创建成功:', windowId)
+      windowInstances.set(windowId, webview)
+    })
+    
+    webview.once('tauri://error', (e) => {
+      // 检查是否是已知的 'already exists' 竞态错误
+      if (e.payload && typeof e.payload === 'string' && e.payload.includes('already exists')) {
+        // 忽略此错误，因为它是异步清理未完成时尝试重新创建导致的常见错误
+        console.warn(`ai窗口创建警告: 窗口 '${windowId}' 正在清理中，无法立即创建。已忽略此错误。`);
+      } else {
+        console.error('ai窗口创建失败:', e);
+      }
+    })
+    
+    // 监听窗口关闭
+    webview.listen('tauri://destroyed', () => {
+      console.log('ai窗口已关闭:', windowId)
+      windowInstances.delete(windowId)
+    })
+    
+    return webview
+  } catch (error) {
+    console.error('创建ai窗口错误:', error)
+  }
+}
+
+/**
+ * 获取或切换ai窗口
+ */
+export async function toggleAiWindow() {
+  const windowId = 'aiAgent'
+  const allWindows = await WebviewWindow.getAll()
+  const aiWindowInstance = allWindows.find(w => w.label === windowId)
+  
+  if (aiWindowInstance) {
+    // 如果存在ai窗口，关闭
+    try {
+      console.log('关闭ai窗口 (全局查找)')
+      await aiWindowInstance.close()
+
+    } catch (error) {
+      console.error('关闭ai窗口失败:', error)
+      return
+    }
+  } else {
+    // 如果不存在，创建新窗口
+    try {
+      // 使用全局存储的主窗口位置
+      const { x, y } = mainWindowPosition
+      
+      // 计算新窗口位置（在桌宠上方）
+      const newX = x - 250
+      const newY = y - aiAgentWindowHeight
+      
+      console.log('使用主窗口位置创建ai窗口:', { 
+        mainWindow: { x, y },
+        menuWindow: { newX, newY }
+      })
+      
+      return await createAiWindow({
+        x: newX,
+        y: newY,
+        width: 400, // 菜单窗口宽度
+        height: 80 // 菜单窗口高度
+      })
+    } catch (error) {
+      console.error('使用主窗口位置创建ai窗口错误:', error)
+      return await createAiWindow() // 创建默认位置的窗口
+    }
+  }
+}
+
+// 更新ai窗口位置函数
+export async function updateAiWindowPosition() {
+  const aiWindow = Array.from(windowInstances.entries())
+    .find(([key]) => key === 'aiAgent')
+  
+  if (aiWindow) {
+    const { x, y } = mainWindowPosition
+    const newX = x - 250
+    const newY = y - aiAgentWindowHeight
+    
+    console.log('📱 更新ai窗口位置:', { newX, newY, mainWindowPosition })
+
+    const [windowId, window] = aiWindow
+    try {
+      await window.setPosition(new LogicalPosition(newX, newY))
+      console.log('更新ai窗口位置:', { newX, newY })
+    } catch (error) {
+      console.error('更新ai窗口位置失败:', error)
+    }
+  }
+}
+
 /**
  * 获取所有窗口信息
  */
@@ -547,4 +678,5 @@ if (typeof window !== 'undefined') {
   window.updateMenuWindowPosition = updateMenuWindowPosition;
   window.hasMenuWindow = hasMenuWindow;
   window.clearClipboardHistory = clearClipboardHistory;
+  window.mainWindowPosition = mainWindowPosition;
 }

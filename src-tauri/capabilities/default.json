@@ -6,7 +6,8 @@
     "main",
     "menu",
     "clipboard",
-    "preferences"
+    "preferences",
+    "aiAgent"
   ],
   "permissions": [
     "core:default",
