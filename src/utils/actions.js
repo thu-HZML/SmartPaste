@@ -559,6 +559,12 @@ export async function toggleAiWindow() {
 
 // 更新ai窗口位置函数
 export async function updateAiWindowPosition() {
+  const savedState = localStorage.getItem('aiWindowHeight')
+  if (savedState) {
+    const windowState = JSON.parse(savedState)        
+    aiAgentWindowHeight = windowState.height
+  }
+
   const aiWindow = Array.from(windowInstances.entries())
     .find(([key]) => key === 'aiAgent')
   
