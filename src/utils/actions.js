@@ -232,7 +232,25 @@ export async function toggleClipboardWindow() {
   } else {
     // 如果不存在，创建新窗口
     try {
-      await createClipboardWindow() // 创建默认位置的窗口
+      const savedState = localStorage.getItem('clipboardWindowState')
+      
+      if (savedState) {
+        const windowState = JSON.parse(savedState)
+        
+        // 检查保存的状态是否在合理范围内（防止窗口出现在屏幕外）
+        const { x, y, width, height } = windowState
+        
+        if (width > 0 && height > 0) {
+          await createClipboardWindow({ // 创建上次位置的窗口
+            x: x,
+            y: y,
+            width: width, // 菜单窗口宽度
+            height: height // 菜单窗口高度
+          })
+        }
+      } else {
+        await createClipboardWindow() // 创建默认位置的窗口
+      }
     } catch (error) {
       // 捕获并忽略 'already exists' 错误
       if (error.payload && typeof error.payload === 'string' && error.payload.includes('already exists')) {
@@ -313,21 +331,25 @@ export async function toggleFavoritesWindow() {
   } else {
     // 如果不存在，创建新窗口
     try {
-      // 使用全局存储的主窗口位置
-      const { x, y, width, height } = mainWindowPosition
+      const savedState = localStorage.getItem('clipboardWindowState')
       
-      // 计算新窗口位置（在桌宠右侧）
-      const newX = x + width + 10
-      const newY = y
-      
-      console.log('使用主窗口位置创建收藏夹窗口:', { newX, newY })
-      
-      return await createFavoritesWindow({
-        x: newX,
-        y: newY,
-        width: 400,
-        height: 600
-      })
+      if (savedState) {
+        const windowState = JSON.parse(savedState)
+        
+        // 检查保存的状态是否在合理范围内（防止窗口出现在屏幕外）
+        const { x, y, width, height } = windowState
+        
+        if (width > 0 && height > 0) {
+          await createFavoritesWindow({ // 创建上次位置的窗口
+            x: x,
+            y: y,
+            width: width, // 菜单窗口宽度
+            height: height // 菜单窗口高度
+          })
+        }
+      } else {
+        await createFavoritesWindow() // 创建默认位置的窗口
+      }
     } catch (error) {
       console.error('创建收藏夹窗口错误:', error)
       return await createFavoritesWindow() // 创建默认位置的窗口
@@ -407,8 +429,25 @@ export async function toggleSetWindow() {
   } else {
     // 如果不存在，创建新窗口
     try {
-      await createSetWindow() // 创建默认位置的窗口
-
+      const savedState = localStorage.getItem('preferencesWindowState')
+      console.log('设置窗口全局位置：', savedState)
+      if (savedState) {
+        const windowState = JSON.parse(savedState)
+        
+        // 检查保存的状态是否在合理范围内（防止窗口出现在屏幕外）
+        const { x, y, width, height } = windowState
+        
+        if (width > 0 && height > 0) {
+          await createSetWindow({ // 创建上次位置的窗口
+            x: x,
+            y: y,
+            width: width, // 菜单窗口宽度
+            height: height // 菜单窗口高度
+          })
+        }
+      } else {
+        await createSetWindow() // 创建默认位置的窗口
+      }
     } catch (error) {
       if (error.payload && typeof error.payload === 'string' && error.payload.includes('already exists')) {
           console.warn('⚠️ 窗口标签仍被占用（正在清理中），无法立即创建新窗口。')

@@ -1,7 +1,8 @@
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
+import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
 import { apiService } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import { loadUsername } from './Menu'
@@ -15,6 +16,7 @@ import {
 
 export function usePreferences() {
   const router = useRouter()
+  const currentWindow = getCurrentWindow();
 
   // 响应式数据
   const activeNav = ref('general')
@@ -32,6 +34,10 @@ export function usePreferences() {
   const showLoginDialog = ref(false)
   const registerLoading = ref(false)
   const loginLoading = ref(false)
+
+  // 窗口关闭监听器
+  let unlistenCloseRequested = null
+  let firstCloseWindow = true
   
   // 注册表单数据
   const registerData = reactive({
@@ -820,7 +826,54 @@ const updateRetentionDays = async () => {
     return frequencyMap[frequency] || frequency
   }
 
-    // 生命周期
+  // 保存窗口状态到localStorage
+  const saveWindowState = async () => {
+    try {
+      const scaleFactor = await currentWindow.scaleFactor()
+      const position = await currentWindow.outerPosition()
+      const size = await currentWindow.innerSize()
+      
+      const windowState = {
+        x: position.x / scaleFactor,
+        y: position.y / scaleFactor,
+        width: size.width / scaleFactor,
+        height: size.height / scaleFactor,
+      }
+      
+      localStorage.setItem('preferencesWindowState', JSON.stringify(windowState))
+      console.log('窗口状态已保存:', windowState)
+    } catch (error) {
+      console.error('保存窗口状态失败:', error)
+    }
+  }
+
+  // 监听窗口关闭请求事件
+  const setupWindowCloseListener = async () => {
+    try {
+      // 监听窗口关闭请求事件
+      const unlistenCloseRequested = await currentWindow.onCloseRequested(async (event) => {
+        if (firstCloseWindow) {
+          // 阻止默认关闭行为，确保我们有时间保存状态
+          event.preventDefault()
+          firstCloseWindow = false
+        }        
+        
+        console.log('窗口关闭请求，开始保存状态...')
+        
+        await saveWindowState()
+
+        currentWindow.close()
+      })
+      
+      return unlistenCloseRequested
+      
+    } catch (error) {
+      console.error('设置窗口关闭监听器失败:', error)
+      return null
+    }
+  }
+
+  // 生命周期
   onMounted(async () => {
     // 检查本地存储中是否有用户信息
     try {
@@ -840,16 +893,9 @@ const updateRetentionDays = async () => {
       console.error('加载用户信息失败:', error)
     }
 
-      // await checkAutostartStatus()
-    /*
-      // 初始化窗口大小
-      try {
-        await currentWindow.setSize(new LogicalSize(800, 580));
-      } catch (error) {
-        console.error('设置窗口大小失败:', error)
-      }
-        */
-    })
+    // 设置窗口关闭监听器
+    unlistenCloseRequested = await setupWindowCloseListener()
+  })
 
   return {
     // 状态

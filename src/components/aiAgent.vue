@@ -169,12 +169,6 @@ const updateWindowSize = async (height) => {
       width: currentSize.width / scaleFactor,
       height: height
     })
-    try {
-    updateAiWindowHeight(height)
-    console.log('窗口高度已更新:', height)
-    } catch (error) {
-      console.error('更新全局ai窗口高度失败:', error)
-    }
 
     // 获取主窗口位置，调整AI窗口位置
     const allWindows = await WebviewWindow.getAll()
