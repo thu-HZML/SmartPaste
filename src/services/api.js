@@ -67,6 +67,58 @@ class ApiService {
       };
     }
   }
+  // 更新用户资料
+  async updateProfile(data) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token'); 
+
+      if (!token) {
+        throw new Error('未登录或Token缺失');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/accounts/profile/`, {
+        method: 'PATCH', 
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`, // 使用Token认证
+        },
+        body: JSON.stringify(data), // 发送 { bio: 'new bio' }
+      });
+
+      // 尝试解析JSON响应
+      try {
+        result = await response.json();
+      } catch (e) {
+        // 如果没有JSON响应体，例如204 No Content，如果状态码ok则视为成功
+        if (response.ok) {
+           result = { message: '更新成功' };
+        } else {
+           result = null;
+        }
+      }
+
+      if (!response.ok) {
+        // 尝试从API响应的JSON中获取错误信息
+        const errorMessage = (result && result.detail) ? result.detail : '更新失败';
+        throw new Error(errorMessage);
+      }
+
+      return {
+        success: true,
+        message: '个人简介更新成功',
+        data: result
+      };
+    } catch (error) {
+      console.error('更新用户资料错误:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '网络错误',
+        data: result
+      };
+    }
+  }
+
 }
 
 /**

@@ -356,9 +356,20 @@ export function usePreferences() {
   }
 
   // 更新本地存储中的用户信息
-  const updateUserInfo = () => {
+  const updateUserInfo = async () => {
     try {
-       const savedUserJson = localStorage.getItem('user')
+      const apiResponse = await apiService.updateProfile({
+        bio: userInfo.bio
+      });
+
+      if (!apiResponse.success) {
+        // API调用失败，显示错误信息
+        showMessage(apiResponse.message || '更新个人简介失败', 'error');
+        console.error('更新个人简介失败返回信息:', apiResponse.data);
+        return; 
+      } 
+      
+      const savedUserJson = localStorage.getItem('user')
        if (savedUserJson) {
          let userData = JSON.parse(savedUserJson)
          
