@@ -899,6 +899,10 @@ export function useClipboardApp() {
           console.log('检测到正在拖动，不关闭窗口')
           return
         }
+
+        // 保存窗口状态
+        await saveWindowState()
+
         console.log('窗口失去焦点，准备关闭')
         currentWindow.close()
       }
@@ -1095,7 +1099,27 @@ export function useClipboardApp() {
     return `${year}-${month}-${day}T${hours}:${minutes}`
   }
 
-
+  // 保存窗口状态到localStorage
+  const saveWindowState = async () => {
+    try {
+      const scaleFactor = await currentWindow.scaleFactor()
+      const position = await currentWindow.outerPosition()
+      const size = await currentWindow.innerSize()
+      
+      const windowState = {
+        x: position.x / scaleFactor,
+        y: position.y / scaleFactor,
+        width: size.width / scaleFactor,
+        height: size.height / scaleFactor,
+      }
+      
+      localStorage.setItem('clipboardWindowState', JSON.stringify(windowState))
+      console.log('窗口状态已保存:', windowState)
+    } catch (error) {
+      console.error('保存窗口状态失败:', error)
+    }
+  }
+  
   let unlistenShortcutEvent;
   // 生命周期
   onMounted(async () => {
@@ -1124,13 +1148,6 @@ export function useClipboardApp() {
     
     // 设置窗口聚焦
     currentWindow.setFocus()
-
-    // 初始化窗口大小
-    try {
-      await currentWindow.setSize(new LogicalSize(400, 600));
-    } catch (error) {
-      console.error('设置窗口大小失败:', error)
-    }
 
     // 根据保存的状态执行操作
     if (shouldShowFavorites) {

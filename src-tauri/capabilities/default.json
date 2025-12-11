@@ -33,6 +33,7 @@
     "core:event:allow-listen",
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
+    "core:window:allow-destroy",
     "dialog:default",
     "notification:default",
     "fs:allow-read-file",
