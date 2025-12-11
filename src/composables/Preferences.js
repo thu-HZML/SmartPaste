@@ -35,6 +35,10 @@ export function usePreferences() {
   const registerLoading = ref(false)
   const loginLoading = ref(false)
 
+  // 修改密码相关状态
+  const showChangePasswordDialog = ref(false)
+  const changePasswordLoading = ref(false)
+
   // 窗口关闭监听器
   let unlistenCloseRequested = null
   let firstCloseWindow = true
@@ -52,6 +56,13 @@ export function usePreferences() {
     email: '',
     password: ''
   })
+
+  // 修改密码表单数据
+  const changePasswordData = reactive({
+    old_password: '',
+    new_password: '',
+    new_password2: '' 
+  })
   
   // 表单验证错误
   const registerErrors = reactive({
@@ -59,6 +70,13 @@ export function usePreferences() {
     email: '',
     password: '',
     password2: ''
+  })
+
+  // 修改密码表单验证错误
+  const changePasswordErrors = reactive({
+    old_password: '',
+    new_password: '',
+    new_password2: ''
   })
 
   // 快捷键设置所需的变量
@@ -163,6 +181,42 @@ export function usePreferences() {
       isValid = false
     } else if (registerData.password !== registerData.password2) {
       registerErrors.password2 = '两次输入的密码不一致'
+      isValid = false
+    }
+    
+    return isValid
+  }
+
+  // 验证修改密码表单
+  const validateChangePasswordForm = () => {
+    let isValid = true
+    
+    // 清除之前的错误
+    Object.keys(changePasswordErrors).forEach(key => {
+      changePasswordErrors[key] = ''
+    })
+    
+    // 验证旧密码
+    if (!changePasswordData.old_password) {
+      changePasswordErrors.old_password = '旧密码不能为空'
+      isValid = false
+    }
+    
+    // 验证新密码
+    if (!changePasswordData.new_password) {
+      changePasswordErrors.new_password = '新密码不能为空'
+      isValid = false
+    } else if (changePasswordData.new_password.length < 6) {
+      changePasswordErrors.new_password = '新密码至少6个字符'
+      isValid = false
+    }
+    
+    // 验证确认新密码
+    if (!changePasswordData.new_password2) {
+      changePasswordErrors.new_password2 = '请确认新密码'
+      isValid = false
+    } else if (changePasswordData.new_password !== changePasswordData.new_password2) {
+      changePasswordErrors.new_password2 = '两次输入的新密码不一致'
       isValid = false
     }
     
@@ -337,6 +391,30 @@ export function usePreferences() {
   // 关闭登录对话框
   const closeLoginDialog = () => {
     showLoginDialog.value = false
+  }
+
+  // 打开修改密码对话框
+  const openChangePasswordDialog = () => {
+    if (!userLoggedIn.value) {
+      showMessage('请先登录才能修改密码', 'warning')
+      return
+    }
+    showChangePasswordDialog.value = true
+    // 清空表单数据
+    Object.assign(changePasswordData, {
+      old_password: '',
+      new_password: '',
+      new_password2: ''
+    })
+    // 清空错误信息
+    Object.keys(changePasswordErrors).forEach(key => {
+      changePasswordErrors[key] = ''
+    })
+  }
+  
+  // 关闭修改密码对话框
+  const closeChangePasswordDialog = () => {
+    showChangePasswordDialog.value = false
   }
 
   const login = () => {
@@ -797,15 +875,76 @@ const updateRetentionDays = async () => {
     }
   }
 
-  const changePassword = async () => {
+  // 新增：修改密码方法
+  const handleChangePassword = async () => {
+    if (!validateChangePasswordForm()) {
+      showMessage('请填写正确的表单信息', 'error')
+      return
+    }
+    
+    if (!userLoggedIn.value) {
+      showMessage('请先登录', 'error')
+      return
+    }
+
+    // 1. 在这里获取 Refresh Token
+    let refreshToken = null
     try {
-      // const result = await invoke('open_change_password_dialog')
-      if (result.success) {
-        showMessage('密码修改成功')
+      const userString = localStorage.getItem('user');
+      if (userString) {
+        const user = JSON.parse(userString);
+        refreshToken = user.jwt.refresh;
+      }
+    } catch (e) {
+      console.error('解析本地用户信息失败:', e);
+    }
+    
+    if (!refreshToken) {
+      showMessage('无法获取登录状态，请重新登录', 'error')
+      return
+    }
+
+    changePasswordLoading.value = true
+    
+    try {
+      // 2. 调用 API Service
+      const response = await apiService.changePassword(
+        changePasswordData, // 包含三个密码字段
+        refreshToken      // 传入 refresh token
+      )
+
+      if (response.success) {
+        showMessage('密码修改成功！请重新登录', 'success')
+        
+        // 强制退出登录并清空状态
+        localStorage.removeItem('user')
+        localStorage.removeItem('token')
+        userLoggedIn.value = false
+        userEmail.value = ''
+        Object.assign(userInfo, { username: '', email: '', bio: '' })
+        
+        // 关闭对话框并清空表单
+        showChangePasswordDialog.value = false
+        Object.assign(changePasswordData, {
+          old_password: '',
+          new_password: '',
+          new_password2: ''
+        })
+        Object.keys(changePasswordErrors).forEach(key => {
+          changePasswordErrors[key] = ''
+        })
+        
+        // 建议：可以添加页面跳转或刷新逻辑
+
+      } else {
+        // API 返回错误
+        showMessage(`密码修改失败：${response.message}`, 'error')
       }
     } catch (error) {
-      console.error('修改密码失败:', error)
-      showMessage(`修改失败: ${error}`)
+      console.error('密码修改错误:', error)
+      showMessage('密码修改出错，请检查网络连接', 'error')
+    } finally {
+      changePasswordLoading.value = false
     }
   }
 
@@ -950,14 +1089,12 @@ const updateRetentionDays = async () => {
     registerLoading,
     loginLoading,
 
-    // 注册登录相关状态
-    showRegisterDialog,
-    showLoginDialog,
-    registerData,
-    loginData,
-    registerErrors,
-    registerLoading,
-    loginLoading,
+    // 修改密码相关状态
+    showChangePasswordDialog,
+    changePasswordData,
+    changePasswordErrors,
+    changePasswordLoading,
+
 
     // 基础方法
     setActiveNav,
@@ -975,6 +1112,11 @@ const updateRetentionDays = async () => {
     closeRegisterDialog,
     closeLoginDialog,
     updateUserInfo,
+
+    // 新增：修改密码方法
+    handleChangePassword,
+    openChangePasswordDialog,
+    closeChangePasswordDialog,
 
     // 快捷键方法
     startRecording,
@@ -1000,7 +1142,6 @@ const updateRetentionDays = async () => {
 
     // 用户管理方法
     changeAvatar,
-    changePassword,
     deleteAccount,
 
     // 辅助方法

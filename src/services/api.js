@@ -119,6 +119,76 @@ class ApiService {
     }
   }
 
+  async changePassword(data, refreshToken) { 
+    let result = null;
+
+    try {
+      const authToken = localStorage.getItem('token'); 
+      if (!authToken) {
+        throw new Error('未登录或主认证Token缺失'); 
+      }
+      if (!refreshToken) {
+        throw new Error('Refresh Token缺失'); 
+      }
+      
+      // 构造请求体数据
+      const requestData = {
+        old_password: data.old_password,
+        new_password: data.new_password,
+        new_password2: data.new_password2, 
+        refresh_token: refreshToken, 
+      };
+
+      const response = await fetch(`${API_BASE_URL}/accounts/change-password/`,  {
+        method: 'POST', 
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${authToken}`,
+        },
+        body: JSON.stringify(requestData), 
+      });
+
+      // 尝试解析JSON响应
+      try {
+        result = await response.json();
+      } catch (e) {
+        if (response.ok) {
+           result = { message: '密码更新成功' };
+        } else {
+           result = null;
+        }
+      }
+
+      if (!response.ok) {
+        const errorDetails = result || {};
+        const getErrorMessages = (errors) => errors && Array.isArray(errors) ? errors.join(' ') : '';
+        
+        // 提取错误信息
+        const errorMessage = getErrorMessages(errorDetails.new_password) ||
+                             getErrorMessages(errorDetails.new_password2) ||
+                             getErrorMessages(errorDetails.old_password) ||
+                             getErrorMessages(errorDetails.non_field_errors) ||
+                             errorDetails.detail ||
+                             '密码修改失败，请检查输入';
+                             
+        throw new Error(errorMessage);
+      }
+
+      return {
+        success: true,
+        message: '密码修改成功',
+        data: result
+      };
+    } catch (error) {
+      console.error('修改密码错误:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '网络错误',
+        data: result
+      };
+    }
+  }
+
 }
 
 /**
