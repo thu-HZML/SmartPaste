@@ -184,6 +184,12 @@ const updateWindowSize = async (height) => {
     const newY = mainWindowPosition.y - height
     await currentWindow.setPosition(new LogicalPosition(newX, newY))
     console.log('更新ai窗口位置:', { newX, newY })
+
+    const windowHeight = {
+      height: height,
+    }
+    
+    localStorage.setItem('aiWindowHeight', JSON.stringify(windowHeight))
   } catch (error) {
     console.error('更新窗口大小失败:', error)
   }
