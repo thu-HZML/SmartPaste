@@ -74,9 +74,9 @@ export function usePreferences() {
 
   // 用户信息
   const userInfo = reactive({
-    username: '当前用户',
-    email: 'user@example.com',
-    bio: '剪贴板管理爱好者'
+    username: '',
+    email: '',
+    bio: ''
   })
 
   // 导航项
@@ -194,9 +194,6 @@ export function usePreferences() {
           userInfo.username = response.data.user.username || registerData.username
           userInfo.email = response.data.user.email || registerData.email
           userInfo.bio = response.data.user.bio || '剪贴板管理爱好者'
-          await updateSetting('username', userInfo.username)
-          await updateSetting('email', userInfo.email)
-          await updateSetting('bio', userInfo.bio)
         }
         
         // 关闭注册对话框
@@ -282,9 +279,6 @@ export function usePreferences() {
           userInfo.username = response.data.user.username || '当前用户'
           userInfo.email = response.data.user.email || loginData.email
           userInfo.bio = response.data.user.bio || '剪贴板管理爱好者'
-          await updateSetting('username', userInfo.username)
-          await updateSetting('email', userInfo.email)
-          await updateSetting('bio', userInfo.bio)
         }
         loadUsername()
         // 关闭登录对话框
@@ -357,9 +351,6 @@ export function usePreferences() {
         email: '',
         bio: ''
       })
-      await updateSetting('username', '')
-      await updateSetting('email', '')
-      await updateSetting('bio', '')
       showMessage('已退出登录', 'success')
     }
   }
@@ -832,9 +823,6 @@ const updateRetentionDays = async () => {
         userInfo.username = userData.user.username || ''
         userInfo.email = userData.user.email || ''
         userInfo.bio = userData.user.bio || '剪贴板管理爱好者'
-        await updateSetting('username', userInfo.username)
-        await updateSetting('email', userInfo.email)
-        await updateSetting('bio', userInfo.bio)
       }
     } catch (error) {
       console.error('加载用户信息失败:', error)
