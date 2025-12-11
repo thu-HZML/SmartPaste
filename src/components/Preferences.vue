@@ -766,7 +766,7 @@
           <div class="account-actions">
             <h3>账户操作</h3>
             <div class="action-buttons">
-              <button class="btn btn-secondary" @click="changePassword">修改密码</button>
+              <button class="btn btn-secondary" @click="openChangePasswordDialog":disabled="!userLoggedIn">修改密码</button>
               <button class="btn btn-danger" @click="deleteAccount">删除账户</button>
             </div>
           </div>
@@ -909,7 +909,74 @@
           </form>
         </div>
       </div>
-    </div> 
+    </div>
+
+    <!-- 修改密码对话框 -->
+    <div v-if="showChangePasswordDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>修改密码</h3>
+          <button @click="closeChangePasswordDialog" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <form @submit.prevent="handleChangePassword">
+            <div class="form-group">
+              <label for="old-password">旧密码</label>
+              <input
+                id="old-password"
+                v-model="changePasswordData.old_password"
+                type="password"
+                required
+                placeholder="请输入旧密码"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.old_password }"
+              />
+              <div v-if="changePasswordErrors.old_password" class="error-message">{{ changePasswordErrors.old_password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="new-password">新密码</label>
+              <input
+                id="new-password"
+                v-model="changePasswordData.new_password"
+                type="password"
+                required
+                placeholder="请输入新密码（至少6位）"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.new_password }"
+              />
+              <div v-if="changePasswordErrors.new_password" class="error-message">{{ changePasswordErrors.new_password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="new-password2">确认新密码</label>
+              <input
+                id="new-password2"
+                v-model="changePasswordData.new_password2"
+                type="password"
+                required
+                placeholder="请再次输入新密码"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.new_password2 }"
+              />
+              <div v-if="changePasswordErrors.new_password2" class="error-message">{{ changePasswordErrors.new_password2 }}</div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeChangePasswordDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="changePasswordLoading" class="btn btn-primary">
+                <span v-if="changePasswordLoading">修改中...</span>
+                <span v-else>确定修改</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    
   </div>
 </template>
 
@@ -950,6 +1017,12 @@ const {
   registerLoading,
   loginLoading,
 
+  // 修改密码相关状态
+  showChangePasswordDialog,
+  changePasswordData,
+  changePasswordErrors,
+  changePasswordLoading,
+
   // 基础方法
   setActiveNav,
   goBack,
@@ -966,6 +1039,11 @@ const {
   closeRegisterDialog,
   closeLoginDialog,
   updateUserInfo,
+
+  // 修改密码方法
+  handleChangePassword,
+  openChangePasswordDialog,
+  closeChangePasswordDialog,
   
   // 快捷键方法
   startRecording,
