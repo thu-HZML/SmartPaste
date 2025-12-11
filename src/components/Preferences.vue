@@ -742,31 +742,19 @@
             <div class="user-details">
               <div class="form-group">
                 <label>用户名</label>
-                <input 
-                  type="text" 
-                  :value="settings.username" 
-                  @input="settings.username = $event.target.value"
-                  @blur="updateSetting('username', $event.target.value)"
-                  class="text-input"
-                >
+                <div class="display-value">{{ userInfo.username || '未登录' }}</div>
               </div>
               
               <div class="form-group">
                 <label>电子邮箱</label>
-                <input 
-                  type="text" 
-                  :value="settings.email" 
-                  @input="settings.email = $event.target.value"
-                  @blur="updateSetting('email', $event.target.value)"
-                  class="text-input"
-                >
+                <div class="display-value">{{ userInfo.email || '无邮箱信息' }}</div>
               </div>
               
               <div class="form-group">
                 <label>个人简介</label>
                 <textarea 
-                  :value="settings.bio" 
-                  @input="settings.bio = $event.target.value"
+                  :value="userInfo.bio" 
+                  @input="userInfo.bio = $event.target.value"
                   @blur="updateSetting('bio', $event.target.value)"
                   class="textarea-input" 
                   rows="3"
@@ -1607,6 +1595,16 @@ input:checked + .slider:before {
   display: flex;
   gap: 10px;
   justify-content: center;
+}
+
+.display-value {
+  padding: 8px 12px;
+  border: 1px solid #e1e8ed;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #2c3e50;
+  background: #f8f9fa; /* Light background to make it look like a static display field */
+  word-break: break-all;
 }
 
 /* 账户按钮组 */
