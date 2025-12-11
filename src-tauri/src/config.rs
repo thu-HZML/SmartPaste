@@ -483,12 +483,13 @@ pub fn init_config() -> String {
             // 如果无法获取父目录，使用当前目录
             PathBuf::from(".")
         };
-        
+
         // 统一使用正斜杠
-        let default_path_str = normalize_to_forward_slashes(&default_storage_path.to_string_lossy());
+        let default_path_str =
+            normalize_to_forward_slashes(&default_storage_path.to_string_lossy());
         println!("🔄 设置默认存储路径: {}", default_path_str);
         config.storage_path = Some(default_path_str);
-        
+
         // 确保目录存在
         if let Err(e) = fs::create_dir_all(&default_storage_path) {
             eprintln!("⚠️ 创建默认存储目录失败: {}", e);
@@ -499,18 +500,18 @@ pub fn init_config() -> String {
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent).ok();
     }
-    
+
     // 创建配置文件
     let mut file = match fs::File::create(&config_path) {
         Ok(file) => file,
         Err(e) => return format!("创建配置文件失败: {}", e),
     };
-    
+
     let data = match serde_json::to_string_pretty(&config) {
         Ok(data) => data,
         Err(e) => return format!("序列化配置失败: {}", e),
     };
-    
+
     match file.write_all(data.as_bytes()) {
         Ok(_) => println!("✅ 配置文件已创建/更新: {}", config_path.display()),
         Err(e) => return format!("写入配置文件失败: {}", e),
@@ -959,7 +960,7 @@ pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Valu
             }
             Err(e) => {
                 println!("⚠️ 更新数据库路径失败: {}", e);
-                // 这里不返回错误，继续执行，因为迁移已经完成
+                // 这里不返回错误，继续执行，因为迁移已经成功
             }
         }
         // 更新内存中的配置
@@ -1165,6 +1166,167 @@ pub fn reload_config() -> String {
             .set(RwLock::new(config))
             .map(|_| "initialized successfully".to_string())
             .unwrap_or_else(|_| "Unknown error".to_string())
+    }
+}
+
+/// 按传入参数获取配置信息。作为 Tauri Command 暴露给前端调用。
+///
+/// 该函数是前端获取配置的统一入口。根据传入的 `key` 找到对应的配置项，并返回其当前值。
+///
+/// # Param
+/// * `key`: &str - 配置项名称。支持的键名与 `set_config_item` 相同：
+///
+/// **通用设置**
+/// * `"autostart"`: 返回 `bool` - 是否开机自启
+/// * `"tray_icon_visible"`: 返回 `bool` - 托盘图标是否可见
+/// * `"minimize_to_tray"`: 返回 `bool` - 启动时是否最小化到托盘
+/// * `"auto_save"`: 返回 `bool` - 是否自动保存剪贴板历史
+/// * `"retention_days"`: 返回 `u32` - 历史记录保留天数
+/// * `"global_shortcut"`: 返回 `String` - 主界面快捷键
+/// * `"global_shortcut_2"`: 返回 `String` - 第二界面快捷键
+/// * `"global_shortcut_3"`: 返回 `String` - 第三快捷键
+/// * `"global_shortcut_4"`: 返回 `String` - 第四快捷键
+/// * `"global_shortcut_5"`: 返回 `String` - 第五快捷键
+///
+/// **剪贴板参数**
+/// * `"max_history_items"`: 返回 `u32` - 最大历史记录数量
+/// * `"ignore_short_text_len"`: 返回 `u32` - 忽略短文本的最短字符数
+/// * `"ignore_big_file_mb"`: 返回 `u32` - 忽略大文件的大小阈值 (MB)
+/// * `"ignored_apps"`: 返回 `Vec<String>` - 被忽略的应用列表
+/// * `"auto_classify"`: 返回 `bool` - 是否自动分类
+/// * `"ocr_auto_recognition"`: 返回 `bool` - 是否启用 OCR 自动识别
+/// * `"delete_confirmation"`: 返回 `bool` - 删除时是否弹出确认对话框
+/// * `"keep_favorites_on_delete"`: 返回 `bool` - 删除时是否保留收藏内容
+/// * `"auto_sort"`: 返回 `bool` - 是否启用自动排序
+///
+/// **AI Agent 相关**
+/// * `"ai_enabled"`: 返回 `bool` - 是否启用 AI 助手
+/// * `"ai_service"`: 返回 `Option<String>` - AI 服务提供商标识
+/// * `"ai_api_key"`: 返回 `Option<String>` - AI API Key
+/// * `"ai_auto_tag"`: 返回 `bool` - 是否启用 AI 自动打标签
+/// * `"ai_auto_summary"`: 返回 `bool` - 是否启用 AI 自动摘要
+/// * `"ai_translation"`: 返回 `bool` - 是否启用 AI 翻译功能
+/// * `"ai_web_search"`: 返回 `bool` - 是否启用 AI 联网搜索功能
+///
+/// **安全与隐私**
+/// * `"sensitive_filter"`: 返回 `bool` - 是否启用敏感词过滤总开关
+/// * `"filter_passwords"`: 返回 `bool` - 是否过滤密码类型内容
+/// * `"filter_bank_cards"`: 返回 `bool` - 是否过滤银行卡号
+/// * `"filter_id_cards"`: 返回 `bool` - 是否过滤身份证号
+/// * `"filter_phone_numbers"`: 返回 `bool` - 是否过滤手机号
+/// * `"privacy_retention_days"`: 返回 `u32` - 隐私记录自动清理天数
+/// * `"privacy_records"`: 返回 `Vec<String>` - 标记为隐私的记录 ID 列表
+///
+/// **数据备份**
+/// * `"storage_path"`: 返回 `Option<String>` - 数据存储路径
+/// * `"auto_backup"`: 返回 `bool` - 是否启用自动备份
+/// * `"backup_frequency"`: 返回 `String` - 备份频率
+/// * `"last_backup_path"`: 返回 `Option<String>` - 最近一次备份文件路径
+///
+/// **云端同步**
+/// * `"cloud_sync_enabled"`: 返回 `bool` - 是否启用云端同步
+/// * `"sync_frequency"`: 返回 `String` - 同步频率
+/// * `"sync_content_type"`: 返回 `String` - 同步内容类型
+/// * `"encrypt_cloud_data"`: 返回 `bool` - 是否对云端数据进行加密
+/// * `"sync_only_wifi"`: 返回 `bool` - 是否仅在 WiFi 下进行同步
+///
+/// **用户信息**
+/// * `"username"`: 返回 `Option<String>` - 用户名
+/// * `"email"`: 返回 `Option<String>` - 邮箱
+/// * `"bio"`: 返回 `Option<String>` - 用户简介
+/// * `"avatar_path"`: 返回 `Option<String>` - 头像文件路径
+///
+/// **OCR 设置**
+/// * `"ocr_provider"`: 返回 `Option<String>` - OCR 提供商标识
+/// * `"ocr_languages"`: 返回 `Option<Vec<String>>` - OCR 语言列表
+/// * `"ocr_confidence_threshold"`: 返回 `Option<f32>` - OCR 置信度阈值
+/// * `"ocr_timeout_secs"`: 返回 `Option<u64>` - OCR 超时时间
+///
+/// # Returns
+/// Result<serde_json::Value, String> - 成功返回配置值的 JSON 表示，失败返回错误信息
+#[tauri::command]
+pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
+    let config_key = match parse_config_key(key) {
+        Some(k) => k,
+        None => return Err(format!("Invalid config key: {}", key)),
+    };
+
+    if let Some(lock) = CONFIG.get() {
+        let cfg = lock.read().unwrap();
+
+        let value = match config_key {
+            // 通用设置
+            ConfigKey::Autostart => serde_json::to_value(&cfg.autostart),
+            ConfigKey::TrayIconVisible => serde_json::to_value(&cfg.tray_icon_visible),
+            ConfigKey::MinimizeToTray => serde_json::to_value(&cfg.minimize_to_tray),
+            ConfigKey::AutoSave => serde_json::to_value(&cfg.auto_save),
+            ConfigKey::RetentionDays => serde_json::to_value(&cfg.retention_days),
+            ConfigKey::GlobalShortcut => serde_json::to_value(&cfg.global_shortcut),
+            ConfigKey::GlobalShortcut2 => serde_json::to_value(&cfg.global_shortcut_2),
+            ConfigKey::GlobalShortcut3 => serde_json::to_value(&cfg.global_shortcut_3),
+            ConfigKey::GlobalShortcut4 => serde_json::to_value(&cfg.global_shortcut_4),
+            ConfigKey::GlobalShortcut5 => serde_json::to_value(&cfg.global_shortcut_5),
+
+            // 剪贴板参数
+            ConfigKey::MaxHistoryItems => serde_json::to_value(&cfg.max_history_items),
+            ConfigKey::IgnoreShortTextLen => serde_json::to_value(&cfg.ignore_short_text_len),
+            ConfigKey::IgnoreBigFileMb => serde_json::to_value(&cfg.ignore_big_file_mb),
+            ConfigKey::IgnoredApps => serde_json::to_value(&cfg.ignored_apps),
+            ConfigKey::AutoClassify => serde_json::to_value(&cfg.auto_classify),
+            ConfigKey::OcrAutoRecognition => serde_json::to_value(&cfg.ocr_auto_recognition),
+            ConfigKey::DeleteConfirmation => serde_json::to_value(&cfg.delete_confirmation),
+            ConfigKey::KeepFavoritesOnDelete => serde_json::to_value(&cfg.keep_favorites_on_delete),
+            ConfigKey::AutoSort => serde_json::to_value(&cfg.auto_sort),
+
+            // AI Agent 相关
+            ConfigKey::AiEnabled => serde_json::to_value(&cfg.ai_enabled),
+            ConfigKey::AiService => serde_json::to_value(&cfg.ai_service),
+            ConfigKey::AiApiKey => serde_json::to_value(&cfg.ai_api_key),
+            ConfigKey::AiAutoTag => serde_json::to_value(&cfg.ai_auto_tag),
+            ConfigKey::AiAutoSummary => serde_json::to_value(&cfg.ai_auto_summary),
+            ConfigKey::AiTranslation => serde_json::to_value(&cfg.ai_translation),
+            ConfigKey::AiWebSearch => serde_json::to_value(&cfg.ai_web_search),
+
+            // 安全与隐私
+            ConfigKey::SensitiveFilter => serde_json::to_value(&cfg.sensitive_filter),
+            ConfigKey::FilterPasswords => serde_json::to_value(&cfg.filter_passwords),
+            ConfigKey::FilterBankCards => serde_json::to_value(&cfg.filter_bank_cards),
+            ConfigKey::FilterIdCards => serde_json::to_value(&cfg.filter_id_cards),
+            ConfigKey::FilterPhoneNumbers => serde_json::to_value(&cfg.filter_phone_numbers),
+            ConfigKey::PrivacyRetentionDays => serde_json::to_value(&cfg.privacy_retention_days),
+            ConfigKey::PrivacyRecords => serde_json::to_value(&cfg.privacy_records),
+
+            // 数据备份
+            ConfigKey::StoragePath => serde_json::to_value(&cfg.storage_path),
+            ConfigKey::AutoBackup => serde_json::to_value(&cfg.auto_backup),
+            ConfigKey::BackupFrequency => serde_json::to_value(&cfg.backup_frequency),
+            ConfigKey::LastBackupPath => serde_json::to_value(&cfg.last_backup_path),
+
+            // 云端同步
+            ConfigKey::CloudSyncEnabled => serde_json::to_value(&cfg.cloud_sync_enabled),
+            ConfigKey::SyncFrequency => serde_json::to_value(&cfg.sync_frequency),
+            ConfigKey::SyncContentType => serde_json::to_value(&cfg.sync_content_type),
+            ConfigKey::EncryptCloudData => serde_json::to_value(&cfg.encrypt_cloud_data),
+            ConfigKey::SyncOnlyWifi => serde_json::to_value(&cfg.sync_only_wifi),
+
+            // 用户信息
+            ConfigKey::Username => serde_json::to_value(&cfg.username),
+            ConfigKey::Email => serde_json::to_value(&cfg.email),
+            ConfigKey::Bio => serde_json::to_value(&cfg.bio),
+            ConfigKey::AvatarPath => serde_json::to_value(&cfg.avatar_path),
+
+            // OCR 设置
+            ConfigKey::OcrProvider => serde_json::to_value(&cfg.ocr_provider),
+            ConfigKey::OcrLanguages => serde_json::to_value(&cfg.ocr_languages),
+            ConfigKey::OcrConfidenceThreshold => {
+                serde_json::to_value(&cfg.ocr_confidence_threshold)
+            }
+            ConfigKey::OcrTimeoutSecs => serde_json::to_value(&cfg.ocr_timeout_secs),
+        };
+
+        value.map_err(|e| format!("Failed to serialize config value: {}", e))
+    } else {
+        Err("Config not initialized".to_string())
     }
 }
 
