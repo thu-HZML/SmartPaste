@@ -1106,6 +1106,7 @@ dependencies = [
  "image",
  "lazy_static",
  "rdev",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
