@@ -1571,6 +1571,61 @@ pub fn mark_phone_numbers_as_private() -> Result<usize, String> {
     Ok(count)
 }
 
+/// 返回所有被标记为隐私的数据项。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// String - 包含隐私数据记录的 JSON 字符串，若失败则返回错误信息
+#[tauri::command]
+pub fn get_all_private_data() -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT d.id, d.item_type, d.content, d.size, d.is_favorite, d.notes, d.timestamp
+             FROM data d
+             JOIN private_data pd ON d.id = pd.item_id",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map([], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    clipboard_items_to_json(results)
+}
+
+/// 清除所有隐私数据。作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// Result<usize, String> - 受影响的行数，若失败则返回错误信息
+#[tauri::command]
+pub fn clear_all_private_data() -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let rows = conn
+        .execute("DELETE FROM private_data", [])
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows)
+}
+
 /// # 单元测试
 #[cfg(test)]
 #[path = "test_unit/test_db_base.rs"]
