@@ -475,7 +475,7 @@
                     type="checkbox" 
                     :checked="settings.filter_passwords" 
                     @change="updateSetting('filter_passwords', $event.target.checked)"
-                  > 密码
+                  > 密码<span class="tip-text">（匹配备注中的‘密码’字样）</span>
                 </label>
                 <label class="checkbox-item">
                   <input 
@@ -1863,6 +1863,12 @@ input:checked + .slider:before {
   font-size: 14px;
   z-index: 10000;
   animation: slideUp 0.3s ease;
+}
+
+.tip-text {
+  font-size: 0.9em; 
+  color: #888; 
+  margin-left: 0px; 
 }
 
 @keyframes slideUp {
