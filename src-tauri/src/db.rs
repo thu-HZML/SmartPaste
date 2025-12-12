@@ -1350,7 +1350,9 @@ pub fn mark_passwords_as_private() -> Result<usize, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     // 常见密码相关关键词的正则表达式（不区分大小写）
-    let password_regex = Regex::new(r"(?i)\b(password|pwd|pass|密码|secret|key|token|credential|login|auth|authentication)\b")
+    // 修复：将中文"密码"移出 \b 边界限制，允许匹配中文句子中的关键词（如"这是一个密码"）
+    // 英文关键词保留 \b 以避免匹配单词的一部分（如 "compass" 中的 "pass"）
+    let password_regex = Regex::new(r"(?i)(\b(password|pwd|pass|secret|key|token|credential|login|auth|authentication)\b|密码)")
         .map_err(|e| e.to_string())?;
 
     // 查询所有文本类型的数据
@@ -1577,3 +1579,5 @@ mod test_db_base;
 mod test_db_adv;
 #[path = "test_unit/test_db_folder.rs"]
 mod test_db_folder;
+#[path = "test_unit/test_private.rs"]
+mod test_private;
