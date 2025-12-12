@@ -1,9 +1,8 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { 
-  windowInstances, 
   updateMainWindowPosition, 
   toggleMenuWindow,
   updateMenuWindowPosition,
@@ -14,9 +13,9 @@ import {
 import { 
   AnimationManager, 
   AnimationState, 
-  getAnimationForMouse,
 } from '../utils/animations.js'
 import live2d from '../utils/live2dManager.js'
+import { useSettingsStore } from '../stores/settings'
 
 export function useDesktopPet() {
   const isHovering = ref(false)
@@ -32,6 +31,7 @@ export function useDesktopPet() {
   const animationFrame = ref('background') // 当前动画帧
   const currentKey = ref('') // 当前按下的按键
   const currentAnimationState = ref(AnimationState.IDLE)
+  const settingsStore = useSettingsStore()
 
   // 全局监听器
   let unlistenKeyButton = null
@@ -335,8 +335,15 @@ export function useDesktopPet() {
     const unlisten = await listen('clipboard-updated', async (event) => {
       console.log('接受后端更新消息')
 
-      // 打开AI窗口
-      await toggleAiWindow()
+      let isAiEnabled = await invoke('get_config_item', {
+        key: 'ai_enabled'
+      })
+      if (isAiEnabled.value) {
+        // 打开AI窗口
+        await toggleAiWindow()
+      } else {
+        console.log('ai功能禁用')
+      }
     })
     
     return unlisten
