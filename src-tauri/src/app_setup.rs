@@ -4,7 +4,6 @@ use crate::db;
 use crate::ocr;
 use crate::utils;
 use chrono::Utc;
-use image::buffer::EnumeratePixelsMut;
 use image::ColorType;
 use serde_json::Value;
 use std::fs;
@@ -854,4 +853,81 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
         }
     }
     Ok(total_size)
+}
+
+/// 启动后台数据库清理线程
+/// **功能**：
+/// - 在收到插入通知后进行去抖并执行清理
+/// - 定期（每5分钟）自动执行一次清理
+/// - 根据配置执行过期数据清理和数量限制清理
+pub fn start_cleanup_worker() {
+    use std::sync::mpsc::channel;
+
+    let (tx, rx) = channel();
+
+    // 将 Sender 设置到 db 模块
+    db::set_cleanup_sender(tx);
+
+    std::thread::spawn(move || {
+        println!("🧹 后台清理线程已启动");
+
+        // 去抖：在收到通知后等待短时间合并多次通知
+        let debounce = Duration::from_millis(500);
+        // 定期检查间隔（防止长时间无人触发时也做一次清理）
+        let periodic = Duration::from_secs(60 * 5); // 5 分钟
+
+        loop {
+            let start = Instant::now();
+            match rx.recv_timeout(periodic) {
+                Ok(_) => {
+                    // 收到触发，短暂去抖等待更多触发
+                    thread::sleep(debounce);
+                    // 清空通道中可能积累的其他通知
+                    while rx.try_recv().is_ok() {}
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    // 周期性唤醒，继续执行清理
+                }
+                Err(_) => {
+                    // 通道已断开，退出线程
+                    println!("🛑 后台清理线程退出");
+                    break;
+                }
+            }
+
+            // 读取配置
+            let (max_items, retention_days) = if let Some(lock) = CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                (cfg.max_history_items, cfg.retention_days)
+            } else {
+                (500u32, 30u32) // 默认值
+            };
+
+            // 执行过期清理
+            match db::clear_data_expired(retention_days) {
+                Ok(deleted) => {
+                    if deleted > 0 {
+                        println!("🧹 后台清理: 删除了 {} 条过期记录", deleted);
+                    }
+                }
+                Err(e) => eprintln!("❌ 后台清理: 过期数据清理失败: {}", e),
+            }
+
+            // 执行数量限制清理
+            match db::enforce_max_history_items(max_items) {
+                Ok(deleted) => {
+                    if deleted > 0 {
+                        println!("🧹 后台清理: 删除了 {} 条超量记录", deleted);
+                    }
+                }
+                Err(e) => eprintln!("❌ 后台清理: 数量限制清理失败: {}", e),
+            }
+
+            // 如果上次 recv 很快就返回，保证循环不会 100% 占用 CPU
+            let elapsed = start.elapsed();
+            if elapsed < Duration::from_millis(100) {
+                thread::sleep(Duration::from_millis(100) - elapsed);
+            }
+        }
+    });
 }
