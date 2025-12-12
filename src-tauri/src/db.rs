@@ -1634,5 +1634,5 @@ mod test_db_base;
 mod test_db_adv;
 #[path = "test_unit/test_db_folder.rs"]
 mod test_db_folder;
-#[path = "test_unit/test_private.rs"]
-mod test_private;
+#[path = "test_unit/test_db_private.rs"]
+mod test_db_private;

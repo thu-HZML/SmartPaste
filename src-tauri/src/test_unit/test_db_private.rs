@@ -210,3 +210,68 @@ fn test_mark_phone_numbers() {
     assert!(!is_item_private(&item_short.id));
     assert!(!is_item_private(&item_fake.id));
 }
+
+#[test]
+fn test_get_all_private_data() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据
+    // 修复：将 "password123" 改为 "password: 123" 或 "password 123"，确保 \b 边界生效
+    let item1 = make_item("p-1", "password: 123", ""); // 应被标记 (密码)
+    let item2 = make_item("p-2", "normal text", ""); // 不应被标记
+    let item3 = make_item("p-3", "13800138000", ""); // 应被标记 (手机号)
+
+    insert_received_db_data(item1.clone()).unwrap();
+    insert_received_db_data(item2.clone()).unwrap();
+    insert_received_db_data(item3.clone()).unwrap();
+
+    // 2. 标记隐私数据
+    mark_passwords_as_private().unwrap();
+    mark_phone_numbers_as_private().unwrap();
+
+    // 3. 获取所有隐私数据
+    let json_result = get_all_private_data().expect("get_all_private_data failed");
+    let items: Vec<ClipboardItem> =
+        serde_json::from_str(&json_result).expect("failed to parse json");
+
+    // 4. 验证
+    assert_eq!(items.len(), 2, "Should return exactly 2 private items");
+    let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+    assert!(ids.contains(&item1.id), "Should contain password item");
+    assert!(ids.contains(&item3.id), "Should contain phone item");
+    assert!(!ids.contains(&item2.id), "Should NOT contain normal item");
+}
+
+#[test]
+fn test_clear_all_private_data() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据并标记
+    // 修复：将 "password123" 改为 "password: 123"
+    let item1 = make_item("c-1", "password: 123", "");
+    insert_received_db_data(item1.clone()).unwrap();
+    mark_passwords_as_private().unwrap();
+
+    assert!(
+        is_item_private(&item1.id),
+        "Item should be private initially"
+    );
+
+    // 2. 清除隐私标记
+    let count = clear_all_private_data().expect("clear_all_private_data failed");
+    assert_eq!(count, 1, "Should clear 1 record");
+
+    // 3. 验证 private_data 表为空
+    assert!(
+        !is_item_private(&item1.id),
+        "Item should no longer be marked private"
+    );
+
+    // 4. 验证原始数据仍然存在 (clear_all_private_data 只清除标记，不删除原数据)
+    let json = get_data_by_id(&item1.id).unwrap();
+    assert_ne!(json, "null", "Actual data item should still exist");
+}
