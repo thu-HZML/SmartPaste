@@ -86,8 +86,8 @@ pub struct Config {
     pub filter_id_cards: bool,
     /// 是否过滤手机号
     pub filter_phone_numbers: bool,
-    /// 隐私记录自动清理天数（天）
-    pub privacy_retention_days: u32,
+    // 隐私记录自动清理天数（天）
+    // pub privacy_retention_days: u32,
     /// 标记为隐私的记录 ID 列表（可用于快速查询/导出）
     pub privacy_records: Vec<String>,
 
@@ -207,8 +207,8 @@ pub enum ConfigKey {
     FilterIdCards,
     /// 是否过滤手机号
     FilterPhoneNumbers,
-    /// 隐私记录自动清理天数
-    PrivacyRetentionDays,
+    // 隐私记录自动清理天数
+    // PrivacyRetentionDays,
     /// 标记为隐私的记录 ID 列表
     PrivacyRecords,
 
@@ -299,7 +299,7 @@ pub fn parse_config_key(key: &str) -> Option<ConfigKey> {
         "filter_bank_cards" => Some(ConfigKey::FilterBankCards),
         "filter_id_cards" => Some(ConfigKey::FilterIdCards),
         "filter_phone_numbers" => Some(ConfigKey::FilterPhoneNumbers),
-        "privacy_retention_days" => Some(ConfigKey::PrivacyRetentionDays),
+        // "privacy_retention_days" => Some(ConfigKey::PrivacyRetentionDays),
         "privacy_records" => Some(ConfigKey::PrivacyRecords),
         // 数据备份
         "storage_path" => Some(ConfigKey::StoragePath),
@@ -389,12 +389,12 @@ impl Default for Config {
             ai_web_search: false,   // AI 联网搜索：否
 
             // 隐私
-            sensitive_filter: true,      // 敏感词过滤：开
-            filter_passwords: true,      // 过滤密码：是
-            filter_bank_cards: true,     // 过滤银行卡号：是
-            filter_id_cards: true,       // 过滤身份证号：是
-            filter_phone_numbers: true,  // 过滤手机号：是
-            privacy_retention_days: 90,  // 隐私记录保留天数：90天
+            sensitive_filter: true,     // 敏感词过滤：开
+            filter_passwords: true,     // 过滤密码：是
+            filter_bank_cards: true,    // 过滤银行卡号：是
+            filter_id_cards: true,      // 过滤身份证号：是
+            filter_phone_numbers: true, // 过滤手机号：是
+            // privacy_retention_days: 90,  // 隐私记录保留天数：90天
             privacy_records: Vec::new(), // 隐私记录列表：空
 
             // 备份
@@ -630,7 +630,7 @@ fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Resul
         ConfigKey::FilterBankCards => update_cfg!(filter_bank_cards, bool),
         ConfigKey::FilterIdCards => update_cfg!(filter_id_cards, bool),
         ConfigKey::FilterPhoneNumbers => update_cfg!(filter_phone_numbers, bool),
-        ConfigKey::PrivacyRetentionDays => update_cfg!(privacy_retention_days, u32),
+        // ConfigKey::PrivacyRetentionDays => update_cfg!(privacy_retention_days, u32),
         ConfigKey::PrivacyRecords => update_cfg!(privacy_records, Vec<String>),
         ConfigKey::StoragePath => update_cfg!(storage_path, Option<String>),
         ConfigKey::AutoBackup => update_cfg!(auto_backup, bool),
@@ -1293,7 +1293,7 @@ pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
             ConfigKey::FilterBankCards => serde_json::to_value(&cfg.filter_bank_cards),
             ConfigKey::FilterIdCards => serde_json::to_value(&cfg.filter_id_cards),
             ConfigKey::FilterPhoneNumbers => serde_json::to_value(&cfg.filter_phone_numbers),
-            ConfigKey::PrivacyRetentionDays => serde_json::to_value(&cfg.privacy_retention_days),
+            // ConfigKey::PrivacyRetentionDays => serde_json::to_value(&cfg.privacy_retention_days),
             ConfigKey::PrivacyRecords => serde_json::to_value(&cfg.privacy_records),
 
             // 数据备份
