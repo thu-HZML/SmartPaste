@@ -65,16 +65,18 @@ fn test_mark_passwords() {
     clear_db_file();
 
     // 1. 准备数据
-    // 匹配 content
-    let item1 = make_item("pw-1", "My password is 123456", "");
+    // 修正：mark_passwords_as_private 只检查 notes 字段
+
+    // 匹配 notes (原 content 匹配改为 notes 匹配)
+    let item1 = make_item("pw-1", "some content", "My password is 123456");
     // 匹配 notes
     let item2 = make_item("pw-2", "Just some text", "This is a secret key");
     // 不匹配
     let item3 = make_item("pw-3", "Hello world", "Just a note");
-    // 匹配其他关键词 (login)
-    let item4 = make_item("pw-4", "Login credentials for site", "");
-    // 匹配中文notes
-    let item5 = make_item("pw-5", "普通文本", "这是一个密码");
+    // 匹配其他关键词 (login) - 移至 notes
+    let item4 = make_item("pw-4", "some content", "Login credentials for site");
+    // 匹配中文notes - 注意：正则使用 \b 边界，中文前后通常需要分隔符才能匹配 \b
+    let item5 = make_item("pw-5", "普通文本", "这是一个 密码");
 
     insert_received_db_data(item1.clone()).unwrap();
     insert_received_db_data(item2.clone()).unwrap();
@@ -82,14 +84,14 @@ fn test_mark_passwords() {
     insert_received_db_data(item4.clone()).unwrap();
     insert_received_db_data(item5.clone()).unwrap();
 
-    // 2. 执行标记
-    let count = mark_passwords_as_private().expect("mark passwords failed");
+    // 2. 执行标记 (添加)
+    let count = mark_passwords_as_private(true).expect("mark passwords failed");
 
     // 3. 验证结果
     assert_eq!(count, 4, "Should mark 4 items as private");
     assert!(
         is_item_private(&item1.id),
-        "item1 (password) should be private"
+        "item1 (password in notes) should be private"
     );
     assert!(
         is_item_private(&item2.id),
@@ -98,11 +100,23 @@ fn test_mark_passwords() {
     assert!(!is_item_private(&item3.id), "item3 should NOT be private");
     assert!(
         is_item_private(&item4.id),
-        "item4 (login) should be private"
+        "item4 (login in notes) should be private"
     );
     assert!(
         is_item_private(&item5.id),
         "item5 (密码 in notes) should be private"
+    );
+
+    // 4. 执行取消标记 (删除)
+    let count_removed = mark_passwords_as_private(false).expect("unmark passwords failed");
+    assert_eq!(count_removed, 4, "Should unmark 4 items");
+    assert!(
+        !is_item_private(&item1.id),
+        "item1 should no longer be private"
+    );
+    assert!(
+        !is_item_private(&item2.id),
+        "item2 should no longer be private"
     );
 }
 
@@ -128,7 +142,7 @@ fn test_mark_bank_cards() {
     insert_received_db_data(item_text.clone()).unwrap();
 
     // 2. 执行标记
-    let count = mark_bank_cards_as_private().expect("mark bank cards failed");
+    let count = mark_bank_cards_as_private(true).expect("mark bank cards failed");
 
     // 3. 验证结果
     assert_eq!(count, 1, "Should mark 1 valid card");
@@ -143,6 +157,13 @@ fn test_mark_bank_cards() {
     assert!(
         !is_item_private(&item_text.id),
         "Random numbers should NOT be private"
+    );
+
+    // 4. 取消标记
+    mark_bank_cards_as_private(false).unwrap();
+    assert!(
+        !is_item_private(&item_valid.id),
+        "Valid card should be unmarked"
     );
 }
 
@@ -168,7 +189,7 @@ fn test_mark_identity_numbers() {
     insert_received_db_data(item_short.clone()).unwrap();
 
     // 2. 执行标记
-    let count = mark_identity_numbers_as_private().expect("mark id failed");
+    let count = mark_identity_numbers_as_private(true).expect("mark id failed");
 
     // 3. 验证结果
     assert_eq!(count, 3, "Should mark 3 ID numbers");
@@ -176,6 +197,10 @@ fn test_mark_identity_numbers() {
     assert!(is_item_private(&item18x.id));
     assert!(is_item_private(&item15.id));
     assert!(!is_item_private(&item_short.id));
+
+    // 4. 取消标记
+    mark_identity_numbers_as_private(false).unwrap();
+    assert!(!is_item_private(&item18.id));
 }
 
 #[test]
@@ -201,7 +226,7 @@ fn test_mark_phone_numbers() {
     insert_received_db_data(item_fake.clone()).unwrap();
 
     // 2. 执行标记
-    let count = mark_phone_numbers_as_private().expect("mark phone failed");
+    let count = mark_phone_numbers_as_private(true).expect("mark phone failed");
 
     // 3. 验证结果
     assert_eq!(count, 2, "Should mark 2 phone numbers");
@@ -209,6 +234,10 @@ fn test_mark_phone_numbers() {
     assert!(is_item_private(&item_phone2.id));
     assert!(!is_item_private(&item_short.id));
     assert!(!is_item_private(&item_fake.id));
+
+    // 4. 取消标记
+    mark_phone_numbers_as_private(false).unwrap();
+    assert!(!is_item_private(&item_phone.id));
 }
 
 #[test]
@@ -218,18 +247,18 @@ fn test_get_all_private_data() {
     clear_db_file();
 
     // 1. 准备数据
-    // 修复：将 "password123" 改为 "password: 123" 或 "password 123"，确保 \b 边界生效
-    let item1 = make_item("p-1", "password: 123", ""); // 应被标记 (密码)
+    // 修正：将 "password: 123" 放入 notes，因为 mark_passwords_as_private 只查 notes
+    let item1 = make_item("p-1", "some content", "password: 123"); // 应被标记 (密码)
     let item2 = make_item("p-2", "normal text", ""); // 不应被标记
-    let item3 = make_item("p-3", "13800138000", ""); // 应被标记 (手机号)
+    let item3 = make_item("p-3", "13800138000", ""); // 应被标记 (手机号，查 content)
 
     insert_received_db_data(item1.clone()).unwrap();
     insert_received_db_data(item2.clone()).unwrap();
     insert_received_db_data(item3.clone()).unwrap();
 
     // 2. 标记隐私数据
-    mark_passwords_as_private().unwrap();
-    mark_phone_numbers_as_private().unwrap();
+    mark_passwords_as_private(true).unwrap();
+    mark_phone_numbers_as_private(true).unwrap();
 
     // 3. 获取所有隐私数据
     let json_result = get_all_private_data().expect("get_all_private_data failed");
@@ -251,10 +280,10 @@ fn test_clear_all_private_data() {
     clear_db_file();
 
     // 1. 准备数据并标记
-    // 修复：将 "password123" 改为 "password: 123"
-    let item1 = make_item("c-1", "password: 123", "");
+    // 修正：将 "password: 123" 放入 notes
+    let item1 = make_item("c-1", "some content", "password: 123");
     insert_received_db_data(item1.clone()).unwrap();
-    mark_passwords_as_private().unwrap();
+    mark_passwords_as_private(true).unwrap();
 
     assert!(
         is_item_private(&item1.id),

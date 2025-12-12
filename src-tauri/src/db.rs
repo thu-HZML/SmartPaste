@@ -1329,7 +1329,7 @@ pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
     Ok(icon_data.unwrap_or_default())
 }
 
-/// 利用备注内容匹配内容是否可能为密码，若匹配则标记为隐私数据。
+/// 利用备注内容匹配内容是否可能为密码，若匹配则标记或删除为隐私数据。作为 Tauri command 暴露给前端调用。
 /// **匹配关键词**：
 /// - "password"
 /// - "密码"
@@ -1342,44 +1342,58 @@ pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
 /// - "login"
 /// - "auth"
 /// - "authentication"
+/// # Param
+/// to_add: bool - 表示是否为增加隐私数据。若为true，则为添加隐私数据；若为false，则为删除隐私数据。
 /// # Returns
 /// Result<usize, String> - 受影响的行数，若失败则返回错误信息
-pub fn mark_passwords_as_private() -> Result<usize, String> {
+#[tauri::command]
+pub fn mark_passwords_as_private(to_add : bool) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    // 常见密码相关关键词的正则表达式（不区分大小写）
-    // 修复：将中文"密码"移出 \b 边界限制，允许匹配中文句子中的关键词（如"这是一个密码"）
-    // 英文关键词保留 \b 以避免匹配单词的一部分（如 "compass" 中的 "pass"）
-    let password_regex = Regex::new(r"(?i)(\b(password|pwd|pass|secret|key|token|credential|login|auth|authentication)\b|密码)")
-        .map_err(|e| e.to_string())?;
+    let keywords = [
+        "password", "密码", "pwd", "pass", "secret", "key", "token",
+        "credential", "login", "auth", "authentication",
+    ];
 
-    // 查询所有文本类型的数据
+    let pattern = keywords
+        .iter()
+        .map(|kw| format!(r"(?i)\b{}\b", regex::escape(kw))) // 使用 \b 确保是完整单词匹配
+        .collect::<Vec<String>>()
+        .join("|");
+
+    let regex = Regex::new(&pattern).map_err(|e| e.to_string())?;
+
     let mut stmt = conn
-        .prepare("SELECT id, content, notes FROM data WHERE item_type = 'text'")
+        .prepare("SELECT id, notes FROM data WHERE item_type = 'text'")
         .map_err(|e| e.to_string())?;
 
     let clipboard_iter = stmt
         .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
         .map_err(|e| e.to_string())?;
 
     let mut count = 0;
 
     for item in clipboard_iter {
-        let (id, content, notes) = item.map_err(|e| e.to_string())?;
+        let (id, notes) = item.map_err(|e| e.to_string())?;
         
-        // 检查 content 和 notes 是否匹配密码关键词
-        if password_regex.is_match(&content) || password_regex.is_match(&notes) {
-            // 标记为隐私数据，即添加到private_data表中
-            conn.execute(
-                "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
-                params![id],
-            )
-            .map_err(|e| e.to_string())?;
-            
+        if regex.is_match(&notes) {
+            if to_add {
+                conn.execute(
+                    "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                conn.execute(
+                    "DELETE FROM private_data WHERE item_id = ?1",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
             count += 1;
         }
     }
@@ -1423,9 +1437,12 @@ fn is_valid_luhn(card_number: &str) -> bool {
 
 /// 利用正则表达式匹配并使用 Luhn 算法校验内容是否可能为银行卡号 (PAN)，
 /// 若匹配且校验通过，则标记为隐私数据。
+/// # Param
+/// to_add: bool - 表示是否为增加隐私数据。若为true，则为添加隐私数据；若为false，则为删除隐私数据。
 /// # Returns
 /// Result<usize, String> - 受影响的行数，若失败则返回错误信息
-pub fn mark_bank_cards_as_private() -> Result<usize, String> {
+#[tauri::command]
+pub fn mark_bank_cards_as_private(to_add: bool) -> Result<usize, String> {
     // 假设 db_path 和 conn 已经初始化并处理错误
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
@@ -1474,12 +1491,21 @@ pub fn mark_bank_cards_as_private() -> Result<usize, String> {
             
             // 2. 移除分隔符并执行 Luhn 校验
             if is_valid_luhn(potential_pan) {
-                // 标记为隐私数据，即添加到private_data表中
-                conn.execute(
-                    "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
-                    params![id],
-                )
-                .map_err(|e| e.to_string())?;
+                if to_add {
+                    // 标记为隐私数据，即添加到private_data表中
+                    conn.execute(
+                        "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                        params![id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                } else {
+                    // 取消标记为隐私数据
+                    conn.execute(
+                        "DELETE FROM private_data WHERE item_id = ?1",
+                        params![id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
                 
                 count += 1;
                 // 一旦该记录中找到一个有效的卡号，就可以停止检查并进入下一条记录
@@ -1492,9 +1518,12 @@ pub fn mark_bank_cards_as_private() -> Result<usize, String> {
 }
 
 /// 利用正则表示匹配内容是否可能为身份证号，若匹配则标记为隐私数据。
+/// # Param
+/// to_add: bool - 表示是否为增加隐私数据。若为true，则为添加隐私数据；若为false，则为删除隐私数据。
 /// # Returns
 /// Result<usize, String> - 受影响的行数，若失败则返回错误信息
-pub fn mark_identity_numbers_as_private() -> Result<usize, String> {
+#[tauri::command]
+pub fn mark_identity_numbers_as_private(to_add: bool) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
@@ -1518,12 +1547,21 @@ pub fn mark_identity_numbers_as_private() -> Result<usize, String> {
     for item in clipboard_iter {
         let (id, content) = item.map_err(|e| e.to_string())?;
         if id_regex.is_match(&content) {
-            // 标记为隐私数据，也即添加到private_data表中
-            conn.execute(
-                "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
-                params![id],
-            )
-            .map_err(|e| e.to_string())?;
+            if to_add {
+                // 标记为隐私数据，也即添加到private_data表中
+                conn.execute(
+                    "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                // 取消标记为隐私数据
+                conn.execute(
+                    "DELETE FROM private_data WHERE item_id = ?1",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
             count += 1;
         }
     }
@@ -1531,10 +1569,14 @@ pub fn mark_identity_numbers_as_private() -> Result<usize, String> {
     Ok(count)
 }
 
+
 /// 利用正则表达式匹配内容是否可能为手机号，若匹配则标记为隐私数据。
+/// # Param
+/// to_add: bool - 表示是否为增加隐私数据。若为true，则为添加隐私数据；若为false，则为删除隐私数据。
 /// # Returns
 /// Result<usize, String> - 受影响的行数，若失败则返回错误信息
-pub fn mark_phone_numbers_as_private() -> Result<usize, String> {
+#[tauri::command]
+pub fn mark_phone_numbers_as_private(to_add: bool) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
@@ -1558,12 +1600,21 @@ pub fn mark_phone_numbers_as_private() -> Result<usize, String> {
     for item in clipboard_iter {
         let (id, content) = item.map_err(|e| e.to_string())?;
         if phone_regex.is_match(&content) {
-            // 标记为隐私数据，也即添加到private_data表中
-            conn.execute(
-                "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
-                params![id],
-            )
-            .map_err(|e| e.to_string())?;
+            if to_add {
+                // 标记为隐私数据，也即添加到private_data表中
+                conn.execute(
+                    "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                // 取消标记为隐私数据
+                conn.execute(
+                    "DELETE FROM private_data WHERE item_id = ?1",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
             count += 1;
         }
     }
