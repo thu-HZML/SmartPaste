@@ -88,6 +88,13 @@ fn main() {
             db::get_ocr_text_by_item_id,
             db::search_data_by_ocr_text,
             db::get_icon_data_by_item_id,
+            db::mark_passwords_as_private,
+            db::mark_bank_cards_as_private,
+            db::mark_identity_numbers_as_private,
+            db::mark_phone_numbers_as_private,
+            db::get_all_private_data,
+            db::clear_all_private_data,
+            db::auto_mark_private_data,
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
@@ -183,6 +190,21 @@ fn main() {
             // 6. 设置数据库路径
             println!("📂 数据库路径设置为: {}", final_db_path.to_string_lossy());
             db::set_db_path(final_db_path);
+
+            // 8. 根据配置自动标记隐私数据
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("🔒 正在根据配置初始化隐私数据标记...");
+                match db::auto_mark_private_data(
+                    cfg.filter_passwords,
+                    cfg.filter_bank_cards,
+                    cfg.filter_id_cards,
+                    cfg.filter_phone_numbers,
+                ) {
+                    Ok(count) => println!("✅ 初始化隐私标记完成，受影响记录数: {}", count),
+                    Err(e) => eprintln!("❌ 初始化隐私标记失败: {}", e),
+                }
+            }
 
             // 7. 打印最终使用的配置路径
             let current_config_path = config::get_config_path();

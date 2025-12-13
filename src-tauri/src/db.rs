@@ -1677,6 +1677,30 @@ pub fn clear_all_private_data() -> Result<usize, String> {
     Ok(rows)
 }
 
+/// 根据配置文件的选项，自动设置隐私数据标记。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// password_flag: bool - 是否标记密码
+/// bank_card_flag: bool - 是否标记银行卡号
+/// id_number_flag: bool - 是否标记身份证号
+/// phone_number_flag: bool - 是否标记手机号
+/// # Returns
+/// Result<usize, String> - 最终受影响的行数，若失败则返回错误信息
+#[tauri::command]
+pub fn auto_mark_private_data(
+    password_flag: bool,
+    bank_card_flag: bool,
+    id_number_flag: bool,
+    phone_number_flag: bool,
+) -> Result<usize, String> {
+    let mut total_count = 0;
+
+    total_count += mark_passwords_as_private(password_flag)?;
+    total_count += mark_bank_cards_as_private(bank_card_flag)?;
+    total_count += mark_identity_numbers_as_private(id_number_flag)?;
+    total_count += mark_phone_numbers_as_private(phone_number_flag)?;
+    Ok(total_count)
+}
+
 /// # 单元测试
 #[cfg(test)]
 #[path = "test_unit/test_db_base.rs"]
