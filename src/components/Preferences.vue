@@ -712,17 +712,15 @@
             </div>
             
             <div class="account-status" v-if="!userLoggedIn">
-              <p>您尚未登录，请登录以启用云端同步功能</p>
+              <p>您尚未登录，请登录以启用云端同步功能</p>  
               <div class="account-buttons">
-                <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
-                <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
-              </div>
+                <button class="btn btn-secondary" @click="activeNav = 'user'">前往用户信息</button>
+              </div>            
             </div>
             
             <div class="account-status" v-else>
               <p>已登录为: {{ userEmail }}</p>
               <div class="account-buttons">
-                <button class="btn btn-secondary" @click.prevent="logout">退出登录</button>
                 <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
               </div>
             </div>
@@ -766,8 +764,16 @@
           <div class="account-actions">
             <h3>账户操作</h3>
             <div class="action-buttons">
-              <button class="btn btn-secondary" @click="openChangePasswordDialog":disabled="!userLoggedIn">修改密码</button>
-              <button class="btn btn-danger" @click="deleteAccount">删除账户</button>
+              <template v-if="userLoggedIn">
+                <button class="btn btn-secondary" @click.prevent="logout">退出登录</button>
+                <button class="btn btn-secondary" @click="openChangePasswordDialog" :disabled="!userLoggedIn">修改密码</button>
+                <button class="btn btn-danger" @click="deleteAccount">删除账户</button>
+              </template>
+              
+              <template v-else>
+                <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
+                <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
+              </template>
             </div>
           </div>
         </div>
