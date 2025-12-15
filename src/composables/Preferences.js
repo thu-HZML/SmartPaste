@@ -875,7 +875,7 @@ const updateRetentionDays = async () => {
     }
   }
 
-  // 新增：修改密码方法
+  // 修改密码方法
   const handleChangePassword = async () => {
     if (!validateChangePasswordForm()) {
       showMessage('请填写正确的表单信息', 'error')
@@ -949,19 +949,55 @@ const updateRetentionDays = async () => {
   }
 
   const deleteAccount = async () => {
-    if (confirm('确定要删除账户吗？此操作将永久删除所有数据且不可恢复！')) {
+    if (!userLoggedIn.value) {
+      showMessage('请先登录才能删除账户', 'warning');
+      return;
+    }
+    const message = '确定要删除账户吗？';
+    const confirmed = await window.confirm(message);
+    if (confirmed) {
+      loading.value = true;
+      let refreshToken = null
+      try {
+        const userString = localStorage.getItem('user');
+        if (userString) {
+          const user = JSON.parse(userString);
+          refreshToken = user.jwt.refresh;
+        }
+      } catch (e) {
+        console.error('解析本地用户信息失败:', e);
+      }
+
+      if (!refreshToken) {
+        showMessage('无法获取登录状态，请重新登录', 'error')
+        return
+      }
+
       try {
         // 调用后端API删除账户
-        // await invoke('delete_user_account')
-        localStorage.removeItem('user')
-        localStorage.removeItem('token')
-        userLoggedIn.value = false
-        userEmail.value = ''
-        showMessage('账户已删除')
-        router.push('/')
+        const apiResponse = await apiService.deleteAccount(refreshToken);
+
+        if (apiResponse.success) {
+          // 清空本地登录状态
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+          userLoggedIn.value = false;
+          userEmail.value = '';
+          Object.assign(userInfo, { username: '', email: '', bio: '' });
+          
+          showMessage('账户已成功删除', 'success');
+          // 删除成功后跳转到主页或登录页
+          //router.push('/');
+        } else {
+          // API 调用失败
+          showMessage(apiResponse.message || '删除账户失败', 'error');
+          console.error('删除账户失败返回信息:', apiResponse.data);
+        }
       } catch (error) {
-        console.error('删除账户失败:', error)
-        showMessage(`删除失败: ${error}`)
+        console.error('删除账户错误:', error);
+        showMessage(`删除失败: ${error.message || '网络错误'}`, 'error');
+      } finally {
+        loading.value = false;
       }
     }
   }
