@@ -441,7 +441,6 @@ const {
   togglePinnedView,
   openSettings,
   handleSearch,
-  handleCategoryChange,
   copyItem,
   toggleFavorite,
   executeDoubleClick,

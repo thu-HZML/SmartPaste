@@ -77,6 +77,7 @@ fn main() {
             // db::search_data,
             db::add_notes_by_id,
             db::filter_data_by_type,
+            db::comprehensive_search,
             db::create_new_folder,
             db::rename_folder,
             db::delete_folder,
