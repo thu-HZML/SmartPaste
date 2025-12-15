@@ -733,8 +733,11 @@
           
           <div class="user-profile">
             <div class="avatar-section">
-              <div class="avatar">👤</div>
-              <button class="btn btn-secondary">更换头像</button>
+              <div class="avatar">
+                <img v-if="userInfo.avatar" :src="userInfo.avatar" alt="用户头像" class="user-avatar-img">
+                <span v-else>👤</span>
+              </div>
+              <button class="btn btn-secondary" @click="changeAvatar">更换头像</button>
             </div>
             
             <div class="user-details">
@@ -1579,6 +1582,17 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   font-size: 32px;
+  overflow: hidden; /* 隐藏超出圆形区域的部分 */
+  position: relative; /* 为绝对定位的图片做准备 */
+  border: 2px solid #e1e8ed;/* 添加边框增强圆形效果 */
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 确保图片覆盖整个容器并保持比例 */
+  object-position: center center; /* 确保图片居中显示 */
+  display: block;
 }
 
 .user-details {

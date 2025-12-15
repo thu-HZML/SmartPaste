@@ -1103,3 +1103,62 @@ pub fn get_utils_dir_path(_app: AppHandle) -> Result<String, String> {
     
     Err("无法获取当前目录路径".to_string())
 }
+
+/**
+ * 【新增命令】读取本地文件并返回 Base64 编码的字符串。
+ * 用于将前端选择的本地图片文件转换为可上传的格式。
+ * @param file_path: String - 文件的绝对路径。
+ * @returns Base64 编码的字符串。
+ */
+#[tauri::command]
+pub async fn read_file_base64(file_path: String) -> Result<String, String> {
+    use std::fs;
+    
+    // 文件 I/O 是阻塞操作，因此使用 spawn_blocking 避免阻塞 Tauri 运行时
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = Path::new(&file_path);
+
+        if !path.exists() {
+            return Err(format!("文件路径不存在: {}", file_path));
+        }
+
+        let mut file = fs::File::open(path).map_err(|e| format!("无法打开文件: {}", e))?;
+        let mut buffer = Vec::new();
+        
+        // 读取文件内容到缓冲区
+        file.read_to_end(&mut buffer).map_err(|e| format!("读取文件内容失败: {}", e))?;
+        
+        // Base64 编码
+        let base64_content = general_purpose::STANDARD.encode(buffer);
+        
+        Ok(base64_content)
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/**
+ * 【新增命令】将配置内容字符串写入本地配置文件。
+ * 用于实现登录成功后从云端同步配置到本地。
+ * @param content: String - 配置文件的内容 (JSON 字符串)。
+ */
+#[tauri::command]
+pub async fn update_local_config_file(content: String) -> Result<(), String> {
+    use std::fs;
+    
+    // 文件 I/O 是阻塞操作
+    tauri::async_runtime::spawn_blocking(move || {
+        let config_path = crate::config::get_config_path(); // 假设 crate::config 模块提供了 get_config_path
+        
+        fs::write(&config_path, content)
+            .map_err(|e| format!("写入本地配置文件失败: {}", e))?;
+        
+        // 【关键】写入新配置后，需要重新加载配置到内存中，以便立即生效
+        let reload_msg = crate::config::reload_config(); 
+        println!("同步配置写入后，配置刷新结果: {}", reload_msg);
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}

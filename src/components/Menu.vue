@@ -3,7 +3,14 @@
     <!-- 用户信息区域 -->
     <div class="flex-row items-center user-section">
       <div class="user-avatar">
-        <UserIcon class="icon-default" />
+        <!-- 如果有用户头像则显示，否则显示默认图标 -->
+        <img 
+          v-if="userAvatar" 
+          :src="userAvatar" 
+          alt="用户头像" 
+          class="avatar-img"
+        >
+        <UserIcon v-else class="icon-default" />
       </div>
       <div class="flex-col user-info">
         <span class="user-name">{{ username }}</span>
@@ -73,7 +80,7 @@ import {
 import { useMenuFunctions, useUsername} from '../composables/Menu'
 
 const currentWindow = getCurrentWindow()
-const { username } = useUsername();
+const { username,userAvatar } = useUsername();
 
 // 使用函数
 const { 
@@ -94,15 +101,16 @@ const {
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
 }
 
 /* 用户信息区域 */
 .user-section {
-  padding: 1rem 1.5rem;
+  padding: 0.3rem 0.3rem;
   background: #f8f9fa;
   border-radius: 0.75rem;
   border: none;
+  margin-bottom: 1rem;
 }
 
 .user-avatar {
@@ -114,6 +122,10 @@ const {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden; /* 关键：隐藏超出部分 */
+  border: 2px solid #dee2e6; /* 添加边框增强圆形效果 */
+  flex-shrink: 0; /* 防止头像容器被压缩 */
+  position: relative; /* 为内部元素定位做准备 */
 }
 
 .user-name {
@@ -121,6 +133,15 @@ const {
   font-weight: 600;
   color: #212529;
   font-family: 'Microsoft YaHei', sans-serif;
+}
+
+/* 头像图片样式  */
+.avatar-img {
+  width: 100%; /* 填满父容器 */
+  height: 100%; 
+  object-fit: cover; 
+  object-position: center center; /* 图片居中显示 */
+  display: block; /* 避免图片下方有间隙 */
 }
 
 /* 菜单行 */
@@ -135,12 +156,12 @@ const {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1rem 0.5rem;
+  padding: 0.2rem 0.25rem;
   border-radius: 0.75rem;
   cursor: pointer;
   transition: all 0.3s ease;
   flex: 1;
-  margin: 0 0.25rem;
+  margin: 0 0.2rem;
   background: #f8f9fa;
   border: none;
   box-shadow: none;
@@ -199,6 +220,26 @@ const {
 
 .menu-item:hover .svg-icon {
   color: #495057;
+}
+
+/* 可以添加悬停效果让头像更有交互性 */
+.user-avatar:hover {
+  transform: scale(1.05);
+  transition: transform 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 如果需要为头像添加光泽效果 */
+.user-avatar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  pointer-events: none;
 }
 
 </style>
