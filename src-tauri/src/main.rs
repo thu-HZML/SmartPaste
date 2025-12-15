@@ -19,7 +19,7 @@ use app_setup::{
     get_all_shortcuts, get_current_shortcut, update_shortcut, AppShortcutManager,
     ClipboardSourceState,
 };
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
@@ -95,6 +95,7 @@ fn main() {
             db::get_all_private_data,
             db::clear_all_private_data,
             db::auto_mark_private_data,
+            db::trigger_cleanup,
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
@@ -191,6 +192,29 @@ fn main() {
             println!("📂 数据库路径设置为: {}", final_db_path.to_string_lossy());
             db::set_db_path(final_db_path);
 
+            // 6.1 执行初始化清理（清除过期数据）
+            if let Some(lock) = config::CONFIG.get() {
+                let retention_days = lock.read().unwrap().retention_days;
+                println!("🧹 执行初始化清理，保留天数: {} 天", retention_days);
+                match db::clear_data_expired(retention_days) {
+                    Ok(deleted) => {
+                        if deleted > 0 {
+                            println!("   ✅ 初始化清理: 删除了 {} 条过期记录", deleted);
+                        } else {
+                            println!("   ✅ 初始化清理: 没有过期数据");
+                        }
+                    }
+                    Err(e) => eprintln!("   ❌ 初始化清理失败: {}", e),
+                }
+            }
+
+            // 6.2 启动后台清理线程（实时监听和定期清理）
+            app_setup::start_cleanup_worker();
+
+            // 7. 打印最终使用的配置路径
+            let current_config_path = config::get_config_path();
+            println!("📄 最终配置文件路径: {}", current_config_path.display());
+          
             // 8. 根据配置自动标记隐私数据
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
@@ -205,10 +229,6 @@ fn main() {
                     Err(e) => eprintln!("❌ 初始化隐私标记失败: {}", e),
                 }
             }
-
-            // 7. 打印最终使用的配置路径
-            let current_config_path = config::get_config_path();
-            println!("📄 最终配置文件路径: {}", current_config_path.display());
 
             // 打印当前配置的存储路径用于验证
             if let Some(lock) = config::CONFIG.get() {
