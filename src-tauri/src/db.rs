@@ -1335,6 +1335,8 @@ pub fn get_icon_data_by_item_id(item_id: &str) -> Result<String, String> {
     Ok(icon_data.unwrap_or_default())
 }
 
+// ----------------------- 隐私数据相关操作 ------------------------
+
 /// 利用备注内容匹配内容是否可能为密码，若匹配则标记或删除为隐私数据。作为 Tauri command 暴露给前端调用。
 /// **匹配关键词**：
 /// - "password"
@@ -1450,14 +1452,6 @@ fn is_valid_luhn(card_number: &str) -> bool {
 #[tauri::command]
 pub fn mark_bank_cards_as_private(to_add: bool) -> Result<usize, String> {
     // 假设 db_path 和 conn 已经初始化并处理错误
-// ----------------------- 扩展功能 ------------------------
-
-/// 按配置中的天数清理过期数据，自动屏蔽未收藏的数据。
-/// # Param
-/// days: u32 - 过期天数
-/// # Returns
-/// Result<usize, String> - 被删除的记录数量，若失败则返回错误信息
-pub fn clear_data_expired(days: u32) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
@@ -1538,17 +1532,51 @@ pub fn clear_data_expired(days: u32) -> Result<usize, String> {
 /// Result<usize, String> - 受影响的行数，若失败则返回错误信息
 #[tauri::command]
 pub fn mark_identity_numbers_as_private(to_add: bool) -> Result<usize, String> {
-    let cutoff_timestamp = chrono::Utc::now().timestamp() - (days as i64 * 86400);
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let rows_deleted = conn
-        .execute(
-            "DELETE FROM data WHERE timestamp < ?1 AND is_favorite = 0",
-            params![cutoff_timestamp],
-        )
+    // 身份证号的正则表达式（简单版本）
+    let id_regex = Regex::new(r"\b\d{15}\b|\b\d{18}\b|\b\d{17}X\b").map_err(|e| e.to_string())?;
+
+    // 查询所有文本类型的数据
+    let mut stmt = conn
+        .prepare("SELECT id, content FROM data WHERE item_type = 'text'")
         .map_err(|e| e.to_string())?;
 
-    Ok(rows_deleted)
+    let clipboard_iter = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut count = 0;
+
+    for item in clipboard_iter {
+        let (id, content) = item.map_err(|e| e.to_string())?;
+        if id_regex.is_match(&content) {
+            if to_add {
+                // 标记为隐私数据，也即添加到private_data表中
+                conn.execute(
+                    "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                // 取消标记为隐私数据
+                conn.execute(
+                    "DELETE FROM private_data WHERE item_id = ?1",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            count += 1;
+        }
+    }
+
+    Ok(count)
 }
+
 
 /// 利用正则表达式匹配内容是否可能为手机号，若匹配则标记为隐私数据。
 /// # Param
@@ -1601,6 +1629,7 @@ pub fn mark_phone_numbers_as_private(to_add: bool) -> Result<usize, String> {
 
     Ok(count)
 }
+
 /// 返回所有被标记为隐私的数据项。作为 Tauri command 暴露给前端调用。
 /// # Returns
 /// String - 包含隐私数据记录的 JSON 字符串，若失败则返回错误信息
@@ -1678,6 +1707,43 @@ pub fn auto_mark_private_data(
     total_count += mark_identity_numbers_as_private(id_number_flag)?;
     total_count += mark_phone_numbers_as_private(phone_number_flag)?;
     Ok(total_count)
+}
+
+// ----------------------- 扩展功能 ------------------------
+
+/// 按配置中的天数清理过期数据，自动屏蔽未收藏的数据。
+/// # Param
+/// days: u32 - 过期天数
+/// # Returns
+/// Result<usize, String> - 被删除的记录数量，若失败则返回错误信息
+pub fn clear_data_expired(days: u32) -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let cutoff_timestamp = chrono::Utc::now().timestamp() - (days as i64 * 86400);
+
+    let rows_deleted = conn
+        .execute(
+            "DELETE FROM data WHERE timestamp < ?1 AND is_favorite = 0",
+            params![cutoff_timestamp],
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows_deleted)
+}
+
+/// 按设定的最大历史记录数量删除多余的数据，自动屏蔽未收藏的数据。
+/// 删除优先级：按照时间戳从旧到新排序，删除最旧的数据。
+/// # Param
+/// max_items: usize - 最大历史记录数量
+/// # Returns
+/// Result<usize, String> - 被删除的记录数量，若失败则返回错误信息
+pub fn enforce_max_history_items(max_items: u32) -> Result<usize, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
     // 计算需要删除的记录数量
     let total_count: u32 = conn
         .query_row("SELECT COUNT(*) FROM data WHERE is_favorite = 0", [], |row| {
@@ -1706,58 +1772,6 @@ pub fn auto_mark_private_data(
         .map_err(|e| e.to_string())?;
 
     Ok(rows_deleted)
-}
-  
-/// 按设定的最大历史记录数量删除多余的数据，自动屏蔽未收藏的数据。
-/// 删除优先级：按照时间戳从旧到新排序，删除最旧的数据。
-/// # Param
-/// max_items: usize - 最大历史记录数量
-/// # Returns
-/// Result<usize, String> - 被删除的记录数量，若失败则返回错误信息
-pub fn enforce_max_history_items(max_items: u32) -> Result<usize, String> {
-    let db_path = get_db_path();
-    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    // 身份证号的正则表达式（简单版本）
-    let id_regex = Regex::new(r"\b\d{15}\b|\b\d{18}\b|\b\d{17}X\b").map_err(|e| e.to_string())?;
-
-    // 查询所有文本类型的数据
-    let mut stmt = conn
-        .prepare("SELECT id, content FROM data WHERE item_type = 'text'")
-        .map_err(|e| e.to_string())?;
-
-    let clipboard_iter = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| e.to_string())?;
-
-    let mut count = 0;
-
-    for item in clipboard_iter {
-        let (id, content) = item.map_err(|e| e.to_string())?;
-        if id_regex.is_match(&content) {
-            if to_add {
-                // 标记为隐私数据，也即添加到private_data表中
-                conn.execute(
-                    "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
-                    params![id],
-                )
-                .map_err(|e| e.to_string())?;
-            } else {
-                // 取消标记为隐私数据
-                conn.execute(
-                    "DELETE FROM private_data WHERE item_id = ?1",
-                    params![id],
-                )
-                .map_err(|e| e.to_string())?;
-            }
-            count += 1;
-        }
-    }
-
-    Ok(count)
 }
 
 /// 设置清理通知 Sender（由 app_setup 调用）
