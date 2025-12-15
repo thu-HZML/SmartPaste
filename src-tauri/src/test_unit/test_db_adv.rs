@@ -2,7 +2,7 @@
 /// 此文件提供高级功能点测试，包括筛选、搜索、收藏状态切换等
 /// 测试使用临时数据库文件，避免污染真实数据
 use super::*;
-use serde_json;
+// use serde_json;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
