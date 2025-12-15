@@ -52,7 +52,6 @@ export function useClipboardApp() {
   const showMultiCopyBtn = ref(false) // 控制复制按钮显示
 
   // 搜索相关变量
-  const searchType = ref('text') // 默认纯文本搜索
   const startTime = ref('')
   const endTime = ref('')
 
@@ -80,47 +79,15 @@ export function useClipboardApp() {
   // 计算属性
   const selectedItemsCount = computed(() => selectedItems.value.length)
 
-  // 计算属性：根据搜索类型动态改变placeholder
-  const searchPlaceholder = computed(() => {
-    switch (searchType.value) {
-      case 'text':
-        return '搜索剪贴板内容...'
-      case 'ocr':
-        return '搜索图片OCR文字内容...'
-      case 'path':
-        return '搜索文件路径...'
-      case 'time':
-        return '请选择时间区间...'
-      default:
-        return '搜索剪贴板内容...'
-    }
-  })
-
   // 计算属性：规范化路径
   const normalizedPath = computed(() => {
     if (!settings.storage_path) return '未设置路径'
     return settings.storage_path.replace(/\//g, '\\') + '\\'
   })
 
-  // 监听搜索类型变化
-  watch(searchType, (newType) => {
-    // 切换搜索类型时清空搜索框
-    searchQuery.value = ''
-    // 如果是时间搜索，初始化时间
-    if (newType === 'time') {
-      const now = new Date()
-      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      startTime.value = formatDateTimeLocal(oneWeekAgo)
-      endTime.value = formatDateTimeLocal(now)
-    } else {
-      startTime.value = ''
-      endTime.value = ''
-    }
-  })
-
   // 监听时间变化
   watch([startTime, endTime], async() => {
-    if (searchType.value === 'time' && startTime.value && endTime.value) {
+    if (startTime.value && endTime.value) {
       await handleSearch('')
     }
   })
@@ -147,7 +114,7 @@ export function useClipboardApp() {
     }
 
     // 空查询立即返回
-    if (query.trim() === '' && searchType.value !== 'time') {
+    if (query.trim() === '') {
       await getAllHistory()
       searchLoading.value = false
       return
@@ -192,42 +159,17 @@ export function useClipboardApp() {
   const performSearch = async (query) => {
     try {
       let result = ''
-      
-      switch (searchType.value) {
-        case 'text':
-          result = await invoke('search_data', { 
-            searchType: 'text',
-            query: query.trim() 
-          })
-          break
-        case 'ocr':
-          result = await invoke('search_data_by_ocr_text', { 
-            query: query.trim() 
-          })
-          break
-        case 'path':
-          result = await invoke('search_data', { 
-            searchType: 'path',
-            query: query.trim() 
-          })
-          break
-        case 'time':
-          if (startTime.value && endTime.value) {
-            const startTimestamp = new Date(startTime.value).getTime()
-            const endTimestamp = new Date(endTime.value).getTime()
-            const timeRangeQuery = `${startTimestamp},${endTimestamp}`
-            result = await invoke('search_data', { 
-              searchType: 'timestamp',
-              query: timeRangeQuery
-            })
-          } else {
-            result = '[]'
-          }
-          break
-        default:
-          result = await invoke('search_text_content', { 
-            query: query.trim() 
-          })
+
+      if (startTime.value && endTime.value) {
+        const startTimestamp = new Date(startTime.value).getTime()
+        const endTimestamp = new Date(endTime.value).getTime()
+        const timeRangeQuery = `${startTimestamp},${endTimestamp}`
+        result = await invoke('search_data', { 
+          searchType: 'timestamp',
+          query: timeRangeQuery
+        })
+      } else {
+        result = '[]'
       }
       
       filteredHistory.value = JSON.parse(result)
@@ -1230,7 +1172,6 @@ export function useClipboardApp() {
     multiSelectMode,
     selectedItems,
     showMultiCopyBtn,
-    searchType,
     startTime,
     endTime,
     categories,
@@ -1241,7 +1182,6 @@ export function useClipboardApp() {
 
     // 计算属性
     selectedItemsCount,
-    searchPlaceholder,
     normalizedPath,
     settings,
 
