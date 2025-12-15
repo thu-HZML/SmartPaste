@@ -767,7 +767,10 @@
               <template v-if="userLoggedIn">
                 <button class="btn btn-secondary" @click.prevent="logout">退出登录</button>
                 <button class="btn btn-secondary" @click="openChangePasswordDialog" :disabled="!userLoggedIn">修改密码</button>
-                <button class="btn btn-danger" @click="deleteAccount">删除账户</button>
+                <button class="btn btn-danger" @click="deleteAccount" :disabled="loading">
+                  <span v-if="loading">处理中...</span>
+                  <span v-else>删除账户</span>
+                </button>
               </template>
               
               <template v-else>
