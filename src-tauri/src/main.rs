@@ -74,7 +74,7 @@ fn main() {
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
             db::get_favorite_data_count,
-            db::search_data,
+            // db::search_data,
             db::add_notes_by_id,
             db::filter_data_by_type,
             db::create_new_folder,
