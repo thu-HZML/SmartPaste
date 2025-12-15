@@ -622,3 +622,64 @@ fn test_update_data_path() {
     // 5. 验证未受影响的项目保持原样
     assert_eq!(get_content(&text_match_prefix.id), "/old/root/note.txt");
 }
+
+#[test]
+fn test_comprehensive_search_with_ocr() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据
+    let item_text = make_item("search-text-1", "text", "hello world content");
+    let item_img_ocr = make_item("search-img-ocr", "image", "/tmp/image_ocr.png");
+    let item_note = make_item("search-note-1", "text", "some content");
+
+    insert_received_db_data(item_text.clone()).expect("insert text failed");
+    insert_received_db_data(item_img_ocr.clone()).expect("insert img failed");
+    insert_received_db_data(item_note.clone()).expect("insert note failed");
+
+    // 2. 添加 Note 和 OCR
+    add_notes_by_id(&item_note.id, "important note keyword").expect("add note failed");
+    insert_ocr_text(&item_img_ocr.id, "detected ocr keyword inside image")
+        .expect("insert ocr failed");
+
+    // 3. 测试搜索 Content
+    let res_content =
+        comprehensive_search("world", None, None, None).expect("search content failed");
+    let items_content: Vec<ClipboardItem> =
+        serde_json::from_str(&res_content).expect("parse content res");
+    assert!(items_content.iter().any(|i| i.id == item_text.id));
+
+    // 4. 测试搜索 Note
+    let res_note = comprehensive_search("important", None, None, None).expect("search note failed");
+    let items_note: Vec<ClipboardItem> = serde_json::from_str(&res_note).expect("parse note res");
+    assert!(items_note.iter().any(|i| i.id == item_note.id));
+
+    // 5. 测试搜索 OCR (新功能验证)
+    let res_ocr = comprehensive_search("detected", None, None, None).expect("search ocr failed");
+    let items_ocr: Vec<ClipboardItem> = serde_json::from_str(&res_ocr).expect("parse ocr res");
+    assert_eq!(items_ocr.len(), 1, "should find exactly one item by ocr");
+    assert_eq!(
+        items_ocr[0].id, item_img_ocr.id,
+        "should find the image with ocr"
+    );
+
+    // 6. 测试组合搜索 (OCR + Type)
+    let res_combo =
+        comprehensive_search("keyword", Some("image"), None, None).expect("search combo failed");
+    let items_combo: Vec<ClipboardItem> =
+        serde_json::from_str(&res_combo).expect("parse combo res");
+    assert_eq!(items_combo.len(), 1);
+    assert_eq!(items_combo[0].id, item_img_ocr.id);
+
+    // 7. 测试组合搜索 (OCR + Wrong Type)
+    let res_wrong_type = comprehensive_search("detected", Some("text"), None, None)
+        .expect("search wrong type failed");
+    let items_wrong: Vec<ClipboardItem> =
+        serde_json::from_str(&res_wrong_type).expect("parse wrong type res");
+    assert_eq!(
+        items_wrong.len(),
+        0,
+        "should not find image when filtering by text"
+    );
+}
