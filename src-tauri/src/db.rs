@@ -959,6 +959,68 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
     clipboard_items_to_json(results)
 }
 
+/// 综合搜索函数，根据传入的关键词和类型进行搜索。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// query: &str - 搜索关键词，可以在 content/notes/ocr_text 字段中进行模糊匹配
+/// item_type: Option<&str> - 可选的数据类型过滤（如 "text", "image" 等）
+/// start_timestamp: Option<i64> - 可选的起始时间戳过滤
+/// end_timestamp: Option<i64> - 可选的结束时间戳过滤
+/// # Returns
+/// String - 包含匹配数据记录的 JSON 字符串，或者错误信息
+#[tauri::command]
+pub fn comprehensive_search(
+    query: &str,
+    item_type: Option<&str>,
+    start_timestamp: Option<i64>,
+    end_timestamp: Option<i64>,
+) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut sql = String::from(
+        "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
+         FROM data 
+         LEFT JOIN extended_data ON data.id = extended_data.item_id
+         WHERE (content LIKE ?1 OR notes LIKE ?1 OR ocr_text LIKE ?1)",
+    );
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(format!("%{}%", query))];
+
+    if let Some(t) = item_type {
+        sql.push_str(" AND item_type = ?2");
+        params.push(Box::new(t));
+    }
+
+    if let (Some(start), Some(end)) = (start_timestamp, end_timestamp) {
+        sql.push_str(" AND timestamp BETWEEN ?3 AND ?4");
+        params.push(Box::new(start));
+        params.push(Box::new(end));
+    }
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+
+    let clipboard_iter = stmt
+        .query_map(rusqlite::params_from_iter(params.iter().map(|p| &**p)), |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                item_type: row.get(1)?,
+                content: row.get(2)?,
+                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                is_favorite: row.get::<_, i32>(4)? != 0,
+                notes: row.get(5)?,
+                timestamp: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for item in clipboard_iter {
+        results.push(item.map_err(|e| e.to_string())?);
+    }
+
+    clipboard_items_to_json(results)
+}
+
 // ----------------------- 收藏夹相关操作 ------------------------
 
 /// 新建收藏夹。作为 Tauri command 暴露给前端调用。
