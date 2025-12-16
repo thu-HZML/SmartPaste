@@ -289,13 +289,23 @@ export function useClipboardApp() {
   // 删除所有历史记录
   const deleteAllHistory = async () => {
     try {
-      if (settings.keep_favorites_on_delete) {
-        await invoke('delete_unfavorited_data')
-        showMessage('已清除所有未收藏记录')
-      } else {
-        await invoke('delete_all_data')
-        showMessage('已清除所有历史记录')
+      let currentCategory = activeCategory.value
+      if (currentCategory === 'all') {
+        currentCategory = null
       }
+      else if (currentCategory === 'favorite'){
+        return
+      }
+      else if (currentCategory === 'folder') {
+        currentCategory = currentFolder.value.id
+      }
+
+      await invoke('delete_all_data', {
+        itemType: currentCategory,
+        keepFavorites: settings.keep_favorites_on_delete
+      })
+
+      showMessage('已清除记录')
       handleSearch()
     } catch(err) {
       console.error('清除历史记录失败:', err)
