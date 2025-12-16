@@ -31,12 +31,15 @@ export function useDesktopPet() {
   const animationFrame = ref('background') // 当前动画帧
   const currentKey = ref('') // 当前按下的按键
   const currentAnimationState = ref(AnimationState.IDLE)
-  const settingsStore = useSettingsStore()
+  const settings = useSettingsStore().settings
 
   // 全局监听器
   let unlistenKeyButton = null
   let unlistenMouseButton = null
   let unlistenMouseMove = null
+
+  // 添加剪贴板监听器的取消函数引用
+  const unlistenClipboardUpdated = ref(null)
 
   // 可用按键集合
   const availableKeyImages = new Set([
@@ -81,6 +84,16 @@ export function useDesktopPet() {
     }
     return true
   })
+
+  // 监听settings.ai_enabled的变化
+  watch(
+    () => settings.ai_enabled,
+    (newValue, oldValue) => {
+      console.log(`AI功能设置变化: ${oldValue} -> ${newValue}`)
+      // 当ai_enabled变化时重新设置监听器
+      setupClipboardRelay()
+    }
+  )
 
   const handlePointerDown = async (event) => {
     event.stopPropagation()
@@ -332,21 +345,36 @@ export function useDesktopPet() {
 
   // 主窗口监听剪贴板事件
   const setupClipboardRelay = async () => {
-    const unlisten = await listen('clipboard-updated', async (event) => {
-      console.log('接受后端更新消息')
+    // 先移除现有的监听器
+    if (unlistenClipboardUpdated.value) {
+      unlistenClipboardUpdated.value()
+      unlistenClipboardUpdated.value = null
+    }
 
-      let isAiEnabled = await invoke('get_config_item', {
-        key: 'ai_enabled'
-      })
-      if (isAiEnabled.value) {
+    // 只有当ai_enabled为true时才设置监听器
+    if (settings.ai_enabled) {
+      console.log('AI功能已启用，设置剪贴板监听器')
+      const unlisten = await listen('clipboard-updated', async (event) => {
+        console.log('接受后端更新消息')
+
         // 打开AI窗口
         await toggleAiWindow()
-      } else {
-        console.log('ai功能禁用')
-      }
-    })
-    
-    return unlisten
+      })
+      
+      unlistenClipboardUpdated.value = unlisten
+      console.log('剪贴板监听器已设置')
+    } else {
+      console.log('AI功能已禁用，不设置剪贴板监听器')
+    }
+  }
+
+  // 移除剪贴板监听器
+  const removeClipboardRelay = () => {
+    if (unlistenClipboardUpdated.value) {
+      unlistenClipboardUpdated.value()
+      unlistenClipboardUpdated.value = null
+      console.log('剪贴板监听器已移除')
+    }
   }
 
   onMounted(async () => {
@@ -400,6 +428,7 @@ export function useDesktopPet() {
     hasClipboardWindow,
     hasMenuWindow,
     isDragging,
+    unlistenClipboardUpdated,
 
     // 计算属性
     petImagePath,
@@ -412,6 +441,8 @@ export function useDesktopPet() {
     handlePointerDown,
     handleLeftClick,
     handleContextMenu,
-    animationFrame
+    animationFrame,
+    setupClipboardRelay,
+    removeClipboardRelay
   }
 }

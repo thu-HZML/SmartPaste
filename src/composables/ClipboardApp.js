@@ -1121,6 +1121,14 @@ export function useClipboardApp() {
   }
   
   let unlistenShortcutEvent;
+  // 监听settings.ai_enabled的变化
+  watch(
+    () => settings.ai_enabled,
+    (newValue, oldValue) => {
+      console.log(`AI功能设置变化: ${oldValue} -> ${newValue}`)
+      // 当ai_enabled变化时重新设置监听器
+    }
+  )
   // 生命周期
   onMounted(async () => {
 
