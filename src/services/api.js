@@ -107,6 +107,7 @@ class ApiService {
       };
     }
   }
+
   // 更新用户资料
   async updateProfile(data) {
     let result = null;
@@ -159,6 +160,7 @@ class ApiService {
     }
   }
 
+  // 修改密码
   async changePassword(data, refreshToken) { 
     let result = null;
 
@@ -467,6 +469,62 @@ class ApiService {
         // 尝试解析JSON响应以获取可能的错误信息
         try {
             result = await response.json();
+        } catch (e) {
+             // 忽略没有 JSON body 的情况
+        }
+        
+        // 尝试从API响应的JSON中获取错误信息
+        const errorMessage = (result && result.detail) ? result.detail : `配置下载失败，状态码: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+      
+      // 成功 (200 OK)，获取配置内容 (文本格式，因为是config.json)
+      const configContent = await response.text();
+
+      return {
+        success: true,
+        message: '配置下载成功',
+        data: configContent
+      };
+
+    } catch (error) {
+      console.error('下载配置错误:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '网络错误',
+        data: null
+      };
+    }
+  }
+
+  /**
+   * 进行ai对话。
+   * 接口: POST /ai/chat/
+   * @returns {Promise<{success: boolean, message: string, data: string|null}>} data 是配置文件的内容字符串。
+   */
+  async aiChat(chatBody) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error('未登录或Token缺失');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/ai/chat/`, {
+        method: 'POST', // 使用 POST 方法调用api
+        headers: {
+          'Authorization': `Token ${token}`, // 使用Token认证
+        },
+        body: chatBody
+      });
+      
+      // 检查响应状态是否成功 (200 OK)
+      if (!response.ok) {
+        // 尝试解析JSON响应以获取可能的错误信息
+        try {
+            result = await response.json();
+            console.log('ai API返回响应：', result)
         } catch (e) {
              // 忽略没有 JSON body 的情况
         }

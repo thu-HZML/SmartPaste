@@ -70,6 +70,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { updateAiWindowHeight } from '../utils/actions.js'
+import { apiService } from '../services/api'
 
 // Props
 const props = defineProps({
@@ -231,13 +232,18 @@ const executeAI = async (action) => {
   isTransparent.value = false
   
   try {
-    // 准备请求数据
-    const requestData = {
-      action: action,
-      content: props.clipboardContent.substring(0, maxContentLength),
-      content_type: props.clipboardType
+    const response = await apiService.aiChat({
+      type: 'text',
+      user_quest: '请帮我翻译成中文',
+      file_path: null,
+      content: clipboardContent,
+      file: null
+    })
+
+    if (response.success) {
+
     }
-    
+
     // 调用后端API
     //const response = await invoke('call_ai_api', requestData)
     
