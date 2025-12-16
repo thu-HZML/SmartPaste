@@ -43,12 +43,10 @@
       <button 
         v-for="action in aiActions" 
         :key="action.id"
-        class="ai-action-btn"
-        :class="{ 'loading': loading && currentAction === action.id }"
+        :class="['category-btn', { active: currentAction === action.id }]"
         :disabled="loading || !clipboardContent"
         @click="executeAI(action.id)"
       >
-        <span class="action-icon">{{ action.icon }}</span>
         <span class="action-text">{{ action.label }}</span>
         <span v-if="loading && currentAction === action.id" class="action-loading">
           <svg class="spinner" viewBox="0 0 50 50">
@@ -118,30 +116,20 @@ const maxContentLength = 5000 // 最大处理内容长度
 
 // AI操作列表
 const aiActions = ref([
-  { id: 'question', label: '提问', icon: '❓' },
-  { id: 'summarize', label: '总结', icon: '📝' },
-  { id: 'translate', label: '翻译', icon: '🌐' },
-  { id: 'search', label: '搜索', icon: '🔍' }
+  { id: 'question', label: '提问' },
+  { id: 'summarize', label: '总结' },
+  { id: 'translate', label: '翻译' },
+  { id: 'search', label: '搜索' }
 ])
-
 /*
-// 监听显示状态变化
-watch(() => props.showAI, (show) => {
-  if (show) {
-    startAutoCloseTimer()
-  } else {
-    clearTimers()
-    resetAI()
-  }
-})*/
-
 // 监听内容变化，更新窗口高度
 watch([responseText, hasResponse], async () => {
+  console.log('内容发生变化')
   updateWindowHeight()
 })
-
+*/
 // 更新窗口高度
-const updateWindowHeight = () => {  
+const updateWindowHeight = async () => {  
   // 获取组件的实际高度
   const newHeight = aiAssistantRef.value.offsetHeight + 2
   
@@ -153,7 +141,7 @@ const updateWindowHeight = () => {
   })
   
   // 可以在这里更新窗口大小
-  updateWindowSize(newHeight)
+  await updateWindowSize(newHeight)
 }
 
 // 更新窗口大小
@@ -163,12 +151,6 @@ const updateWindowSize = async (height) => {
     // 获取当前窗口大小
     const currentSize = await currentWindow.innerSize()
     console.log('当前窗口大小:', currentSize)
-    // 设置新高度
-    await currentWindow.setSize({
-      type: 'Logical',
-      width: currentSize.width / scaleFactor,
-      height: height
-    })
 
     // 获取主窗口位置，调整AI窗口位置
     const allWindows = await WebviewWindow.getAll()
@@ -180,15 +162,23 @@ const updateWindowSize = async (height) => {
     y: Math.round(physicalPosition.y / scaleFactor)
     }
 
-    const newX = mainWindowPosition.x - 250
+    const newX = mainWindowPosition.x - currentSize.width / scaleFactor + 140
     const newY = mainWindowPosition.y - height
+
     await currentWindow.setPosition(new LogicalPosition(newX, newY))
-    console.log('更新ai窗口位置:', { newX, newY })
+    console.log('设置新位置')
+    // 设置新高度
+    await currentWindow.setSize({
+      type: 'Logical',
+      width: currentSize.width / scaleFactor,
+      height: height
+    })
+    console.log('设置新高度')
 
     const windowHeight = {
       height: height,
     }
-    
+
     localStorage.setItem('aiWindowHeight', JSON.stringify(windowHeight))
   } catch (error) {
     console.error('更新窗口大小失败:', error)
@@ -340,19 +330,20 @@ onMounted( async () => {
   clipboardType.value = latestData.item_type
 
   // 创建 ResizeObserver 监听元素尺寸变化
-  resizeObserver = new ResizeObserver((entries) => {
+  resizeObserver = new ResizeObserver( async (entries) => {
     for (let entry of entries) {
       const newHeight = entry.contentRect.height + 2
       if (newHeight === windowHeight.value) continue
       windowHeight.value = newHeight
-      console.log('元素尺寸变化，新高度:', newHeight)
-      updateWindowSize(newHeight)
+      console.log('元素尺寸变化，新高度:', newHeight, '被观察的组件:', entry)
+      await updateWindowSize(newHeight)
     }
   })
   
   // 开始观察
   if (aiAssistantRef.value) {
     resizeObserver.observe(aiAssistantRef.value)
+    console.log('正在观察的组件：', aiAssistantRef.value)
   }
 })
 
@@ -473,39 +464,36 @@ defineExpose({
   grid-template-columns: repeat(4, 1fr);
 }
 
-.ai-action-btn {
+.category-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 12px 8px;
-  border: 1px solid #e1e8ed;
+  border: none;
   border-radius: 8px;
   background: white;
-  color: #333;
-  font-size: 13px;
+  color: #666;
+  font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
-  position: relative;
 }
 
-.ai-action-btn:hover:not(:disabled) {
-  border-color: #3498db;
-  background: #f0f7ff;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+.category-btn:hover {
+  background: #e4edfd;
 }
 
-.ai-action-btn:active:not(:disabled) {
-  transform: translateY(0);
+.category-btn.active {
+  background: #e4edfd;
+  color: #416afe;
 }
 
-.ai-action-btn:disabled {
+.category-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.ai-action-btn.loading {
+.category-btn.loading {
   opacity: 0.7;
 }
 

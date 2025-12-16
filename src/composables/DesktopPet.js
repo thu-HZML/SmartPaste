@@ -1,9 +1,8 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { 
-  windowInstances, 
   updateMainWindowPosition, 
   toggleMenuWindow,
   updateMenuWindowPosition,
@@ -14,9 +13,9 @@ import {
 import { 
   AnimationManager, 
   AnimationState, 
-  getAnimationForMouse,
 } from '../utils/animations.js'
 import live2d from '../utils/live2dManager.js'
+import { useSettingsStore } from '../stores/settings'
 
 export function useDesktopPet() {
   const isHovering = ref(false)
@@ -32,11 +31,16 @@ export function useDesktopPet() {
   const animationFrame = ref('background') // 当前动画帧
   const currentKey = ref('') // 当前按下的按键
   const currentAnimationState = ref(AnimationState.IDLE)
+  const settings = useSettingsStore().settings
 
   // 全局监听器
   let unlistenKeyButton = null
   let unlistenMouseButton = null
   let unlistenMouseMove = null
+  let unlistenAiEnabledChanged = null
+
+  // 添加剪贴板监听器的取消函数引用
+  const unlistenClipboardUpdated = ref(null)
 
   // 可用按键集合
   const availableKeyImages = new Set([
@@ -81,6 +85,16 @@ export function useDesktopPet() {
     }
     return true
   })
+
+  // 监听settings.ai_enabled的变化
+  watch(
+    () => settings.ai_enabled,
+    (newValue, oldValue) => {
+      console.log(`AI功能设置变化: ${oldValue} -> ${newValue}`)
+      // 当ai_enabled变化时重新设置监听器
+      setupClipboardRelay()
+    }
+  )
 
   const handlePointerDown = async (event) => {
     event.stopPropagation()
@@ -251,6 +265,15 @@ export function useDesktopPet() {
         const { x, y, raw_x, raw_y } = event.payload;
         handleGlobalMouseMove( x, y )
       })
+
+      // 监听 AI 设置变更事件
+      unlistenAiEnabledChanged = await listen('ai-enabled-changed', (event) => {
+        const { enabled } = event.payload
+        console.log(`📡 收到 ai_enabled 变更事件: ${enabled}`)
+        
+        // 直接更新 settings 的值
+        settings.ai_enabled = enabled
+      })
     } catch (error) {
       console.error('设置全局监听器失败:', error)
     }
@@ -332,14 +355,36 @@ export function useDesktopPet() {
 
   // 主窗口监听剪贴板事件
   const setupClipboardRelay = async () => {
-    const unlisten = await listen('clipboard-updated', async (event) => {
-      console.log('接受后端更新消息')
+    // 先移除现有的监听器
+    if (unlistenClipboardUpdated.value) {
+      unlistenClipboardUpdated.value()
+      unlistenClipboardUpdated.value = null
+    }
 
-      // 打开AI窗口
-      await toggleAiWindow()
-    })
-    
-    return unlisten
+    // 只有当ai_enabled为true时才设置监听器
+    if (settings.ai_enabled) {
+      console.log('AI功能已启用，设置剪贴板监听器')
+      const unlisten = await listen('clipboard-updated', async (event) => {
+        console.log('接受后端更新消息')
+
+        // 打开AI窗口
+        await toggleAiWindow()
+      })
+      
+      unlistenClipboardUpdated.value = unlisten
+      console.log('剪贴板监听器已设置')
+    } else {
+      console.log('AI功能已禁用，不设置剪贴板监听器')
+    }
+  }
+
+  // 移除剪贴板监听器
+  const removeClipboardRelay = () => {
+    if (unlistenClipboardUpdated.value) {
+      unlistenClipboardUpdated.value()
+      unlistenClipboardUpdated.value = null
+      console.log('剪贴板监听器已移除')
+    }
   }
 
   onMounted(async () => {
@@ -385,6 +430,9 @@ export function useDesktopPet() {
     unlistenKeyButton()
     unlistenMouseButton()
     unlistenMouseMove()
+    unlistenAiEnabledChanged()
+
+    removeClipboardRelay()
   })
 
   return {
@@ -393,6 +441,7 @@ export function useDesktopPet() {
     hasClipboardWindow,
     hasMenuWindow,
     isDragging,
+    unlistenClipboardUpdated,
 
     // 计算属性
     petImagePath,
@@ -405,6 +454,8 @@ export function useDesktopPet() {
     handlePointerDown,
     handleLeftClick,
     handleContextMenu,
-    animationFrame
+    animationFrame,
+    setupClipboardRelay,
+    removeClipboardRelay
   }
 }

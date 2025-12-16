@@ -136,13 +136,10 @@ export async function updateMenuWindowPosition() {
     const { x, y } = mainWindowPosition
     const newX = x + 150
     const newY = y
-    
-    console.log('📱 更新菜单窗口位置:', { newX, newY, mainWindowPosition })
 
     const [windowId, window] = menuWindow
     try {
       await window.setPosition(new LogicalPosition(newX, newY))
-      console.log('更新菜单窗口位置:', { newX, newY })
     } catch (error) {
       console.error('更新菜单窗口位置失败:', error)
     }
@@ -572,13 +569,10 @@ export async function updateAiWindowPosition() {
     const { x, y } = mainWindowPosition
     const newX = x - 250
     const newY = y - aiAgentWindowHeight
-    
-    console.log('📱 更新ai窗口位置:', { newX, newY, mainWindowPosition })
 
     const [windowId, window] = aiWindow
     try {
       await window.setPosition(new LogicalPosition(newX, newY))
-      console.log('更新ai窗口位置:', { newX, newY })
     } catch (error) {
       console.error('更新ai窗口位置失败:', error)
     }

@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
+import { emit } from '@tauri-apps/api/event'
 import { apiService,ensureAbsoluteAvatarUrl } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import { loadUsername } from './Menu'
@@ -730,6 +731,14 @@ const updateRetentionDays = async () => {
       settings[key] = value
       await invoke('set_config_item', { key, value })
       showMessage('设置已更新')
+
+      // 如果更新的是 ai_enabled，发送事件到主窗口
+      if (key === 'ai_enabled') {
+        await emit('ai-enabled-changed', { 
+          enabled: value 
+        })
+        console.log(`📡 发送 ai_enabled 变更事件: ${value}`)
+      }
     } catch (error) {
       console.error(`设置 ${key} 失败:`, error)
       settings[key] = oldValue
