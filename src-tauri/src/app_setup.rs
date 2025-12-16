@@ -1,5 +1,5 @@
 use crate::clipboard::ClipboardItem;
-use crate::config::{self, CONFIG};
+use crate::config::{self, get_config_item, CONFIG};
 use crate::db;
 use crate::ocr;
 use crate::utils;
@@ -800,11 +800,39 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             }
                         };
                         if can_insert {
-                            if let Err(e) = db::insert_received_db_data(new_item) {
+                            if let Err(e) = db::insert_received_db_data(new_item.clone()) {
                                 eprintln!("❌ 保存文本数据到数据库失败: {:?}", e);
                             } else {
+                                // 插入成功，通知前端
                                 if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.emit("clipboard-updated", "");
+                                }
+                                // 根据新插入的数据，以及目前的配置项，判断是否需要标记为隐私
+                                let is_filter_password = get_config_item("filter_passwords")
+                                    .ok()
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                let is_filter_bankcard = get_config_item("filter_bank_cards")
+                                    .ok()
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                let is_filter_id_card = get_config_item("filter_id_cards")
+                                    .ok()
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                let is_filter_phone_number =
+                                    get_config_item("filter_phone_numbers")
+                                        .ok()
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                if let Err(e) = db::check_and_mark_private_item(
+                                    new_item.clone(),
+                                    is_filter_password,
+                                    is_filter_bankcard,
+                                    is_filter_id_card,
+                                    is_filter_phone_number,
+                                ) {
+                                    eprintln!("❌ 检查隐私数据失败: {:?}", e);
                                 }
                             }
                         } else {

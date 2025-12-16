@@ -1714,45 +1714,6 @@ pub fn mark_phone_numbers_as_private(to_add: bool) -> Result<usize, String> {
     Ok(count)
 }
 
-// 返回所有被标记为隐私的数据项。作为 Tauri command 暴露给前端调用。
-// # Returns
-// String - 包含隐私数据记录的 JSON 字符串，若失败则返回错误信息
-// #[tauri::command]
-// pub fn get_all_private_data() -> Result<String, String> {
-//     let db_path = get_db_path();
-//     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
-//     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-//     let mut stmt = conn
-//         .prepare(
-//             "SELECT d.id, d.item_type, d.content, d.size, d.is_favorite, d.notes, d.timestamp
-//              FROM data d
-//              JOIN private_data pd ON d.id = pd.item_id",
-//         )
-//         .map_err(|e| e.to_string())?;
-
-//     let clipboard_iter = stmt
-//         .query_map([], |row| {
-//             Ok(ClipboardItem {
-//                 id: row.get(0)?,
-//                 item_type: row.get(1)?,
-//                 content: row.get(2)?,
-//                 size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
-//                 is_favorite: row.get::<_, i32>(4)? != 0,
-//                 notes: row.get(5)?,
-//                 timestamp: row.get(6)?,
-//             })
-//         })
-//         .map_err(|e| e.to_string())?;
-
-//     let mut results = Vec::new();
-//     for item in clipboard_iter {
-//         results.push(item.map_err(|e| e.to_string())?);
-//     }
-
-//     clipboard_items_to_json(results)
-// }
-
 /// 清除所有隐私数据。作为 Tauri command 暴露给前端调用。
 /// # Returns
 /// Result<usize, String> - 受影响的行数，若失败则返回错误信息
@@ -1791,6 +1752,114 @@ pub fn auto_mark_private_data(
     total_count += mark_identity_numbers_as_private(id_number_flag)?;
     total_count += mark_phone_numbers_as_private(phone_number_flag)?;
     Ok(total_count)
+}
+
+/// 检查单个数据项是否应标记为隐私，并更新数据库。
+/// 逻辑与 auto_mark_private_data 一致：
+/// - 若匹配且对应 flag 为 true，则标记为隐私（插入 private_data）。
+/// - 若匹配且对应 flag 为 false，则取消标记（从 private_data 删除）。
+/// - 若不匹配，则不进行操作（保留原有状态）。
+pub fn check_and_mark_private_item(
+    item: ClipboardItem,
+    password_flag: bool,
+    bank_card_flag: bool,
+    id_number_flag: bool,
+    phone_number_flag: bool,
+) -> Result<bool, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    // 1. Password Check
+    let keywords = [
+        "password", "密码", "pwd", "pass", "secret", "key", "token",
+        "credential", "login", "auth", "authentication",
+    ];
+    let pattern = keywords
+        .iter()
+        .map(|kw| {
+            if kw.chars().all(|c| c.is_ascii()) {
+                format!(r"(?i)(?-u:\b){}(?-u:\b)", regex::escape(kw))
+            } else {
+                format!(r"(?i){}", regex::escape(kw))
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("|");
+    let pwd_regex = Regex::new(&pattern).map_err(|e| e.to_string())?;
+
+    if pwd_regex.is_match(&item.notes) {
+        if password_flag {
+            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
+                .map_err(|e| e.to_string())?;
+        } else {
+            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // 2. Bank Card Check
+    let pan_regex = Regex::new(r"(?x)
+        \b
+        (?:
+            4\d{3}[\s-]?\d{4}[\s-]?\d{4}(?:[\s-]?\d{4}(?:[\s-]?\d{3})?)? |
+            (5[1-5]|222[1-9]|22[3-9]|2[3-6]|27[0-2])\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4} |
+            3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5} |
+            (3(?:0[0-5]|[689])|6(?:011|5\d{2}|4[4-9]\d{1}))\d{10,15}
+        )
+        \b
+    ").map_err(|e| e.to_string())?;
+
+    let mut is_bank_card = false;
+    for capture in pan_regex.captures_iter(&item.content) {
+        if is_valid_luhn(&capture[0]) {
+            is_bank_card = true;
+            break;
+        }
+    }
+
+    if is_bank_card {
+        if bank_card_flag {
+            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
+                .map_err(|e| e.to_string())?;
+        } else {
+            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // 3. ID Number Check
+    let id_regex = Regex::new(r"\b\d{15}\b|\b\d{18}\b|\b\d{17}X\b").map_err(|e| e.to_string())?;
+    if id_regex.is_match(&item.content) {
+        if id_number_flag {
+            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
+                .map_err(|e| e.to_string())?;
+        } else {
+            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // 4. Phone Number Check
+    let phone_regex = Regex::new(r"\b1[3-9]\d{9}\b").map_err(|e| e.to_string())?;
+    if phone_regex.is_match(&item.content) {
+        if phone_number_flag {
+            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
+                .map_err(|e| e.to_string())?;
+        } else {
+            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Check final status
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM private_data WHERE item_id = ?1",
+        params![item.id],
+        |row| row.get(0)
+    ).unwrap_or(0);
+
+    Ok(count > 0)
 }
 
 // ----------------------- 扩展功能 ------------------------
