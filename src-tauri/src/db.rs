@@ -1444,7 +1444,14 @@ pub fn mark_passwords_as_private(to_add : bool) -> Result<usize, String> {
 
     let pattern = keywords
         .iter()
-        .map(|kw| format!(r"(?i)\b{}\b", regex::escape(kw))) // 使用 \b 确保是完整单词匹配
+        .map(|kw| {
+            if kw.chars().all(|c| c.is_ascii()) {
+                format!(r"(?i)\b{}\b", regex::escape(kw))
+            } else {
+                // 对于中文等非 ASCII 关键词，不使用 \b 边界，以便匹配 "登录密码" 等连词情况
+                format!(r"(?i){}", regex::escape(kw))
+            }
+        })
         .collect::<Vec<String>>()
         .join("|");
 

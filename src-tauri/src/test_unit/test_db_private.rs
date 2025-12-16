@@ -75,8 +75,8 @@ fn test_mark_passwords() {
     let item3 = make_item("pw-3", "Hello world", "Just a note");
     // 匹配其他关键词 (login) - 移至 notes
     let item4 = make_item("pw-4", "some content", "Login credentials for site");
-    // 匹配中文notes - 注意：正则使用 \b 边界，中文前后通常需要分隔符才能匹配 \b
-    let item5 = make_item("pw-5", "普通文本", "这是一个 密码");
+    // 匹配中文notes - 中文不再强制要求 \b 边界
+    let item5 = make_item("pw-5", "普通文本", "这是一个密码");
 
     insert_received_db_data(item1.clone()).unwrap();
     insert_received_db_data(item2.clone()).unwrap();
