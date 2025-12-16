@@ -964,6 +964,9 @@ pub fn comprehensive_search(
             "text" | "image" | "file" | "folder" => {
                 type_filter_opt = Some(t);
             }
+            "private" => {
+                sql.push_str(" JOIN private_data ON data.id = private_data.item_id");
+            }
             _ => {
                 // 视为 Folder ID
                 folder_id_opt = Some(t);

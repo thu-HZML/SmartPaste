@@ -261,7 +261,8 @@ fn test_get_all_private_data() {
     mark_phone_numbers_as_private(true).unwrap();
 
     // 3. 获取所有隐私数据
-    let json_result = get_all_private_data().expect("get_all_private_data failed");
+    let json_result =
+        comprehensive_search("", Some("private"), None, None).expect("comprehensive_search failed");
     let items: Vec<ClipboardItem> =
         serde_json::from_str(&json_result).expect("failed to parse json");
 
