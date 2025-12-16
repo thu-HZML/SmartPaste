@@ -37,6 +37,7 @@ export function useDesktopPet() {
   let unlistenKeyButton = null
   let unlistenMouseButton = null
   let unlistenMouseMove = null
+  let unlistenAiEnabledChanged = null
 
   // 添加剪贴板监听器的取消函数引用
   const unlistenClipboardUpdated = ref(null)
@@ -264,6 +265,15 @@ export function useDesktopPet() {
         const { x, y, raw_x, raw_y } = event.payload;
         handleGlobalMouseMove( x, y )
       })
+
+      // 监听 AI 设置变更事件
+      unlistenAiEnabledChanged = await listen('ai-enabled-changed', (event) => {
+        const { enabled } = event.payload
+        console.log(`📡 收到 ai_enabled 变更事件: ${enabled}`)
+        
+        // 直接更新 settings 的值
+        settings.ai_enabled = enabled
+      })
     } catch (error) {
       console.error('设置全局监听器失败:', error)
     }
@@ -420,6 +430,9 @@ export function useDesktopPet() {
     unlistenKeyButton()
     unlistenMouseButton()
     unlistenMouseMove()
+    unlistenAiEnabledChanged()
+
+    removeClipboardRelay()
   })
 
   return {
