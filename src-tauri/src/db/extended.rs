@@ -1,6 +1,6 @@
-use rusqlite::{params, Connection, OptionalExtension};
-use crate::clipboard::{ClipboardItem, clipboard_items_to_json};
 use super::{get_db_path, init_db};
+use crate::clipboard::{clipboard_items_to_json, ClipboardItem};
+use rusqlite::{params, Connection, OptionalExtension};
 
 /// 插入 OCR 文本数据。
 /// # Param

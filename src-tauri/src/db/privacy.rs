@@ -1,7 +1,7 @@
-use rusqlite::{params, Connection};
-use regex::Regex;
-use crate::clipboard::ClipboardItem;
 use super::{get_db_path, init_db};
+use crate::clipboard::ClipboardItem;
+use regex::Regex;
+use rusqlite::{params, Connection};
 
 /// 利用备注内容匹配内容是否可能为密码，若匹配则标记或删除为隐私数据。作为 Tauri command 暴露给前端调用。
 /// **匹配关键词**：
@@ -21,14 +21,23 @@ use super::{get_db_path, init_db};
 /// # Returns
 /// Result<usize, String> - 受影响的行数，若失败则返回错误信息
 #[tauri::command]
-pub fn mark_passwords_as_private(to_add : bool) -> Result<usize, String> {
+pub fn mark_passwords_as_private(to_add: bool) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let keywords = [
-        "password", "密码", "pwd", "pass", "secret", "key", "token",
-        "credential", "login", "auth", "authentication",
+        "password",
+        "密码",
+        "pwd",
+        "pass",
+        "secret",
+        "key",
+        "token",
+        "credential",
+        "login",
+        "auth",
+        "authentication",
     ];
 
     let pattern = keywords
@@ -60,7 +69,7 @@ pub fn mark_passwords_as_private(to_add : bool) -> Result<usize, String> {
 
     for item in clipboard_iter {
         let (id, notes) = item.map_err(|e| e.to_string())?;
-        
+
         if regex.is_match(&notes) {
             if to_add {
                 conn.execute(
@@ -69,11 +78,8 @@ pub fn mark_passwords_as_private(to_add : bool) -> Result<usize, String> {
                 )
                 .map_err(|e| e.to_string())?;
             } else {
-                conn.execute(
-                    "DELETE FROM private_data WHERE item_id = ?1",
-                    params![id],
-                )
-                .map_err(|e| e.to_string())?;
+                conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![id])
+                    .map_err(|e| e.to_string())?;
             }
             count += 1;
         }
@@ -89,7 +95,7 @@ pub fn mark_passwords_as_private(to_add : bool) -> Result<usize, String> {
 /// bool - 是否通过 Luhn 校验
 fn is_valid_luhn(card_number: &str) -> bool {
     let card_number = card_number.replace(|c: char| c.is_whitespace() || c == '-', "");
-    
+
     // Luhn 算法只适用于纯数字串
     if card_number.is_empty() || !card_number.chars().all(|c| c.is_ascii_digit()) {
         return false;
@@ -101,7 +107,7 @@ fn is_valid_luhn(card_number: &str) -> bool {
         .enumerate()
         .map(|(i, c)| {
             let mut digit = c.to_digit(10).unwrap();
-            
+
             // 偶数索引（从 0 开始，即第二位、第四位...）执行乘 2
             if i % 2 != 0 {
                 digit *= 2;
@@ -132,7 +138,8 @@ pub fn mark_bank_cards_as_private(to_add: bool) -> Result<usize, String> {
     // 银行卡号的正则表达式 (包含 IIN/BIN 规则，允许空格或连字符作为分隔符)
     // PAN 长度通常在 13-19 位之间，且符合特定 IIN 范围。
     // 使用非捕获分组 `(?:...)` 和 `\b` 边界，并允许分隔符 `[\s-]?`
-    let pan_regex = Regex::new(r"(?x)
+    let pan_regex = Regex::new(
+        r"(?x)
         \b
         (?:
             # Visa (4xxxx): 13, 16, 19位
@@ -148,7 +155,9 @@ pub fn mark_bank_cards_as_private(to_add: bool) -> Result<usize, String> {
             (3(?:0[0-5]|[689])|6(?:011|5\d{2}|4[4-9]\d{1}))\d{10,15}
         )
         \b
-    ").map_err(|e| e.to_string())?;
+    ",
+    )
+    .map_err(|e| e.to_string())?;
 
     // 查询所有文本类型的数据
     let mut stmt = conn
@@ -165,11 +174,11 @@ pub fn mark_bank_cards_as_private(to_add: bool) -> Result<usize, String> {
 
     for item in clipboard_iter {
         let (id, content) = item.map_err(|e| e.to_string())?;
-        
+
         // 1. 正则初步筛选：查找所有潜在的卡号匹配项
         for capture in pan_regex.captures_iter(&content) {
             let potential_pan = &capture[0]; // 捕获整个匹配串（可能包含分隔符）
-            
+
             // 2. 移除分隔符并执行 Luhn 校验
             if is_valid_luhn(potential_pan) {
                 if to_add {
@@ -181,16 +190,13 @@ pub fn mark_bank_cards_as_private(to_add: bool) -> Result<usize, String> {
                     .map_err(|e| e.to_string())?;
                 } else {
                     // 取消标记为隐私数据
-                    conn.execute(
-                        "DELETE FROM private_data WHERE item_id = ?1",
-                        params![id],
-                    )
-                    .map_err(|e| e.to_string())?;
+                    conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![id])
+                        .map_err(|e| e.to_string())?;
                 }
-                
+
                 count += 1;
                 // 一旦该记录中找到一个有效的卡号，就可以停止检查并进入下一条记录
-                break; 
+                break;
             }
         }
     }
@@ -237,11 +243,8 @@ pub fn mark_identity_numbers_as_private(to_add: bool) -> Result<usize, String> {
                 .map_err(|e| e.to_string())?;
             } else {
                 // 取消标记为隐私数据
-                conn.execute(
-                    "DELETE FROM private_data WHERE item_id = ?1",
-                    params![id],
-                )
-                .map_err(|e| e.to_string())?;
+                conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![id])
+                    .map_err(|e| e.to_string())?;
             }
             count += 1;
         }
@@ -249,7 +252,6 @@ pub fn mark_identity_numbers_as_private(to_add: bool) -> Result<usize, String> {
 
     Ok(count)
 }
-
 
 /// 利用正则表达式匹配内容是否可能为手机号，若匹配则标记为隐私数据。
 /// # Param
@@ -290,11 +292,8 @@ pub fn mark_phone_numbers_as_private(to_add: bool) -> Result<usize, String> {
                 .map_err(|e| e.to_string())?;
             } else {
                 // 取消标记为隐私数据
-                conn.execute(
-                    "DELETE FROM private_data WHERE item_id = ?1",
-                    params![id],
-                )
-                .map_err(|e| e.to_string())?;
+                conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![id])
+                    .map_err(|e| e.to_string())?;
             }
             count += 1;
         }
@@ -362,17 +361,27 @@ pub fn check_and_mark_private_item(
 
     // 1. Password Check
     let keywords = [
-        "password", "密码", "pwd", "pass", "secret", "key", "token",
-        "credential", "login", "auth", "authentication",
+        "password",
+        "密码",
+        "pwd",
+        "pass",
+        "secret",
+        "key",
+        "token",
+        "credential",
+        "login",
+        "auth",
+        "authentication",
     ];
     let pattern = keywords
         .iter()
         .map(|kw| {
-            if kw.chars().all(|c| c.is_ascii()) {
-                format!(r"(?i)(?-u:\b){}(?-u:\b)", regex::escape(kw))
-            } else {
-                format!(r"(?i){}", regex::escape(kw))
-            }
+            // if kw.chars().all(|c| c.is_ascii()) {
+            //     format!(r"(?i)(?-u:\b){}(?-u:\b)", regex::escape(kw))
+            // } else {
+            // 不使用单词边界，以支持中文关键词
+            format!(r"(?i){}", regex::escape(kw))
+            // }
         })
         .collect::<Vec<String>>()
         .join("|");
@@ -380,16 +389,23 @@ pub fn check_and_mark_private_item(
 
     if pwd_regex.is_match(&item.notes) {
         if password_flag {
-            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         } else {
-            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM private_data WHERE item_id = ?1",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
     // 2. Bank Card Check
-    let pan_regex = Regex::new(r"(?x)
+    let pan_regex = Regex::new(
+        r"(?x)
         \b
         (?:
             4\d{3}[\s-]?\d{4}[\s-]?\d{4}(?:[\s-]?\d{4}(?:[\s-]?\d{3})?)? |
@@ -398,7 +414,9 @@ pub fn check_and_mark_private_item(
             (3(?:0[0-5]|[689])|6(?:011|5\d{2}|4[4-9]\d{1}))\d{10,15}
         )
         \b
-    ").map_err(|e| e.to_string())?;
+    ",
+    )
+    .map_err(|e| e.to_string())?;
 
     let mut is_bank_card = false;
     for capture in pan_regex.captures_iter(&item.content) {
@@ -410,11 +428,17 @@ pub fn check_and_mark_private_item(
 
     if is_bank_card {
         if bank_card_flag {
-            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         } else {
-            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM private_data WHERE item_id = ?1",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
@@ -422,11 +446,17 @@ pub fn check_and_mark_private_item(
     let id_regex = Regex::new(r"\b\d{15}\b|\b\d{18}\b|\b\d{17}X\b").map_err(|e| e.to_string())?;
     if id_regex.is_match(&item.content) {
         if id_number_flag {
-            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         } else {
-            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM private_data WHERE item_id = ?1",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
@@ -434,20 +464,28 @@ pub fn check_and_mark_private_item(
     let phone_regex = Regex::new(r"\b1[3-9]\d{9}\b").map_err(|e| e.to_string())?;
     if phone_regex.is_match(&item.content) {
         if phone_number_flag {
-            conn.execute("INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT OR IGNORE INTO private_data (item_id) VALUES (?1)",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         } else {
-            conn.execute("DELETE FROM private_data WHERE item_id = ?1", params![item.id])
-                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM private_data WHERE item_id = ?1",
+                params![item.id],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 
     // Check final status
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM private_data WHERE item_id = ?1",
-        params![item.id],
-        |row| row.get(0)
-    ).unwrap_or(0);
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM private_data WHERE item_id = ?1",
+            params![item.id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
 
     Ok(count > 0)
 }

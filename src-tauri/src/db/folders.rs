@@ -1,7 +1,7 @@
+use super::{get_db_path, init_db};
+use crate::clipboard::{clipboard_items_to_json, folder_items_to_json, ClipboardItem, FolderItem};
 use rusqlite::{params, Connection};
 use uuid::Uuid;
-use crate::clipboard::{FolderItem, folder_items_to_json, ClipboardItem, clipboard_items_to_json};
-use super::{get_db_path, init_db};
 
 /// 新建收藏夹。作为 Tauri command 暴露给前端调用。
 /// # Param

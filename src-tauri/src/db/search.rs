@@ -1,6 +1,6 @@
-use rusqlite::Connection;
-use crate::clipboard::{ClipboardItem, clipboard_items_to_json};
 use super::{get_db_path, init_db};
+use crate::clipboard::{clipboard_items_to_json, ClipboardItem};
+use rusqlite::Connection;
 
 /// # Param
 /// query: &str - 搜索关键词，可以在 content/notes/ocr_text 字段中进行模糊匹配
@@ -25,7 +25,7 @@ pub fn comprehensive_search(
          FROM data 
          LEFT JOIN extended_data ON data.id = extended_data.item_id",
     );
-    
+
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(format!("%{}%", query))];
     let mut param_idx = 2;
 
@@ -50,7 +50,9 @@ pub fn comprehensive_search(
     }
 
     // WHERE 子句
-    sql.push_str(" WHERE (data.content LIKE ?1 OR data.notes LIKE ?1 OR extended_data.ocr_text LIKE ?1)");
+    sql.push_str(
+        " WHERE (data.content LIKE ?1 OR data.notes LIKE ?1 OR extended_data.ocr_text LIKE ?1)",
+    );
 
     if let Some(folder_id) = folder_id_opt {
         sql.push_str(&format!(" AND folder_items.folder_id = ?{}", param_idx));
@@ -63,7 +65,11 @@ pub fn comprehensive_search(
     }
 
     if let (Some(start), Some(end)) = (start_timestamp, end_timestamp) {
-        sql.push_str(&format!(" AND data.timestamp BETWEEN ?{} AND ?{}", param_idx, param_idx + 1));
+        sql.push_str(&format!(
+            " AND data.timestamp BETWEEN ?{} AND ?{}",
+            param_idx,
+            param_idx + 1
+        ));
         params.push(Box::new(start));
         params.push(Box::new(end));
     }
@@ -71,17 +77,20 @@ pub fn comprehensive_search(
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let clipboard_iter = stmt
-        .query_map(rusqlite::params_from_iter(params.iter().map(|p| &**p)), |row| {
-            Ok(ClipboardItem {
-                id: row.get(0)?,
-                item_type: row.get(1)?,
-                content: row.get(2)?,
-                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
-                is_favorite: row.get::<_, i32>(4)? != 0,
-                notes: row.get(5)?,
-                timestamp: row.get(6)?,
-            })
-        })
+        .query_map(
+            rusqlite::params_from_iter(params.iter().map(|p| &**p)),
+            |row| {
+                Ok(ClipboardItem {
+                    id: row.get(0)?,
+                    item_type: row.get(1)?,
+                    content: row.get(2)?,
+                    size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                    is_favorite: row.get::<_, i32>(4)? != 0,
+                    notes: row.get(5)?,
+                    timestamp: row.get(6)?,
+                })
+            },
+        )
         .map_err(|e| e.to_string())?;
 
     let mut results = Vec::new();

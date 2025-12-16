@@ -1,7 +1,7 @@
+use super::{get_db_path, init_db};
 use rusqlite::{params, Connection};
 use std::sync::mpsc::Sender;
 use std::sync::RwLock;
-use super::{get_db_path, init_db};
 
 static CLEANUP_SENDER: RwLock<Option<Sender<()>>> = RwLock::new(None);
 
@@ -40,9 +40,11 @@ pub fn enforce_max_history_items(max_items: u32) -> Result<usize, String> {
 
     // 计算需要删除的记录数量
     let total_count: u32 = conn
-        .query_row("SELECT COUNT(*) FROM data WHERE is_favorite = 0", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM data WHERE is_favorite = 0",
+            [],
+            |row| row.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
     if total_count <= max_items {
