@@ -2,7 +2,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { emit } from '@tauri-apps/api/event'
 import { apiService,ensureAbsoluteAvatarUrl } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
@@ -14,6 +14,7 @@ import {
   ClipboardIcon,
   UserIcon
 } from '@heroicons/vue/24/outline'
+import { togglePrivateWindow } from '../utils/actions.js'
 
 export function usePreferences() {
   const router = useRouter()
@@ -41,7 +42,6 @@ export function usePreferences() {
   const changePasswordLoading = ref(false)
 
   // 窗口关闭监听器
-  let unlistenCloseRequested = null
   let firstCloseWindow = true
   
   // 注册表单数据
@@ -138,6 +138,11 @@ export function usePreferences() {
 
   const goBack = () => {
     router.back()
+  }
+
+  // 查看隐私函数
+  const showPrivate = () => {
+    togglePrivateWindow()
   }
 
   // 表单验证函数
@@ -1258,6 +1263,9 @@ const updateRetentionDays = async () => {
     exportData,
     importData,
     createBackup,
+
+    // 隐私管理方法
+    showPrivate,
 
     // 云端同步方法
     formatTime,

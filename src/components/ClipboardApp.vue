@@ -43,6 +43,12 @@
           >
             内容
           </button>
+          <button 
+            v-if="activeCategory === 'private'" 
+            :class="['category-btn', { active: true }]"
+          >
+            隐私
+          </button>
         </div>
         
         <div class="toolbar-actions">
@@ -75,7 +81,7 @@
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
       <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
-      <div v-if="['all', 'text', 'image', 'file', 'folder'].includes(activeCategory)">
+      <div v-if="['all', 'text', 'image', 'file', 'folder', 'private'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
           <p v-if="searchQuery">未找到匹配的记录</p>
           <p v-else>暂无剪贴板记录</p>

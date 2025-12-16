@@ -1010,7 +1010,8 @@ export function useClipboardApp() {
     console.log('开始初始化...')
 
     // 保存当前参数状态
-    const shouldShowFavorites = route.query.category === 'favorite'
+    const shouldShowFavorites = route.query.category
+    console.log('跳转到的页面：',shouldShowFavorites)
 
     // 立即清除所有参数
     if (route.query.category) {
@@ -1034,7 +1035,7 @@ export function useClipboardApp() {
 
     // 根据保存的状态执行操作
     if (shouldShowFavorites) {
-      activeCategory.value = 'favorite'
+      activeCategory.value = shouldShowFavorites
       console.log('跳转到收藏界面')
     }
     
