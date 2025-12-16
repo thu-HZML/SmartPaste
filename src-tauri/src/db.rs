@@ -1778,11 +1778,12 @@ pub fn check_and_mark_private_item(
     let pattern = keywords
         .iter()
         .map(|kw| {
-            if kw.chars().all(|c| c.is_ascii()) {
-                format!(r"(?i)(?-u:\b){}(?-u:\b)", regex::escape(kw))
-            } else {
-                format!(r"(?i){}", regex::escape(kw))
-            }
+            // if kw.chars().all(|c| c.is_ascii()) {
+            //     format!(r"(?i)(?-u:\b){}(?-u:\b)", regex::escape(kw))
+            // } else {
+            // 不使用单词边界，以支持中文关键词
+            format!(r"(?i){}", regex::escape(kw))
+            // }
         })
         .collect::<Vec<String>>()
         .join("|");
