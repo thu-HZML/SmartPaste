@@ -54,7 +54,7 @@ export function usePreferences() {
   
   // 登录表单数据
   const loginData = reactive({
-    email: '',
+    username: '',
     password: ''
   })
 
@@ -349,7 +349,7 @@ export function usePreferences() {
         
         // 清空表单数据
         Object.assign(loginData, {
-          email: '',
+          username: '',
           password: ''
         })
       } else {
