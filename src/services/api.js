@@ -495,6 +495,264 @@ class ApiService {
     }
   }
 
+  /**
+   * [GET] 获取用户所有云端文件的列表。
+   * 对应后端: FileListView.get
+   * 接口: GET /api/sync/files/
+   * @returns {Promise<{success: boolean, message: string, data: Array<Object>|null}>} data 是文件列表数组。
+   */
+  async getCloudFileList() {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+          throw new Error('未登录或Token缺失');
+      }
+      const response = await fetch(`${API_BASE_URL}/sync/files/`, {
+          method: 'GET',
+          headers: {
+              'Authorization': `Token ${token}`,
+          },
+      });
+      // 列表接口返回 200 OK，包含 JSON 数组
+      result = await response.json();
+
+      if (!response.ok) {
+          const errorMessage = (result && result.detail) ? result.detail : '获取文件列表失败';
+          throw new Error(errorMessage);
+      }
+
+      return {
+          success: true,
+          message: '文件列表获取成功',
+          data: result
+      };
+    } catch (error) {
+      console.error('获取文件列表错误:', error);
+      return {
+          success: false,
+          message: error instanceof Error ? error.message : '网络错误',
+          data: result
+      };
+    }
+  }
+
+  /**
+   * [POST] 上传剪贴板文件 (支持覆盖)。
+   * 对应后端: FileUploadView.post
+   * 接口: POST /api/sync/files/upload/
+   * @param {File | Blob} fileObject - 要上传的 File 或 Blob 对象。
+   * @param {string} relativePath - 文件在云端的相对路径 (例如: 'images/screenshot.png')。
+   * @returns {Promise<{success: boolean, message: string, data: object|null}>} data 是上传成功后的文件信息。
+   */
+  async uploadClipboardFile(fileObject, relativePath) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+          throw new Error('未登录或Token缺失');
+      }
+
+      const formData = new FormData();
+      // 后端 views.py 期望文件字段名为 'file'
+      formData.append('file', fileObject, fileObject.name || 'clipboard_file'); 
+      // 后端 views.py 期望相对路径在 request.data (FormData) 中
+      formData.append('relative_path', relativePath); 
+
+      const response = await fetch(`${API_BASE_URL}/sync/files/upload/`, {
+          method: 'POST',
+          headers: {
+              // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
+              'Authorization': `Token ${token}`,
+          },
+          body: formData,
+      });
+
+      result = await response.json();
+
+      if (!response.ok) {
+          // 尝试提取错误信息
+          const errorMessage = (result && result.error) ? result.error : 
+                               (result && result.detail) ? result.detail : '文件上传失败';
+          throw new Error(errorMessage);
+      }
+
+      return {
+          success: true,
+          message: '文件上传成功',
+          data: result
+      };
+
+    } catch (error) {
+        console.error(`上传文件 ${relativePath} 错误:`, error);
+        return {
+          success: false,
+          message: error instanceof Error ? error.message : '网络错误',
+          data: result
+        };
+    }
+  }
+  
+  /**
+   * [DELETE] 删除指定文件。
+   * 对应后端: FileDeleteView.delete
+   * 接口: DELETE /api/sync/files/{fileId}/
+   * @param {number} fileId - 文件的数据库ID。
+   * @returns {Promise<{success: boolean, message: string, data: null}>}
+   */
+  async deleteClipboardFile(fileId) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+          throw new Error('未登录或Token缺失');
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/sync/files/${fileId}/`, {
+          method: 'DELETE',
+          headers: {
+              'Authorization': `Token ${token}`,
+          },
+      });
+
+      // 成功删除返回 204 No Content
+      if (response.status === 204) {
+          return {
+              success: true,
+              message: `文件 ID: ${fileId} 删除成功`,
+              data: null
+          };
+      }
+      
+      // 尝试解析JSON响应以获取可能的错误信息
+      try {
+          result = await response.json();
+      } catch (e) {
+          // 忽略没有 JSON body 的情况
+      }
+
+      // 非 204 且非 ok 视为失败
+      if (!response.ok) {
+          const errorMessage = (result && result.detail) ? result.detail : 
+                               `文件删除失败，状态码: ${response.status}`;
+          throw new Error(errorMessage);
+      }
+            
+      // 理论上不会走到这里，但以防万一
+      return {
+          success: false, 
+          message: '文件删除失败或响应异常', 
+          data: result 
+      };
+
+    } catch (error) {
+      console.error(`删除文件 ID: ${fileId} 错误:`, error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '网络错误',
+        data: result
+      };
+    }
+  }
+
+  /**
+   * [POST] 上传 SQLite 数据库文件并同步数据到服务器。
+   * 对应后端: SqlitePushView.post
+   * 接口: POST /api/sync/sqlite/push/
+   * @param {File | Blob} dbFile - SQLite 数据库文件对象。
+   * @returns {Promise<{success: boolean, message: string, data: object|null}>}
+   */
+  async pushSqliteDatabase(dbFile) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+          throw new Error('未登录或Token缺失');
+      }
+
+      const formData = new FormData();
+      // 后端 views.py 期望文件字段名为 'db_file'
+      formData.append('db_file', dbFile, dbFile.name || 'clipboard_sync.db'); 
+
+      const response = await fetch(`${API_BASE_URL}/sync/sqlite/push/`, {
+          method: 'POST',
+          headers: {
+              // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
+              'Authorization': `Token ${token}`,
+          },
+          body: formData,
+      });
+
+      result = await response.json();
+
+      if (!response.ok) {
+        const errorMessage = (result && result.error) ? result.error : 
+                             (result && result.detail) ? result.detail : '数据库推送失败';
+        throw new Error(errorMessage);
+      }
+
+      return {
+        success: true,
+        message: '数据库同步成功',
+        data: result
+      };
+
+    } catch (error) {
+      console.error('推送 SQLite 数据库错误:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '网络错误',
+        data: result
+      };
+    }
+  }
+
+  /**
+   * [GET] 获取当前用户的 SQLite 数据库文件内容，并返回 json 格式的数据。
+   * 对应后端: SqliteGetView.get
+   * 接口: GET /api/sync/sqlite/get/
+   * @returns {Promise<{success: boolean, message: string, data: object|null}>} data 包含数据库数据（json格式）
+   */
+  async getSqliteDatabaseAsJson() {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('未登录或Token缺失');
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/sync/sqlite/get/`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Token ${token}`,
+        },
+      });
+
+      result = await response.json();
+
+      if (!response.ok) {
+          const errorMessage = (result && result.error) ? result.error : 
+                               (result && result.detail) ? result.detail : '获取 SQLite 数据(JSON)失败';
+          throw new Error(errorMessage);
+      }
+      
+      // 后端返回的结构是 { message: "...", data: user_data }，我们只需要 user_data
+      return {
+          success: true,
+          message: 'SQLite 数据获取成功',
+          data: result.data 
+      };
+
+    } catch (error) {
+      console.error('获取 SQLite 数据(JSON)错误:', error);
+      return {
+          success: false,
+          message: error instanceof Error ? error.message : '网络错误',
+          data: result
+      };
+    }
+  }
+
 }
 
 /**
