@@ -65,7 +65,6 @@ fn main() {
             db::get_latest_data,
             db::get_data_by_id,
             db::delete_all_data,
-            db::delete_unfavorited_data,
             db::delete_data,
             db::delete_data_by_id,
             db::update_data_content_by_id,
@@ -93,7 +92,6 @@ fn main() {
             db::mark_bank_cards_as_private,
             db::mark_identity_numbers_as_private,
             db::mark_phone_numbers_as_private,
-            db::get_all_private_data,
             db::clear_all_private_data,
             db::auto_mark_private_data,
             db::trigger_cleanup,
@@ -217,7 +215,7 @@ fn main() {
             // 7. 打印最终使用的配置路径
             let current_config_path = config::get_config_path();
             println!("📄 最终配置文件路径: {}", current_config_path.display());
-          
+
             // 8. 根据配置自动标记隐私数据
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();

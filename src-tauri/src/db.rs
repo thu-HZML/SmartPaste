@@ -255,36 +255,65 @@ pub fn get_data_by_id(id: &str) -> Result<String, String> {
 }
 
 /// 删除所有数据。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// item_type: Option<&str> - 可选的数据类型过滤（如 "text", "image" 等），其他内容则视为folders的ID进行过滤
+/// keep_favorites: bool - 是否保留已收藏记录
 /// # Returns
 /// usize - 受影响的行数
 #[tauri::command]
-pub fn delete_all_data() -> Result<usize, String> {
+pub fn delete_all_data(item_type: Option<&str>, keep_favorites: bool) -> Result<usize, String> {
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
+    let mut sql = String::from("DELETE FROM data WHERE id IN (SELECT data.id FROM data");
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let mut param_idx = 1;
+
+    // 处理 item_type 逻辑
+    let mut folder_id_opt = None;
+    let mut type_filter_opt = None;
+
+    if let Some(t) = item_type {
+        match t {
+            "text" | "image" | "file" | "folder" => {
+                type_filter_opt = Some(t);
+            }
+            "private" => {
+                sql.push_str(" JOIN private_data ON data.id = private_data.item_id");
+            }
+            _ => {
+                // 视为 Folder ID
+                folder_id_opt = Some(t);
+                sql.push_str(" JOIN folder_items ON data.id = folder_items.item_id");
+            }
+        }
+    }
+
+    // WHERE 子句
+    sql.push_str(" WHERE 1=1");
+
+    if let Some(folder_id) = folder_id_opt {
+        sql.push_str(&format!(" AND folder_items.folder_id = ?{}", param_idx));
+        params.push(Box::new(folder_id));
+        param_idx += 1;
+    } else if let Some(t) = type_filter_opt {
+        sql.push_str(&format!(" AND data.item_type = ?{}", param_idx));
+        params.push(Box::new(t));
+        param_idx += 1;
+    }
+
+    if keep_favorites {
+        sql.push_str(" AND data.is_favorite = 0");
+    }
+
+    sql.push_str(")");
+
     let rows_affected = conn
-        .execute("DELETE FROM data", [])
-        .map_err(|e| e.to_string())?;
-
-    // 更新所有收藏夹的 item 数量为 0
-    conn.execute("UPDATE folders SET num_items = 0", [])
-        .map_err(|e| e.to_string())?;
-
-    Ok(rows_affected)
-}
-
-/// 删除所有未收藏的数据。作为 Tauri command 暴露给前端调用。
-/// # Returns
-/// usize - 受影响的行数
-#[tauri::command]
-pub fn delete_unfavorited_data() -> Result<usize, String> {
-    let db_path = get_db_path();
-    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    let rows_affected = conn
-        .execute("DELETE FROM data WHERE is_favorite = 0", [])
+        .execute(
+            &sql,
+            rusqlite::params_from_iter(params.iter().map(|p| &**p)),
+        )
         .map_err(|e| e.to_string())?;
 
     // 重新计算所有收藏夹的 item 数量
@@ -963,6 +992,9 @@ pub fn comprehensive_search(
         match t {
             "text" | "image" | "file" | "folder" => {
                 type_filter_opt = Some(t);
+            }
+            "private" => {
+                sql.push_str(" JOIN private_data ON data.id = private_data.item_id");
             }
             _ => {
                 // 视为 Folder ID
@@ -1675,44 +1707,44 @@ pub fn mark_phone_numbers_as_private(to_add: bool) -> Result<usize, String> {
     Ok(count)
 }
 
-/// 返回所有被标记为隐私的数据项。作为 Tauri command 暴露给前端调用。
-/// # Returns
-/// String - 包含隐私数据记录的 JSON 字符串，若失败则返回错误信息
-#[tauri::command]
-pub fn get_all_private_data() -> Result<String, String> {
-    let db_path = get_db_path();
-    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+// 返回所有被标记为隐私的数据项。作为 Tauri command 暴露给前端调用。
+// # Returns
+// String - 包含隐私数据记录的 JSON 字符串，若失败则返回错误信息
+// #[tauri::command]
+// pub fn get_all_private_data() -> Result<String, String> {
+//     let db_path = get_db_path();
+//     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+//     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT d.id, d.item_type, d.content, d.size, d.is_favorite, d.notes, d.timestamp
-             FROM data d
-             JOIN private_data pd ON d.id = pd.item_id",
-        )
-        .map_err(|e| e.to_string())?;
+//     let mut stmt = conn
+//         .prepare(
+//             "SELECT d.id, d.item_type, d.content, d.size, d.is_favorite, d.notes, d.timestamp
+//              FROM data d
+//              JOIN private_data pd ON d.id = pd.item_id",
+//         )
+//         .map_err(|e| e.to_string())?;
 
-    let clipboard_iter = stmt
-        .query_map([], |row| {
-            Ok(ClipboardItem {
-                id: row.get(0)?,
-                item_type: row.get(1)?,
-                content: row.get(2)?,
-                size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
-                is_favorite: row.get::<_, i32>(4)? != 0,
-                notes: row.get(5)?,
-                timestamp: row.get(6)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
+//     let clipboard_iter = stmt
+//         .query_map([], |row| {
+//             Ok(ClipboardItem {
+//                 id: row.get(0)?,
+//                 item_type: row.get(1)?,
+//                 content: row.get(2)?,
+//                 size: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+//                 is_favorite: row.get::<_, i32>(4)? != 0,
+//                 notes: row.get(5)?,
+//                 timestamp: row.get(6)?,
+//             })
+//         })
+//         .map_err(|e| e.to_string())?;
 
-    let mut results = Vec::new();
-    for item in clipboard_iter {
-        results.push(item.map_err(|e| e.to_string())?);
-    }
+//     let mut results = Vec::new();
+//     for item in clipboard_iter {
+//         results.push(item.map_err(|e| e.to_string())?);
+//     }
 
-    clipboard_items_to_json(results)
-}
+//     clipboard_items_to_json(results)
+// }
 
 /// 清除所有隐私数据。作为 Tauri command 暴露给前端调用。
 /// # Returns
