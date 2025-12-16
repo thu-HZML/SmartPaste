@@ -65,7 +65,6 @@ fn main() {
             db::get_latest_data,
             db::get_data_by_id,
             db::delete_all_data,
-            db::delete_unfavorited_data,
             db::delete_data,
             db::delete_data_by_id,
             db::update_data_content_by_id,
@@ -216,7 +215,7 @@ fn main() {
             // 7. 打印最终使用的配置路径
             let current_config_path = config::get_config_path();
             println!("📄 最终配置文件路径: {}", current_config_path.display());
-          
+
             // 8. 根据配置自动标记隐私数据
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();

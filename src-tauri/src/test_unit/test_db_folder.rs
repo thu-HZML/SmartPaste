@@ -104,7 +104,7 @@ fn test_delete_all_and_count_folder_and_item() {
     );
 
     // 删除所有数据
-    let deleted_count = delete_all_data().expect("delete all data failed");
+    let deleted_count = delete_all_data(None, false).expect("delete all data failed");
     assert_eq!(deleted_count, 4, "should delete 4 items");
 
     // 再次获取 folders 列表，验证 num_items 都为 0

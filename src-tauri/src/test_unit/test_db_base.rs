@@ -225,7 +225,7 @@ fn test_delete_data() {
     let _ = set_favorite_status_by_id(&c.id).expect("set favorite for c");
 
     // 删除所有非收藏 item
-    let rows3 = delete_unfavorited_data().expect("delete_non_favorite_data failed");
+    let rows3 = delete_all_data(None, true).expect("delete_non_favorite_data failed");
     assert!(
         rows3 >= 1,
         "expected >=1 row deleted for delete_non_favorite_data"
@@ -236,7 +236,7 @@ fn test_delete_data() {
     assert_ne!(got4, "null", "favorite item c should not be deleted");
 
     // 最后删除所有数据，确保数据库为空
-    let rows4 = delete_all_data().expect("delete_all_data failed");
+    let rows4 = delete_all_data(None, false).expect("delete_all_data failed");
     assert!(rows4 >= 1, "expected >=1 row deleted for delete_all_data");
     let all_after = get_all_data().expect("get_all after delete_all");
     let vec_after: Vec<ClipboardItem> = serde_json::from_str(&all_after).expect("parse all after");
