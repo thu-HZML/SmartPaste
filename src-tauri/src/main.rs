@@ -93,7 +93,6 @@ fn main() {
             db::mark_bank_cards_as_private,
             db::mark_identity_numbers_as_private,
             db::mark_phone_numbers_as_private,
-            db::get_all_private_data,
             db::clear_all_private_data,
             db::auto_mark_private_data,
             db::trigger_cleanup,
