@@ -3,45 +3,27 @@
     <!-- 顶部搜索栏 -->
     <header class="app-header">
       <div class="search-container">
-        <div class="search-bar">
-          <!-- 时间区间搜索的额外输入框 -->
-          <div v-if="searchType === 'time'" class="time-range-inputs">
-            <div class="time-input-group">
-              <label>开始时间:</label>
-              <input 
-                type="datetime-local" 
-                v-model="startTime"
-                class="time-input"
-              >
-            </div>
-            <div class="time-input-group">
-              <label>结束时间:</label>
-              <input 
-                type="datetime-local" 
-                v-model="endTime"
-                class="time-input"
-              >
-            </div>
-          </div>
-          <svg v-if="searchType !== 'time'" class="search-icon" width="20" height="20" viewBox="0 0 100 100">
+        <div class="search-bar">         
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 100 100">
             <circle cx="40" cy="40" r="30" fill="none" stroke="#3498db" stroke-width="6"/>
             <line x1="65" y1="65" x2="85" y2="85" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
           </svg>
-          <input v-if="searchType !== 'time'"
+          <input
             type="text" 
             v-model="searchQuery"
             placeholder="搜索剪贴板内容..." 
             class="search-input"
           >
-          <!-- 新增搜索类型下拉框 -->
-          <div class="search-type-selector">
-            <select v-model="searchType" class="search-type-select">
-              <option value="text">纯文本</option>
-              <option value="ocr">OCR</option>
-              <option value="path">路径</option>
-              <option value="time">时间区间</option>
-            </select>
-          </div>
+          <input 
+            type="datetime-local" 
+            v-model="startTime"
+            class="time-input"
+          >
+          <input 
+            type="datetime-local" 
+            v-model="endTime"
+            class="time-input"
+          >
         </div>
       </div>
       
@@ -91,10 +73,7 @@
     </header>
 
     <!-- 剪贴板记录列表 -->
-    <main :class="{
-      'app-main-time': searchType === 'time',
-      'app-main': searchType !== 'time'
-    }">
+    <main class="app-main">
       <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
       <div v-if="['all', 'text', 'image', 'file', 'folder'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
@@ -224,12 +203,12 @@
           <div class="folder-item" @click="showFolder()">
             <div class="folder-content">
               <FolderPlusIcon class="icon-folder" />
-              <span class="folder-name">{{ '新建收藏夹' }}</span>                        
+              <span class="folder-name">{{ '新建收藏夹' }}</span>
             </div>
           </div>
           <!-- 普通收藏夹 -->
           <div 
-            v-for="(item, index) in folders" 
+            v-for="(item, index) in folders"
             :key="index" 
             class="folder-item"
             tabindex="0"            
@@ -367,7 +346,7 @@
               <div class="folder-content-toast">
                 <div class="custom-folder-icon" :class="{ 'selected': item.isSelected }"></div>
                 <span class="folder-name" :title="item.name">{{ item.name }}</span>
-                <span class="content-count">{{ item.numItems }}个内容</span>                      
+                <span class="content-count">{{ item.num_items }}个内容</span>
               </div>
             </div>
 
@@ -442,7 +421,6 @@ const {
   multiSelectMode,
   selectedItems,
   showMultiCopyBtn,
-  searchType,
   startTime,
   endTime,
   categories,
@@ -453,7 +431,6 @@ const {
 
   // 计算属性
   selectedItemsCount,
-  searchPlaceholder,
   normalizedPath,
   settings,
 
@@ -464,7 +441,6 @@ const {
   togglePinnedView,
   openSettings,
   handleSearch,
-  handleCategoryChange,
   copyItem,
   toggleFavorite,
   executeDoubleClick,
@@ -548,6 +524,7 @@ body {
 .search-container {
   padding: 8px 10px;
   border-bottom: 1px solid #f0f0f0;
+  gap: 3px;
 }
 
 .search-bar {
@@ -635,22 +612,14 @@ body {
 }
 
 .time-input {
-  flex: 1;
-  padding: 6px 8px;
-  border: 1px solid #e1e8ed;
-  border-radius: 6px;
-  font-size: 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 20px;
   outline: none;
   transition: all 0.2s;
-}
-
-.time-input:hover {
-  border-color: #b7c8fe;
-}
-
-.time-input:focus {
-  border-color: #3282f6;
-  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.1);
+  color: transparent;
+  position: relative;
+  width: 24px;
 }
 
 /* 工具栏样式 */
@@ -784,14 +753,6 @@ body {
   padding: 8px 10px;
   margin: 0 auto;
   margin-top: 96px; /* 顶部搜索栏高度 + 工具栏高度 */
-  overflow-x: hidden;
-  max-width: 100%;
-}
-
-.app-main-time {
-  padding: 8px 10px;
-  margin: 0 auto;
-  margin-top: 130px; /* 顶部搜索栏高度 + 工具栏高度 */
   overflow-x: hidden;
   max-width: 100%;
 }

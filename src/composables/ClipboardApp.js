@@ -52,7 +52,6 @@ export function useClipboardApp() {
   const showMultiCopyBtn = ref(false) // 控制复制按钮显示
 
   // 搜索相关变量
-  const searchType = ref('text') // 默认纯文本搜索
   const startTime = ref('')
   const endTime = ref('')
 
@@ -80,154 +79,71 @@ export function useClipboardApp() {
   // 计算属性
   const selectedItemsCount = computed(() => selectedItems.value.length)
 
-  // 计算属性：根据搜索类型动态改变placeholder
-  const searchPlaceholder = computed(() => {
-    switch (searchType.value) {
-      case 'text':
-        return '搜索剪贴板内容...'
-      case 'ocr':
-        return '搜索图片OCR文字内容...'
-      case 'path':
-        return '搜索文件路径...'
-      case 'time':
-        return '请选择时间区间...'
-      default:
-        return '搜索剪贴板内容...'
-    }
-  })
-
   // 计算属性：规范化路径
   const normalizedPath = computed(() => {
     if (!settings.storage_path) return '未设置路径'
     return settings.storage_path.replace(/\//g, '\\') + '\\'
   })
 
-  // 监听搜索类型变化
-  watch(searchType, (newType) => {
-    // 切换搜索类型时清空搜索框
-    searchQuery.value = ''
-    // 如果是时间搜索，初始化时间
-    if (newType === 'time') {
-      const now = new Date()
-      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      startTime.value = formatDateTimeLocal(oneWeekAgo)
-      endTime.value = formatDateTimeLocal(now)
-    } else {
-      startTime.value = ''
-      endTime.value = ''
-    }
-  })
-
   // 监听时间变化
+  
   watch([startTime, endTime], async() => {
-    if (searchType.value === 'time' && startTime.value && endTime.value) {
-      await handleSearch('')
+    if (startTime.value && endTime.value) {
+      await handleSearch()
     }
   })
 
-  // 监听 searchQuery 变化
-  watch(searchQuery, async (newQuery) => {
-    await handleSearch(newQuery)
-  })
-
-  // 监听 activeCategory 变化
-  watch(activeCategory, async (currentCategory) => {
-    await handleCategoryChange(currentCategory)
+  watch([searchQuery, activeCategory], async() => {
+    await handleSearch()
   })
 
   // 搜索逻辑
-  const handleSearch = async (query) => {
+  const handleSearch = async () => {
     // 清除之前的定时器
     clearTimeout(searchTimeout)
     
-    // 如果是收藏夹模式，不执行全局搜索(奇怪的bug: 收藏夹操作时可能会触发这里的搜索，导致内容被覆盖)
-    if (activeCategory.value === 'folder') {
-      console.log('收藏夹模式下跳过全局搜索')
-      return
-    }
-
-    // 空查询立即返回
-    if (query.trim() === '' && searchType.value !== 'time') {
-      await getAllHistory()
-      searchLoading.value = false
-      return
-    }
-    
-    searchLoading.value = true
-    
     // 设置新的定时器（100ms 防抖）
     searchTimeout = setTimeout(async () => {
-      await performSearch(query)
+      await performSearch()
     }, 100)
   }
 
-  // 分类逻辑
-  const handleCategoryChange = async (category) => {
-    if (['image', 'text', 'file'].includes(category)) {
-      searchLoading.value = true
-      await performClassify(category)
-    }
-    else if (category.trim() === 'all'){
-      searchLoading.value = true
-      await getAllHistory()
-    }
-    else if (category.trim() === 'favorite'){
-      searchLoading.value = true
-      await getAllFolders()
-      const result = await invoke('get_favorite_data_count')
-      folders.value[0].num_items = result
-    }
-    else if (category.trim() === 'folder') {
-      console.log('当前收藏夹：', currentFolder.value.name)
-      await performFolder()
-    }
-
-    if (multiSelectMode.value) {
-      // 退出多选状态
-      exitMultiSelectMode()
-    }
-  }
-
   // 搜索过滤
-  const performSearch = async (query) => {
+  const performSearch = async () => {
     try {
       let result = ''
-      
-      switch (searchType.value) {
-        case 'text':
-          result = await invoke('search_data', { 
-            searchType: 'text',
-            query: query.trim() 
-          })
-          break
-        case 'ocr':
-          result = await invoke('search_data_by_ocr_text', { 
-            query: query.trim() 
-          })
-          break
-        case 'path':
-          result = await invoke('search_data', { 
-            searchType: 'path',
-            query: query.trim() 
-          })
-          break
-        case 'time':
-          if (startTime.value && endTime.value) {
-            const startTimestamp = new Date(startTime.value).getTime()
-            const endTimestamp = new Date(endTime.value).getTime()
-            const timeRangeQuery = `${startTimestamp},${endTimestamp}`
-            result = await invoke('search_data', { 
-              searchType: 'timestamp',
-              query: timeRangeQuery
-            })
-          } else {
-            result = '[]'
-          }
-          break
-        default:
-          result = await invoke('search_text_content', { 
-            query: query.trim() 
-          })
+
+      // 如果此时分类为'all'，则itemType传入null
+      let currentCategory = activeCategory.value
+      if (currentCategory === 'all') {
+        currentCategory = null
+      }
+      else if (currentCategory === 'favorite'){
+        await getAllFolders()
+        const result = await invoke('get_favorite_data_count')
+        folders.value[0].num_items = result
+        return
+      }
+      else if (currentCategory === 'folder') {
+        currentCategory = currentFolder.value.id
+      }
+
+      if (startTime.value && endTime.value) {
+        const startTimestamp = new Date(startTime.value).getTime()
+        const endTimestamp = new Date(endTime.value).getTime()
+        result = await invoke('comprehensive_search', { 
+          query: searchQuery.value,
+          itemType: currentCategory,
+          startTimestamp: startTimestamp,
+          endTimestamp: endTimestamp
+        })
+      } else {
+        console.log('开始新搜索:', searchQuery.value, activeCategory.value)
+        result = await invoke('comprehensive_search', { 
+          query: searchQuery.value,
+          itemType: currentCategory
+        })
+        console.log('搜索结果为：', result)
       }
       
       filteredHistory.value = JSON.parse(result)
@@ -239,60 +155,9 @@ export function useClipboardApp() {
       showMessage('搜索失败: ' + err)
     } finally {
       searchLoading.value = false
-    }
-  }
-
-  // 分类过滤
-  const performClassify = async (currentCategory) => { 
-    try {
-      const result = await invoke('filter_data_by_type', { 
-        itemType: currentCategory.trim() 
-      })    
-      filteredHistory.value = JSON.parse(result)
-
-      // 为数组添加前端额外字段
-      await optimizeHistoryItems(filteredHistory)
-    } catch (err) {
-      console.error('分类失败:', err)
-    } finally {
-      searchLoading.value = false
-    }
-  }
-
-  // 收藏夹过滤
-  const performFolder = async () => { 
-    if (currentFolder.value.name === '全部') {
-      console.log('进入全部收藏夹')
-      try {
-        const result = await invoke('filter_data_by_favorite', { 
-          isFavorite: true
-        })    
-        filteredHistory.value = JSON.parse(result)
-
-        console.log('全部收藏夹内容:', filteredHistory.value) 
-        // 为数组添加前端额外字段
-        await optimizeHistoryItems(filteredHistory)
-        console.log('添加字段后全部收藏夹内容:', filteredHistory.value)
-      } catch (err) {
-        console.error('全部收藏夹获取失败:', err)
-      } finally {
-      searchLoading.value = false
-    }
-    }
-    else {
-      console.log('进入收藏夹：', currentFolder.value.name)
-      try {
-        const result = await invoke('filter_data_by_folder', { 
-          folderName: currentFolder.value.name
-        })    
-        filteredHistory.value = JSON.parse(result)
-
-        // 为数组添加前端额外字段
-        await optimizeHistoryItems(filteredHistory)
-      } catch (err) {
-        console.error('获取收藏夹内容失败:', err)
-      } finally {
-        searchLoading.value = false
+      if (multiSelectMode.value) {
+        // 退出多选状态
+        exitMultiSelectMode()
       }
     }
   }
@@ -361,6 +226,18 @@ export function useClipboardApp() {
       await invoke('set_favorite_status_by_id', { id: item.id })
       showMessage(item.is_favorite ? '已收藏' : '已取消收藏')
       clickTimeout = null;
+
+      if (item.is_favorite) {
+        await invoke('add_item_to_folder', { 
+          folderId: folders.value[0].id,
+          itemId: item.id
+        })
+      } else {
+        await invoke('remove_item_from_folder', { 
+          folderId: folders.value[0].id,
+          itemId: item.id
+        })
+      }
     }, 150); // 150ms内再次点击视为双击
   }
 
@@ -371,6 +248,8 @@ export function useClipboardApp() {
       currentItem.value = item
       // 清除定时器
       clickTimeout = null;
+      const result = await invoke('get_favorite_data_count')
+      folders.value[0].num_items = result
 
       // 选中所有已有该记录的收藏夹
       try {
@@ -417,8 +296,7 @@ export function useClipboardApp() {
         await invoke('delete_all_data')
         showMessage('已清除所有历史记录')
       }
-      handleSearch(searchQuery.value)
-      handleCategoryChange(activeCategory.value)
+      handleSearch()
     } catch(err) {
       console.error('清除历史记录失败:', err)
     }
@@ -524,8 +402,7 @@ export function useClipboardApp() {
       showMessage('已复制OCR内容')
 
       // 刷新界面
-      handleSearch(searchQuery.value)
-      handleCategoryChange(activeCategory.value)
+      handleSearch()
     }
     cancelOCR()
   }
@@ -763,7 +640,7 @@ export function useClipboardApp() {
   const addToFolder = async () => {
     try {
       const selectedFolders = folders.value.filter(item => 
-        item.isSelected && item.name !== '全部'
+        item.isSelected
       )
       const previouslySelectedFolders = folders.value.filter(item => 
         initialSelectedFolders.value.includes(item.id) && !item.isSelected
@@ -797,8 +674,7 @@ export function useClipboardApp() {
       }
 
       // 刷新界面
-      handleSearch(searchQuery.value)
-      handleCategoryChange(activeCategory.value)
+      handleSearch()
     } catch (err) {
       console.error('创建文件夹失败', err)
     }
@@ -822,8 +698,7 @@ export function useClipboardApp() {
       console.log('接受后端更新消息')
 
       // 刷新历史记录
-      handleSearch(searchQuery.value)
-      handleCategoryChange(activeCategory.value)
+      handleSearch()
     })
     
     return unlisten
@@ -1194,8 +1069,7 @@ export function useClipboardApp() {
         
         // 2. 刷新列表 (handleSearch, handleCategoryChange)
         // 使用当前搜索框内容和活动分类进行刷新
-        handleSearch(searchQuery.value); 
-        handleCategoryChange(activeCategory.value); 
+        handleSearch();
         
         // 3. 关闭可能的删除确认 UI (cancelDeleteAll)
         cancelDeleteAll(); 
@@ -1238,7 +1112,6 @@ export function useClipboardApp() {
     multiSelectMode,
     selectedItems,
     showMultiCopyBtn,
-    searchType,
     startTime,
     endTime,
     categories,
@@ -1249,7 +1122,6 @@ export function useClipboardApp() {
 
     // 计算属性
     selectedItemsCount,
-    searchPlaceholder,
     normalizedPath,
     settings,
 
@@ -1260,7 +1132,6 @@ export function useClipboardApp() {
     togglePinnedView,
     openSettings,
     handleSearch,
-    handleCategoryChange,
     copyItem,
     toggleFavorite,
     executeDoubleClick,

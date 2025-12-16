@@ -112,6 +112,9 @@ pub async fn ocr_image(file_path: String) -> Result<String, String> {
         .await
         .map_err(|e| format!("OCR recognition failed: {}", e))?;
 
+    // 删除所有空白字符
+    let text = text.replace(char::is_whitespace, "");
+
     Ok(text)
 }
 

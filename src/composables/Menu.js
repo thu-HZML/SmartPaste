@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { toggleClipboardWindow, toggleFavoritesWindow } from '../utils/actions.js'
 
 const username = ref("未登录");
+const userAvatar = ref("");
 
 export function loadUsername() {
   console.log('尝试从本地存储加载用户名...');
@@ -18,6 +19,23 @@ export function loadUsername() {
       if (userData && userData.user ) {
         username.value = userData.user.username; // 更新全局 ref 的值
         console.log(`用户名已更新为: ${username.value}`);
+        
+        // 读取用户头像URL
+        if (userData.user.avatar) {
+          userAvatar.value = userData.user.avatar;
+          console.log(`用户头像URL: ${userAvatar.value}`);
+        } else {
+          // 如果用户数据中没有头像，尝试从其他地方获取
+          const savedAvatar = localStorage.getItem("userAvatar");
+          if (savedAvatar) {
+            userAvatar.value = savedAvatar;
+            console.log(`从独立存储加载头像URL: ${userAvatar.value}`);
+          } else {
+            userAvatar.value = ""; // 设置为空字符串，显示默认图标
+            console.log('未找到用户头像数据');
+          }
+        }
+
         return; 
       }
     } catch (e) {
@@ -29,11 +47,13 @@ export function loadUsername() {
   username.value = "未登录";
   console.log('未找到有效用户名数据，设置为: 未登录');
 }
+// 初始化时加载用户名
 loadUsername();
 
 export function useUsername() {
   return {
     username, // 返回全局的响应式引用
+    userAvatar,
     loadUsername,
   };
 }

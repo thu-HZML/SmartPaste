@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
 import { emit } from '@tauri-apps/api/event'
-import { apiService } from '../services/api'
+import { apiService,ensureAbsoluteAvatarUrl } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import { loadUsername } from './Menu'
 import { 
@@ -36,6 +36,10 @@ export function usePreferences() {
   const registerLoading = ref(false)
   const loginLoading = ref(false)
 
+  // 修改密码相关状态
+  const showChangePasswordDialog = ref(false)
+  const changePasswordLoading = ref(false)
+
   // 窗口关闭监听器
   let unlistenCloseRequested = null
   let firstCloseWindow = true
@@ -53,6 +57,13 @@ export function usePreferences() {
     email: '',
     password: ''
   })
+
+  // 修改密码表单数据
+  const changePasswordData = reactive({
+    old_password: '',
+    new_password: '',
+    new_password2: '' 
+  })
   
   // 表单验证错误
   const registerErrors = reactive({
@@ -60,6 +71,13 @@ export function usePreferences() {
     email: '',
     password: '',
     password2: ''
+  })
+
+  // 修改密码表单验证错误
+  const changePasswordErrors = reactive({
+    old_password: '',
+    new_password: '',
+    new_password2: ''
   })
 
   // 快捷键设置所需的变量
@@ -83,7 +101,8 @@ export function usePreferences() {
   const userInfo = reactive({
     username: '',
     email: '',
-    bio: ''
+    bio: '',
+    avatar: ''
   })
 
   // 导航项
@@ -164,6 +183,42 @@ export function usePreferences() {
       isValid = false
     } else if (registerData.password !== registerData.password2) {
       registerErrors.password2 = '两次输入的密码不一致'
+      isValid = false
+    }
+    
+    return isValid
+  }
+
+  // 验证修改密码表单
+  const validateChangePasswordForm = () => {
+    let isValid = true
+    
+    // 清除之前的错误
+    Object.keys(changePasswordErrors).forEach(key => {
+      changePasswordErrors[key] = ''
+    })
+    
+    // 验证旧密码
+    if (!changePasswordData.old_password) {
+      changePasswordErrors.old_password = '旧密码不能为空'
+      isValid = false
+    }
+    
+    // 验证新密码
+    if (!changePasswordData.new_password) {
+      changePasswordErrors.new_password = '新密码不能为空'
+      isValid = false
+    } else if (changePasswordData.new_password.length < 6) {
+      changePasswordErrors.new_password = '新密码至少6个字符'
+      isValid = false
+    }
+    
+    // 验证确认新密码
+    if (!changePasswordData.new_password2) {
+      changePasswordErrors.new_password2 = '请确认新密码'
+      isValid = false
+    } else if (changePasswordData.new_password !== changePasswordData.new_password2) {
+      changePasswordErrors.new_password2 = '两次输入的新密码不一致'
       isValid = false
     }
     
@@ -286,6 +341,7 @@ export function usePreferences() {
           userInfo.username = response.data.user.username || '当前用户'
           userInfo.email = response.data.user.email || loginData.email
           userInfo.bio = response.data.user.bio
+          userInfo.avatar = response.data.user.avatar || ''
         }
         loadUsername()
         // 关闭登录对话框
@@ -340,6 +396,30 @@ export function usePreferences() {
     showLoginDialog.value = false
   }
 
+  // 打开修改密码对话框
+  const openChangePasswordDialog = () => {
+    if (!userLoggedIn.value) {
+      showMessage('请先登录才能修改密码', 'warning')
+      return
+    }
+    showChangePasswordDialog.value = true
+    // 清空表单数据
+    Object.assign(changePasswordData, {
+      old_password: '',
+      new_password: '',
+      new_password2: ''
+    })
+    // 清空错误信息
+    Object.keys(changePasswordErrors).forEach(key => {
+      changePasswordErrors[key] = ''
+    })
+  }
+  
+  // 关闭修改密码对话框
+  const closeChangePasswordDialog = () => {
+    showChangePasswordDialog.value = false
+  }
+
   const login = () => {
     openLoginDialog()
   }
@@ -356,7 +436,8 @@ export function usePreferences() {
       Object.assign(userInfo, {
         username: '',
         email: '',
-        bio: ''
+        bio: '',
+        avatar: ''
       })
       showMessage('已退出登录', 'success')
     }
@@ -398,7 +479,8 @@ export function usePreferences() {
     Object.assign(userInfo, {
       username: '当前用户',
       email: 'user@example.com',
-      bio: '剪贴板管理爱好者'
+      bio: '剪贴板管理爱好者',
+      avatar: ''
     })
     showMessage('用户信息已重置')
   }
@@ -793,45 +875,216 @@ const updateRetentionDays = async () => {
   }
 
   // 用户管理方法
-  const changeAvatar = async () => {
-    try {
-      // const filePath = await invoke('select_avatar_file')
-      if (filePath) {
-        await invoke('upload_user_avatar', { filePath })
-        showMessage('头像更换成功')
-      }
-    } catch (error) {
-      console.error('更换头像失败:', error)
-      showMessage(`更换失败: ${error}`)
+  // 修改密码方法
+  const handleChangePassword = async () => {
+    if (!validateChangePasswordForm()) {
+      showMessage('请填写正确的表单信息', 'error')
+      return
     }
-  }
-
-  const changePassword = async () => {
-    try {
-      // const result = await invoke('open_change_password_dialog')
-      if (result.success) {
-        showMessage('密码修改成功')
-      }
-    } catch (error) {
-      console.error('修改密码失败:', error)
-      showMessage(`修改失败: ${error}`)
+    
+    if (!userLoggedIn.value) {
+      showMessage('请先登录', 'error')
+      return
     }
-  }
 
-  const deleteAccount = async () => {
-    if (confirm('确定要删除账户吗？此操作将永久删除所有数据且不可恢复！')) {
-      try {
-        // 调用后端API删除账户
-        // await invoke('delete_user_account')
+    // 1. 在这里获取 Refresh Token
+    let refreshToken = null
+    try {
+      const userString = localStorage.getItem('user');
+      if (userString) {
+        const user = JSON.parse(userString);
+        refreshToken = user.jwt.refresh;
+      }
+    } catch (e) {
+      console.error('解析本地用户信息失败:', e);
+    }
+    
+    if (!refreshToken) {
+      showMessage('无法获取登录状态，请重新登录', 'error')
+      return
+    }
+
+    changePasswordLoading.value = true
+    
+    try {
+      // 2. 调用 API Service
+      const response = await apiService.changePassword(
+        changePasswordData, // 包含三个密码字段
+        refreshToken      // 传入 refresh token
+      )
+
+      if (response.success) {
+        showMessage('密码修改成功！请重新登录', 'success')
+        
+        // 强制退出登录并清空状态
         localStorage.removeItem('user')
         localStorage.removeItem('token')
         userLoggedIn.value = false
         userEmail.value = ''
-        showMessage('账户已删除')
-        router.push('/')
+        Object.assign(userInfo, { username: '', email: '', bio: '', avatar: '' })
+        
+        // 关闭对话框并清空表单
+        showChangePasswordDialog.value = false
+        Object.assign(changePasswordData, {
+          old_password: '',
+          new_password: '',
+          new_password2: ''
+        })
+        Object.keys(changePasswordErrors).forEach(key => {
+          changePasswordErrors[key] = ''
+        })
+        
+        // 建议：可以添加页面跳转或刷新逻辑
+
+      } else {
+        // API 返回错误
+        showMessage(`密码修改失败：${response.message}`, 'error')
+      }
+    } catch (error) {
+      console.error('密码修改错误:', error)
+      showMessage('密码修改出错，请检查网络连接', 'error')
+    } finally {
+      changePasswordLoading.value = false
+    }
+  }
+
+  // 更换头像方法
+  const changeAvatar = async () => {
+    if (!userLoggedIn.value) {
+      showMessage('请先登录才能更换头像', 'warning')
+      return
+    }
+
+    try {
+      // 打开文件选择对话框，只允许图片
+      const selectedPath = await open({
+        directory: false,
+        multiple: false,
+        title: '选择新头像文件',
+        filters: [{
+          name: 'Image',
+          extensions: ['png', 'jpg', 'jpeg', 'webp']
+        }]
+      })
+
+      if (!selectedPath) {
+        return // 用户取消选择
+      }
+      
+      // 获取文件信息
+      const filePath = Array.isArray(selectedPath) ? selectedPath[0] : selectedPath
+      const fileName = filePath.substring(filePath.lastIndexOf('\\') + 1)
+      const fileExtension = fileName.split('.').pop().toLowerCase()
+      const mimeType = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'webp': 'image/webp'
+      }[fileExtension] || 'application/octet-stream'
+
+      if (mimeType === 'application/octet-stream') {
+        showMessage('文件类型不支持，请选择 PNG/JPG/WEBP 格式', 'error')
+        return
+      }
+
+      showMessage('正在读取并上传头像...')
+      
+      // 读取文件内容为 Base64 编码字符串
+      // 该命令接收文件路径，读取文件内容并返回 Base64 编码字符串。
+      let base64Content = null;
+      try {
+          base64Content = await invoke('read_file_base64', { filePath });
+      } catch (e) {
+          console.error('读取本地文件失败:', e);
+          showMessage('读取本地文件失败，请确保 Rust 命令已实现', 'error');
+          return;
+      }
+      
+      // 将 Base64 转换为 File 对象
+      // 移除可能的前缀 'data:mime/type;base64,'
+      const base64Data = base64Content.split(',').pop();
+      const binaryString = atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      // 创建 File 对象，供 fetch API 上传
+      const fileObject = new File([bytes], fileName, { type: mimeType });
+
+      // 调用 API Service 上传
+      const apiResponse = await apiService.uploadAvatar(fileObject);
+
+      if (apiResponse.success) {
+        // 更新 UI 状态
+        // apiService.uploadAvatar 中已更新 localstorage，这里同步到响应式状态
+        const savedUser = localStorage.getItem('user');
+        if (savedUser) {
+            const userData = JSON.parse(savedUser);
+            // 确保同步最新的 avatar URL
+            userInfo.avatar = userData.user.avatar || userInfo.avatar; 
+        }
+
+        showMessage('头像更换成功', 'success');
+      } else {
+        showMessage(apiResponse.message || '头像上传失败', 'error');
+      }
+    } catch (error) {
+      console.error('更换头像错误:', error);
+      showMessage(`更换失败: ${error.message || '网络错误'}`, 'error');
+    }
+  }
+
+  const deleteAccount = async () => {
+    if (!userLoggedIn.value) {
+      showMessage('请先登录才能删除账户', 'warning');
+      return;
+    }
+    const message = '确定要删除账户吗？';
+    const confirmed = await window.confirm(message);
+    if (confirmed) {
+      loading.value = true;
+      let refreshToken = null
+      try {
+        const userString = localStorage.getItem('user');
+        if (userString) {
+          const user = JSON.parse(userString);
+          refreshToken = user.jwt.refresh;
+        }
+      } catch (e) {
+        console.error('解析本地用户信息失败:', e);
+      }
+
+      if (!refreshToken) {
+        showMessage('无法获取登录状态，请重新登录', 'error')
+        return
+      }
+
+      try {
+        // 调用后端API删除账户
+        const apiResponse = await apiService.deleteAccount(refreshToken);
+
+        if (apiResponse.success) {
+          // 清空本地登录状态
+          localStorage.removeItem('user');
+          localStorage.removeItem('token');
+          userLoggedIn.value = false;
+          userEmail.value = '';
+          Object.assign(userInfo, { username: '', email: '', bio: '', avatar: '' });
+          
+          showMessage('账户已成功删除', 'success');
+          // 删除成功后跳转到主页或登录页
+          //router.push('/');
+        } else {
+          // API 调用失败
+          showMessage(apiResponse.message || '删除账户失败', 'error');
+          console.error('删除账户失败返回信息:', apiResponse.data);
+        }
       } catch (error) {
-        console.error('删除账户失败:', error)
-        showMessage(`删除失败: ${error}`)
+        console.error('删除账户错误:', error);
+        showMessage(`删除失败: ${error.message || '网络错误'}`, 'error');
+      } finally {
+        loading.value = false;
       }
     }
   }
@@ -909,6 +1162,7 @@ const updateRetentionDays = async () => {
     // 检查本地存储中是否有用户信息
     try {
       const savedUser = localStorage.getItem('user')
+      const savedToken = localStorage.getItem('token')
       if (savedUser) {
         const userData = JSON.parse(savedUser)
         userLoggedIn.value = true
@@ -916,6 +1170,7 @@ const updateRetentionDays = async () => {
         userInfo.username = userData.user.username || ''
         userInfo.email = userData.user.email || ''
         userInfo.bio = userData.user.bio || ''
+        userInfo.avatar = ensureAbsoluteAvatarUrl(userData.user.avatar || '')
       }
     } catch (error) {
       console.error('加载用户信息失败:', error)
@@ -959,14 +1214,12 @@ const updateRetentionDays = async () => {
     registerLoading,
     loginLoading,
 
-    // 注册登录相关状态
-    showRegisterDialog,
-    showLoginDialog,
-    registerData,
-    loginData,
-    registerErrors,
-    registerLoading,
-    loginLoading,
+    // 修改密码相关状态
+    showChangePasswordDialog,
+    changePasswordData,
+    changePasswordErrors,
+    changePasswordLoading,
+
 
     // 基础方法
     setActiveNav,
@@ -984,6 +1237,11 @@ const updateRetentionDays = async () => {
     closeRegisterDialog,
     closeLoginDialog,
     updateUserInfo,
+
+    // 修改密码方法
+    handleChangePassword,
+    openChangePasswordDialog,
+    closeChangePasswordDialog,
 
     // 快捷键方法
     startRecording,
@@ -1009,7 +1267,6 @@ const updateRetentionDays = async () => {
 
     // 用户管理方法
     changeAvatar,
-    changePassword,
     deleteAccount,
 
     // 辅助方法

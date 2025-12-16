@@ -475,7 +475,7 @@
                     type="checkbox" 
                     :checked="settings.filter_passwords" 
                     @change="updateSetting('filter_passwords', $event.target.checked)"
-                  > 密码
+                  > 密码<span class="tip-text">（匹配备注中的‘密码’字样）</span>
                 </label>
                 <label class="checkbox-item">
                   <input 
@@ -712,17 +712,15 @@
             </div>
             
             <div class="account-status" v-if="!userLoggedIn">
-              <p>您尚未登录，请登录以启用云端同步功能</p>
+              <p>您尚未登录，请登录以启用云端同步功能</p>  
               <div class="account-buttons">
-                <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
-                <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
-              </div>
+                <button class="btn btn-secondary" @click="activeNav = 'user'">前往用户信息</button>
+              </div>            
             </div>
             
             <div class="account-status" v-else>
               <p>已登录为: {{ userEmail }}</p>
               <div class="account-buttons">
-                <button class="btn btn-secondary" @click.prevent="logout">退出登录</button>
                 <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
               </div>
             </div>
@@ -735,8 +733,11 @@
           
           <div class="user-profile">
             <div class="avatar-section">
-              <div class="avatar">👤</div>
-              <button class="btn btn-secondary">更换头像</button>
+              <div class="avatar">
+                <img v-if="userInfo.avatar" :src="userInfo.avatar" alt="用户头像" class="user-avatar-img">
+                <span v-else>👤</span>
+              </div>
+              <button class="btn btn-secondary" @click="changeAvatar">更换头像</button>
             </div>
             
             <div class="user-details">
@@ -766,8 +767,19 @@
           <div class="account-actions">
             <h3>账户操作</h3>
             <div class="action-buttons">
-              <button class="btn btn-secondary" @click="changePassword">修改密码</button>
-              <button class="btn btn-danger" @click="deleteAccount">删除账户</button>
+              <template v-if="userLoggedIn">
+                <button class="btn btn-secondary" @click.prevent="logout">退出登录</button>
+                <button class="btn btn-secondary" @click="openChangePasswordDialog" :disabled="!userLoggedIn">修改密码</button>
+                <button class="btn btn-danger" @click="deleteAccount" :disabled="loading">
+                  <span v-if="loading">处理中...</span>
+                  <span v-else>删除账户</span>
+                </button>
+              </template>
+              
+              <template v-else>
+                <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
+                <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
+              </template>
             </div>
           </div>
         </div>
@@ -909,7 +921,74 @@
           </form>
         </div>
       </div>
-    </div> 
+    </div>
+
+    <!-- 修改密码对话框 -->
+    <div v-if="showChangePasswordDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>修改密码</h3>
+          <button @click="closeChangePasswordDialog" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <form @submit.prevent="handleChangePassword">
+            <div class="form-group">
+              <label for="old-password">旧密码</label>
+              <input
+                id="old-password"
+                v-model="changePasswordData.old_password"
+                type="password"
+                required
+                placeholder="请输入旧密码"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.old_password }"
+              />
+              <div v-if="changePasswordErrors.old_password" class="error-message">{{ changePasswordErrors.old_password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="new-password">新密码</label>
+              <input
+                id="new-password"
+                v-model="changePasswordData.new_password"
+                type="password"
+                required
+                placeholder="请输入新密码（至少6位）"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.new_password }"
+              />
+              <div v-if="changePasswordErrors.new_password" class="error-message">{{ changePasswordErrors.new_password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="new-password2">确认新密码</label>
+              <input
+                id="new-password2"
+                v-model="changePasswordData.new_password2"
+                type="password"
+                required
+                placeholder="请再次输入新密码"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.new_password2 }"
+              />
+              <div v-if="changePasswordErrors.new_password2" class="error-message">{{ changePasswordErrors.new_password2 }}</div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeChangePasswordDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="changePasswordLoading" class="btn btn-primary">
+                <span v-if="changePasswordLoading">修改中...</span>
+                <span v-else>确定修改</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    
   </div>
 </template>
 
@@ -950,6 +1029,12 @@ const {
   registerLoading,
   loginLoading,
 
+  // 修改密码相关状态
+  showChangePasswordDialog,
+  changePasswordData,
+  changePasswordErrors,
+  changePasswordLoading,
+
   // 基础方法
   setActiveNav,
   goBack,
@@ -966,6 +1051,11 @@ const {
   closeRegisterDialog,
   closeLoginDialog,
   updateUserInfo,
+
+  // 修改密码方法
+  handleChangePassword,
+  openChangePasswordDialog,
+  closeChangePasswordDialog,
   
   // 快捷键方法
   startRecording,
@@ -1492,6 +1582,17 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   font-size: 32px;
+  overflow: hidden; /* 隐藏超出圆形区域的部分 */
+  position: relative; /* 为绝对定位的图片做准备 */
+  border: 2px solid #e1e8ed;/* 添加边框增强圆形效果 */
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 确保图片覆盖整个容器并保持比例 */
+  object-position: center center; /* 确保图片居中显示 */
+  display: block;
 }
 
 .user-details {
@@ -1785,6 +1886,12 @@ input:checked + .slider:before {
   font-size: 14px;
   z-index: 10000;
   animation: slideUp 0.3s ease;
+}
+
+.tip-text {
+  font-size: 0.9em; 
+  color: #888; 
+  margin-left: 0px; 
 }
 
 @keyframes slideUp {
