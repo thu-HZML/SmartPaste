@@ -73,7 +73,6 @@ fn main() {
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
             db::get_favorite_data_count,
-            // db::search_data,
             db::add_notes_by_id,
             db::filter_data_by_type,
             db::comprehensive_search,
@@ -126,11 +125,11 @@ fn main() {
             };
             // 接着使用提取出来的字符串进行逻辑处理
             if let Some(ref path_str) = custom_storage_path {
-                let custom_path = PathBuf::from(path_str);
-
                 // 规范化路径逻辑
                 #[cfg(target_os = "windows")]
                 let custom_path = PathBuf::from(path_str.replace("/", "\\"));
+                #[cfg(not(target_os = "windows"))]
+                let custom_path = PathBuf::from(path_str);
 
                 if !path_str.trim().is_empty() {
                     println!("✅ 检测到配置的存储路径: {}", custom_path.display());
@@ -284,24 +283,3 @@ fn main() {
     }
 }
 
-// 辅助函数：切换窗口显示/隐藏
-fn toggle_window_visibility(window: &tauri::WebviewWindow) {
-    match window.is_visible() {
-        Ok(visible) => {
-            if visible {
-                if let Err(e) = window.hide() {
-                    eprintln!("❌ 隐藏窗口失败: {:?}", e);
-                } else {
-                    println!("👻 隐藏桌宠窗口");
-                }
-            } else {
-                if let Err(e) = window.show() {
-                    eprintln!("❌ 显示窗口失败: {:?}", e);
-                } else {
-                    println!("👀 显示桌宠窗口");
-                }
-            }
-        }
-        Err(e) => eprintln!("❌ 获取窗口可见性失败: {:?}", e),
-    }
-}
