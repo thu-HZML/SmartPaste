@@ -3,22 +3,19 @@ use crate::clipboard::ClipboardItem;
 use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 
 // --- 测试辅助函数 ---
 
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
 }
+
+use uuid::Uuid;
 
 fn set_test_db_path() {
     let mut p = std::env::temp_dir();
-    p.push("smartpaste_test_private.db"); // 使用独立的文件名
+    let filename = format!("smartpaste_test_private_{}.db", Uuid::new_v4());
+    p.push(filename); // 使用独立的文件名
     set_db_path(p);
     let _ = crate::clipboard::take_last_inserted();
 }
@@ -26,7 +23,14 @@ fn set_test_db_path() {
 fn clear_db_file() {
     let p: PathBuf = get_db_path();
     if p.exists() {
-        let _ = fs::remove_file(p);
+        for _ in 0..5 {
+            if fs::remove_file(&p).is_ok() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // Try one last time and panic if fails
+        fs::remove_file(&p).expect("failed to remove test db file");
     }
 }
 
