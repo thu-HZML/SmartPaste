@@ -535,12 +535,13 @@ class ApiService {
       }
       
       // 成功 (200 OK)，获取配置内容 (文本格式，因为是config.json)
-      const configContent = await response.text();
+      result = await response.json();
+      console.log('ai回复：', result)
 
       return {
         success: true,
         message: '配置下载成功',
-        data: configContent
+        data: result.data
       };
 
     } catch (error) {

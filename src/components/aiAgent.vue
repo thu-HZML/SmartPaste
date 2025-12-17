@@ -232,20 +232,47 @@ const executeAI = async (action) => {
   isTransparent.value = false
   
   try {
+    var formdata = new FormData();
+    let type = 'text'
+    let content = clipboardContent.value
+    let userQuest = ''
+    
+    // 根据action类型设置不同的参数
+    switch(action) {
+      case 'question':
+        userQuest = '请回答以下问题：'
+        break
+        
+      case 'summarize':
+        userQuest = '请总结以下内容：'
+        break
+        
+      case 'translate':
+        userQuest = '请将以下内容翻译成中文：'
+        break
+        
+      case 'search':
+        userQuest = `请给出以下与内容相关的网址：`
+        break       
+    }
+    
+    formdata.append("type", type)
+    formdata.append("content", content)
+    formdata.append("user_quest", userQuest)
+    formdata.append("provider", "default")
+
+    const response = await apiService.aiChat(formdata)
+/*
     const response = await apiService.aiChat({
-      type: 'text',
-      user_quest: '请帮我翻译成中文',
-      file_path: null,
-      content: clipboardContent,
-      file: null
-    })
+      type: 'none',
+      content: '',
+      user_quest: 'hello',
+      provider: 'default'
+    })*/
 
     if (response.success) {
-
+      responseText.value = response.data.reply
     }
-
-    // 调用后端API
-    //const response = await invoke('call_ai_api', requestData)
     
     /*
     // 处理响应
@@ -259,8 +286,7 @@ const executeAI = async (action) => {
       }
     } else {
       responseText.value = response?.error || 'AI处理失败'
-    }*/
-    responseText.value = '这是一条模拟ai回复，用于展示AI助手的功能。实际使用时，请根据后端API返回的内容进行显示。'
+    }*/  
   } catch (error) {
     console.error('AI调用失败:', error)
     responseText.value = `AI服务错误: ${error.message || '未知错误'}`
