@@ -230,6 +230,30 @@ fn main() {
                 }
             }
 
+            // 9. 获取OCR配置并初始化OCR引擎
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("👁️ 正在初始化 OCR 引擎...");
+
+                let provider = cfg.ocr_provider.clone();
+                let languages = cfg.ocr_languages.clone();
+
+                // 转换 Vec<String> 为 Vec<&str> 以匹配 configure_ocr 签名
+                let languages_ref: Option<Vec<&str>> = if let Some(ref langs) = languages {
+                    Some(langs.iter().map(|s| s.as_str()).collect())
+                } else {
+                    None
+                };
+
+                let confidence = cfg.ocr_confidence_threshold;
+                let timeout = cfg.ocr_timeout_secs;
+
+                match ocr::configure_ocr(provider, languages_ref, confidence, timeout) {
+                    Ok(msg) => println!("✅ OCR引擎初始化成功: {}", msg),
+                    Err(e) => eprintln!("❌ OCR引擎初始化失败: {}", e),
+                }
+            }
+
             // 打印当前配置的存储路径用于验证
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
@@ -282,4 +306,3 @@ fn main() {
         eprintln!("❌ 启动 Tauri 应用失败: {:?}", e);
     }
 }
-
