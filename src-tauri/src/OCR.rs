@@ -12,6 +12,9 @@ fn parse_language(code: &str) -> Result<Language, String> {
         "eng" | "en" | "english" => Ok(Language::English),
         "zh" | "chi" | "chinese" | "zh-cn" | "chi_sim" | "zh_cn" => Ok(Language::Chinese),
         "ja" | "jpn" | "japanese" => Ok(Language::Japanese),
+        "ko" | "kor" | "korean" => Ok(Language::Korean),
+        "fr" | "fra" | "fre" | "french" => Ok(Language::French),
+        "de" | "deu" | "ger" | "german" => Ok(Language::German),
         other => Err(format!("Unsupported language code: {}", other)),
     }
 }
