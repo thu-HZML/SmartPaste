@@ -10,10 +10,31 @@
   >
     <!-- 对话框区域 -->
     <div 
-      v-if = "hasResponse || loading"
+      v-if = "hasResponse || loading || showQuestionInput"
       class="ai-response"
       :style="{ maxHeight: maxResponseHeight + 'px' }"
     >
+      <!-- 提问输入框区域 -->
+      <div v-if="showQuestionInput && !loading" class="question-input-area">
+        <input
+          ref="questionInputRef"
+          v-model="questionInput"
+          type="text"
+          placeholder="请输入您的问题..."
+          class="question-input"
+          @keyup.enter="submitQuestion"
+          @keyup.esc="cancelQuestion"
+        />
+        <div class="question-actions">
+          <button class="icon-btn-small" @click="submitQuestion" title="发送">
+            <PaperAirplaneIcon class="icon-default" />
+          </button>
+          <button class="icon-btn-small" @click="cancelQuestion" title="取消">
+            <XMarkIcon class="icon-default" />
+          </button>
+        </div>
+      </div>
+      
       <div class="response-content">
         <div v-if="loading" class="loading-indicator">
           <div class="loading-dots">
@@ -23,17 +44,21 @@
           </div>
           <span class="loading-text">AI正在思考...</span>
         </div>
-        <div v-else class="response-text">
+        <div v-else-if="hasResponse" class="response-text">
           {{ responseText }}
         </div>
       </div>
-      <!-- 复制按钮 -->
-      <div v-if="hasResponse && !loading" class="response-actions">
+      
+      <!-- 响应操作按钮 -->
+      <div v-if="hasResponse && !loading && !showQuestionInput" class="response-actions">
         <button class="icon-btn-small" @click="copyResponse" title="复制回答">
           <Square2StackIcon class="icon-default" />
         </button>
         <button class="icon-btn-small" @click="clearResponse" title="清空">
           <XMarkIcon class="icon-default" />
+        </button>
+        <button v-if="hasResponse" class="icon-btn-small" @click="askFollowUp" title="继续提问">
+          <ChatBubbleLeftRightIcon class="icon-default" />
         </button>
       </div>
     </div>
@@ -57,7 +82,7 @@
     </div>
 
     <!-- 关闭按钮 -->
-    <button v-if = "!hasResponse && !loading" class="ai-close-btn" @click="closeAI">
+    <button v-if = "!hasResponse && !loading && !showQuestionInput" class="ai-close-btn" @click="closeAI">
       <XMarkIcon class="icon-default" />
     </button>
   </div>
@@ -65,7 +90,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { Square2StackIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { Square2StackIcon, XMarkIcon, PaperAirplaneIcon, ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -108,6 +133,12 @@ const autoCloseTimer = ref(null) // 自动关闭计时器
 const mouseInTimer = ref(null) // 鼠标进入计时器
 const isMouseInside = ref(false) // 鼠标是否在区域内
 const aiAssistantRef = ref(null)
+
+// 提问相关状态
+const showQuestionInput = ref(false) // 是否显示提问输入框
+const questionInput = ref('') // 用户输入的问题
+const questionInputRef = ref(null) // 输入框引用
+const conversationHistory = ref([]) // 对话历史
 
 // 配置
 const maxResponseHeight = 400 // 最大响应高度
@@ -225,6 +256,29 @@ const handleMouseEnter = () => {
 // 执行AI操作
 const executeAI = async (action) => {
   if (loading.value) return
+
+  // 对于提问按钮，显示输入框而不是直接调用API
+  if (action === 'question') {
+    showQuestionInput.value = true
+    hasResponse.value = true
+    isTransparent.value = false
+    currentAction.value = action
+    
+    // 设置输入框默认值（可选）
+    questionInput.value = ''
+    
+    // 延迟聚焦输入框
+    nextTick(() => {
+      if (questionInputRef.value) {
+        questionInputRef.value.focus()
+        // 选中所有文本
+        questionInputRef.value.select()
+      }
+    })
+    
+    return
+  }
+
   console.log('执行AI操作:', action)
   loading.value = true
   currentAction.value = action
@@ -309,6 +363,89 @@ const simulateStreamingResponse = (text) => {
   }, 20)
 }
 
+// 提交用户提问
+const submitQuestion = async () => {
+  if (!questionInput.value.trim() || loading.value) return
+  
+  console.log('提交问题:', questionInput.value)
+  loading.value = true
+  showQuestionInput.value = false
+  hasResponse.value = true
+  isTransparent.value = false
+  
+  try {
+    const formdata = new FormData()
+    const type = 'text'
+    const content = clipboardContent.value
+    const userQuest = questionInput.value
+    
+    formdata.append("type", type)
+    formdata.append("content", content)
+    formdata.append("user_quest", userQuest)
+    formdata.append("provider", "default")
+    
+    console.log('发送AI提问请求:', {
+      type,
+      content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+      user_quest: userQuest
+    })
+    
+    const response = await apiService.aiChat(formdata)
+    
+    if (response.success) {
+      responseText.value = response.data.reply
+      
+      // 添加到对话历史
+      conversationHistory.value.push({
+        type: 'user',
+        content: userQuest,
+        action: 'question'
+      })
+      conversationHistory.value.push({
+        type: 'assistant',
+        content: response.data.reply,
+        action: 'question'
+      })
+    } else {
+      responseText.value = response.message || 'AI处理失败'
+    }
+    
+  } catch (error) {
+    console.error('AI调用失败:', error)
+    responseText.value = `AI服务错误: ${error.message || '未知错误'}`
+  } finally {
+    loading.value = false
+    questionInput.value = '' // 清空输入框
+  }
+}
+
+// 取消提问
+const cancelQuestion = () => {
+  showQuestionInput.value = false
+  questionInput.value = ''
+  
+  // 如果没有响应文本，可以关闭响应区域
+  if (!responseText.value) {
+    hasResponse.value = false
+    if (!isMouseInside.value) {
+      startAutoCloseTimer()
+    }
+  }
+}
+
+// 继续提问（跟进问题）
+const askFollowUp = () => {
+  showQuestionInput.value = true
+  hasResponse.value = true
+  
+  // 延迟聚焦输入框
+  nextTick(() => {
+    if (questionInputRef.value) {
+      questionInputRef.value.focus()
+    }
+  })
+}
+
 // 复制AI回复
 const copyResponse = async () => {
   try {
@@ -324,6 +461,10 @@ const copyResponse = async () => {
 const clearResponse = () => {
   responseText.value = ''
   hasResponse.value = false
+  showQuestionInput.value = false
+  questionInput.value = ''
+  conversationHistory.value = []
+  
   if (!isMouseInside.value) {
     startAutoCloseTimer()
   }
@@ -336,6 +477,9 @@ const resetAI = () => {
   loading.value = false
   currentAction.value = ''
   isTransparent.value = true
+  showQuestionInput.value = false
+  questionInput.value = ''
+  conversationHistory.value = []
 }
 
 // 关闭AI界面
@@ -412,6 +556,40 @@ defineExpose({
 
 .ai-assistant.transparent:hover {
   opacity: 1;
+}
+
+/* 提问输入框区域 */
+.question-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e1e8ed;
+  background: white;
+}
+
+.question-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.question-input:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.question-input::placeholder {
+  color: #999;
+}
+
+.question-actions {
+  display: flex;
+  gap: 4px;
 }
 
 /* 响应区域 */
