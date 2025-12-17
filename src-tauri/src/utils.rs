@@ -33,7 +33,7 @@ use std::sync::OnceLock;
 use std::thread;
 use serde_json::json;
 use serde::Serialize; 
-use walkdir;
+use walkdir::WalkDir;
 
 #[tauri::command]
 pub fn test_function() -> String {
@@ -1258,7 +1258,7 @@ pub fn refresh_database_connection() -> Result<(), String> {
 
 /// 用于前端接收本地文件列表，包含相对路径和绝对路径
 #[derive(Debug, Serialize)]
-struct LocalFileInfo {
+pub struct LocalFileInfo {
     relative_path: String,
     file_path: String,
 }
@@ -1353,73 +1353,3 @@ pub async fn save_clipboard_file(relative_path: String, base64_content: String) 
     .map_err(|e| format!("异步任务执行失败: {}", e))?
 }
 
-/**
- * 【新增命令】清理本地文件目录 (files/) 中，不在 server_paths 列表中的文件。
- * 对应前端调用: cleanLocalFiles
- */
-#[tauri::command]
-pub async fn clean_local_files(server_paths: Vec<String>) -> Result<(), String> {
-    use std::fs;
-    use std::path::{Path, PathBuf};
-
-    tauri::async_runtime::spawn_blocking(move || {
-        let root_path = crate::config::get_current_storage_path();
-        let files_dir = root_path.join("files");
-        
-        if !files_dir.exists() {
-            return Ok(());
-        }
-
-        let server_paths_set: std::collections::HashSet<String> = server_paths.into_iter().collect();
-
-        let mut deleted_count = 0;
-        
-        // 遍历 files 目录 (由深到浅，以便删除空目录)
-        for entry in walkdir::WalkDir::new(&files_dir).into_iter().rev().filter_map(|e| e.ok()) {
-            let path = entry.path();
-            
-            let is_dir = path.is_dir();
-            
-            // 忽略根目录
-            if path == files_dir {
-                continue;
-            }
-
-            // 计算相对于 files_dir 的相对路径
-            let relative_path_os = match path.strip_prefix(&files_dir) {
-                Ok(p) => p,
-                Err(_) => continue, 
-            };
-            
-            // 统一路径分隔符为 / 进行对比
-            let relative_path_str = relative_path_os.to_string_lossy().to_string().replace("\\", "/");
-            
-            if is_dir {
-                // 如果是空目录，删除
-                if path.read_dir().map_or(false, |mut i| i.next().is_none()) {
-                    if let Err(e) = fs::remove_dir(path) {
-                        eprintln!("清理空目录失败 {}: {}", relative_path_str, e);
-                    } else {
-                        // println!("🗑️ 删除空目录: {}", relative_path_str);
-                    }
-                }
-            } else {
-                // 如果是文件，并且不在服务器列表中
-                if !server_paths_set.contains(&relative_path_str) {
-                    if let Err(e) = fs::remove_file(path) {
-                        eprintln!("清理文件失败 {}: {}", relative_path_str, e);
-                    } else {
-                        deleted_count += 1;
-                        println!("🗑️ 删除旧文件: {}", relative_path_str);
-                    }
-                }
-            }
-        }
-        
-        println!("✅ 文件清理完成，删除 {} 个冗余文件。", deleted_count);
-
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("异步任务执行失败: {}", e))?
-}
