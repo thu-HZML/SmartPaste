@@ -89,7 +89,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { Square2StackIcon, XMarkIcon, PaperAirplaneIcon, ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window'
