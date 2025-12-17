@@ -569,7 +569,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/sync/files/`, {
           method: 'GET',
           headers: {
-              'Authorization': `Token ${token}`,
+              'Authorization': `Bearer ${token}`,
           },
       });
       // 列表接口返回 200 OK，包含 JSON 数组
@@ -621,7 +621,7 @@ class ApiService {
           method: 'POST',
           headers: {
               // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
-              'Authorization': `Token ${token}`,
+              'Authorization': `Bearer ${token}`,
           },
           body: formData,
       });
@@ -669,7 +669,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/sync/files/${fileId}/`, {
           method: 'DELETE',
           headers: {
-              'Authorization': `Token ${token}`,
+              'Authorization': `Bearer ${token}`,
           },
       });
 
@@ -736,7 +736,7 @@ class ApiService {
           method: 'POST',
           headers: {
               // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
-              'Authorization': `Token ${token}`,
+              'Authorization': `Bearer ${token}`,
           },
           body: formData,
       });
@@ -782,7 +782,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/sync/sqlite/get/`, {
         method: 'GET',
         headers: {
-            'Authorization': `Token ${token}`,
+            'Authorization': `Bearer ${token}`,
         },
       });
 

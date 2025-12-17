@@ -1094,6 +1094,64 @@ const updateRetentionDays = async () => {
     }
   }
 
+  /**
+   * 云端推送/上传主函数 (直接对接后端接口)
+   */
+  const handleCloudPush = async () => {
+    if (isSyncing.value) return;
+    
+    // 权限预检查
+    if (!localStorage.getItem('token')) {
+      showMessage('请先登录后进行同步', 'error');
+      return;
+    }
+
+    isSyncing.value = true;
+    
+    try {
+      showMessage('正在推送数据至云端...', 'info');
+
+      // 1. 同步配置：从本地读取并上传
+      // 直接调用 Rust 获取文件内容，随后对接 Web 接口
+      const configTxt = await invoke('read_local_config_content'); 
+      const configRes = await apiService.uploadConfig(configTxt);
+      if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
+
+      // 2. 同步数据库：读本地DB并推送
+      // 后端 views.py 的 SqlitePushView 会自动合并数据
+      const dbBase64 = await invoke('read_db_file_base64');
+      const dbBlob = base64ToBlob(dbBase64, 'application/x-sqlite3');
+      const dbRes = await apiService.pushSqliteDatabase(dbBlob);
+      if (!dbRes.success) throw new Error(`数据库推送失败: ${dbRes.message}`);
+
+      // 3. 同步文件：遍历本地目录并逐个上传
+      const localFiles = await invoke('get_local_files_to_upload');
+      for (const fileInfo of localFiles) {
+        // 读取二进制内容并转为 Web 可发送的 Blob 对象
+        const content = await invoke('read_file_base64', { filePath: fileInfo.file_path });
+        const blob = base64ToBlob(content, 'application/octet-stream');
+        
+        // 调用 apiService 接口上传，后端会根据 relative_path 自动处理覆盖或新增
+        const fileRes = await apiService.uploadClipboardFile(blob, fileInfo.relative_path);
+        if (!fileRes.success) {
+          console.warn(`文件上传失败 (${fileInfo.relative_path}):`, fileRes.message);
+        }
+      }
+
+      // 成功处理
+      showMessage('云端数据推送成功！', 'success');
+      lastSyncTime.value = Date.now();
+      localStorage.setItem('lastSyncTime', lastSyncTime.value);
+
+    } catch (error) {
+      // 错误处理逻辑：打印日志并反馈给用户
+      console.error('云端推送错误:', error);
+      showMessage(error.message || '网络同步出错，请检查连接', 'error');
+    } finally {
+      isSyncing.value = false;
+    }
+  };
+
   // 辅助方法
   const getAIServiceName = (service) => {
     const serviceMap = {
@@ -1272,6 +1330,7 @@ const updateRetentionDays = async () => {
     manualSync,
     syncNow,
     checkSyncStatus,
+    handleCloudPush,
 
     // 用户管理方法
     changeAvatar,

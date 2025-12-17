@@ -587,7 +587,7 @@
               </span>
             </div>
             <div class="status-actions">
-              <button class="btn btn-small" @click="manualSync" :disabled="isSyncing">
+              <button class="btn btn-small" @click="handleCloudPush" :disabled="isSyncing">
                 {{ isSyncing ? '同步中...' : '立即同步' }}
               </button>
             </div>
@@ -1052,6 +1052,7 @@ const {
   manualSync,
   syncNow,
   checkSyncStatus,
+  handleCloudPush,
 
   // 用户管理方法
   changeAvatar,

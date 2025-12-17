@@ -101,6 +101,10 @@ fn main() {
             config::get_config_item,
             utils::read_file_base64,
             utils::write_local_config_file,
+            utils::read_local_config_file,
+            utils::open_path_in_file_explorer,
+            utils::reveal_file_in_file_explorer,
+            utils::get_local_files_to_upload,
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录
