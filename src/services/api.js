@@ -83,11 +83,10 @@ class ApiService {
       if (!response.ok) {
         throw new Error('登录失败');
       }
-
-      const token = result.token;
-      if (token) {
-        localStorage.setItem('token', token);
-      }
+      
+      const token = result.jwt.access;
+      localStorage.setItem('token', token);
+      console.log('登录接口返回的完整数据结构111:', token);
       
       // 在同步前和返回前，修正头像 URL
       if (result && result.user && result.user.avatar) {
@@ -122,7 +121,7 @@ class ApiService {
         method: 'PATCH', 
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Token ${token}`, // 使用Token认证
+          'Authorization': `Bearer ${token}`, // 使用Token认证
         },
         body: JSON.stringify(data), // 发送 { bio: 'new bio' }
       });
@@ -185,7 +184,7 @@ class ApiService {
         method: 'POST', 
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Token ${authToken}`,
+          'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify(requestData), 
       });
@@ -248,7 +247,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/accounts/delete/`, {
         method: 'DELETE', // 使用 DELETE 方法
         headers: {
-          'Authorization': `Token ${authToken}`, // 使用Token认证
+          'Authorization': `Bearer ${authToken}`, // 使用Token认证
         },
       });
 
@@ -313,7 +312,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/accounts/avatar/`, {
         method: 'POST',
         headers: {
-          'Authorization': `Token ${token}`,
+          'Authorization': `Bearer ${token}`,
           // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
         },
         body: formData,
@@ -396,7 +395,7 @@ class ApiService {
         method: 'POST',
         headers: {
           // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
-          'Authorization': `Token ${token}`, // 使用Token认证
+          'Authorization': `Bearer ${token}`, // 使用Token认证
         },
         body: formData, // 发送 FormData
       });
@@ -451,7 +450,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/sync/config/`, {
         method: 'GET', // 使用 GET 方法下载配置
         headers: {
-          'Authorization': `Token ${token}`, // 使用Token认证
+          'Authorization': `Bearer ${token}`, // 使用Token认证
         },
       });
 
@@ -514,7 +513,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/ai/chat/`, {
         method: 'POST', // 使用 POST 方法调用api
         headers: {
-          'Authorization': `Token ${token}`, // 使用Token认证
+          'Authorization': `Bearer ${token}`, // 使用Token认证
         },
         body: chatBody
       });

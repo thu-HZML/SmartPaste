@@ -43,6 +43,7 @@ export function usePreferences() {
 
   // 窗口关闭监听器
   let firstCloseWindow = true
+  let unlistenCloseRequested = null
   
   // 注册表单数据
   const registerData = reactive({
@@ -340,7 +341,6 @@ export function usePreferences() {
         // 保存用户信息到本地存储
         if (response.data) {
           localStorage.setItem('user', JSON.stringify(response.data))
-          localStorage.setItem('token', response.data.token || '')
           userLoggedIn.value = true
           userEmail.value = response.data.user.email || loginData.email
           userInfo.username = response.data.user.username || '当前用户'
