@@ -64,6 +64,14 @@ pub struct Config {
     pub ai_enabled: bool,
     /// AI 服务提供商标识（例如 "openai"、"azure" 等）
     pub ai_service: Option<String>,
+    /// AI 提供商 (default | openai | google | custom | ...)
+    pub ai_provider: String,
+    /// AI 模型名称
+    pub ai_model: String,
+    /// AI 基础 URL (custom时)
+    pub ai_base_url: Option<String>,
+    /// AI 采样温度
+    pub ai_temperature: f32,
     /// AI API Key（如有则存储）
     pub ai_api_key: Option<String>,
     /// 是否启用 AI 自动打标签
@@ -185,6 +193,14 @@ pub enum ConfigKey {
     AiEnabled,
     /// AI 服务提供商标识
     AiService,
+    /// AI 提供商
+    AiProvider,
+    /// AI 模型名称
+    AiModel,
+    /// AI 基础 URL
+    AiBaseUrl,
+    /// AI 采样温度
+    AiTemperature,
     /// AI API Key
     AiApiKey,
     /// 是否启用 AI 自动打标签
@@ -288,6 +304,10 @@ pub fn parse_config_key(key: &str) -> Option<ConfigKey> {
         // AI Agent 相关
         "ai_enabled" => Some(ConfigKey::AiEnabled),
         "ai_service" => Some(ConfigKey::AiService),
+        "ai_provider" => Some(ConfigKey::AiProvider),
+        "ai_model" => Some(ConfigKey::AiModel),
+        "ai_base_url" => Some(ConfigKey::AiBaseUrl),
+        "ai_temperature" => Some(ConfigKey::AiTemperature),
         "ai_api_key" => Some(ConfigKey::AiApiKey),
         "ai_auto_tag" => Some(ConfigKey::AiAutoTag),
         "ai_auto_summary" => Some(ConfigKey::AiAutoSummary),
@@ -380,8 +400,12 @@ impl Default for Config {
             auto_sort: false,               // 自动排序：否
 
             // AI
-            ai_enabled: false,      // AI 助手：关
-            ai_service: None,       // AI 服务提供商：无
+            ai_enabled: false,                  // AI 助手：关
+            ai_service: None,                   // AI 服务提供商：无
+            ai_provider: "default".to_string(), // AI 提供商：默认
+            ai_model: "".to_string(),           // AI 模型名称：空
+            ai_base_url: None,
+            ai_temperature: 0.7,    // AI 采样温度：0.7
             ai_api_key: None,       // AI API Key：无
             ai_auto_tag: false,     // AI 自动打标签：否
             ai_auto_summary: false, // AI 自动摘要：否
@@ -620,6 +644,10 @@ fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Resul
         ConfigKey::AutoSort => update_cfg!(auto_sort, bool),
         ConfigKey::AiEnabled => update_cfg!(ai_enabled, bool),
         ConfigKey::AiService => update_cfg!(ai_service, Option<String>),
+        ConfigKey::AiProvider => update_cfg!(ai_provider, String),
+        ConfigKey::AiModel => update_cfg!(ai_model, String),
+        ConfigKey::AiBaseUrl => update_cfg!(ai_base_url, Option<String>),
+        ConfigKey::AiTemperature => update_cfg!(ai_temperature, f32),
         ConfigKey::AiApiKey => update_cfg!(ai_api_key, Option<String>),
         ConfigKey::AiAutoTag => update_cfg!(ai_auto_tag, bool),
         ConfigKey::AiAutoSummary => update_cfg!(ai_auto_summary, bool),
@@ -851,6 +879,10 @@ pub fn get_current_storage_path() -> PathBuf {
 /// * `"ai_auto_summary"`: `bool` - 是否启用 AI 自动摘要
 /// * `"ai_translation"`: `bool` - 是否启用 AI 翻译功能
 /// * `"ai_web_search"`: `bool` - 是否启用 AI 联网搜索功能
+/// * `"ai_provider"`: `String` - AI 提供商名称
+/// * `"ai_model"`: `String` - AI 模型名称
+/// * `"ai_base_url"`: `Option<String>` - AI 服务基础 URL
+/// * `"ai_temperature"`: `f32` - AI 采样温度
 ///
 /// **安全与隐私**
 /// * `"sensitive_filter"`: `bool` - 是否启用敏感词过滤总开关
@@ -1205,6 +1237,10 @@ pub fn reload_config() -> String {
 /// * `"ai_auto_summary"`: 返回 `bool` - 是否启用 AI 自动摘要
 /// * `"ai_translation"`: 返回 `bool` - 是否启用 AI 翻译功能
 /// * `"ai_web_search"`: 返回 `bool` - 是否启用 AI 联网搜索功能
+/// * `"ai_provider"`: 返回 `String` - AI 提供商
+/// * `"ai_model"`: 返回 `String` - AI 模型
+/// * `"ai_base_url"`: 返回 `Option<String>` - AI 基础 URL
+/// * `"ai_temperature"`: 返回 `f32` - AI 温度参数
 ///
 /// **安全与隐私**
 /// * `"sensitive_filter"`: 返回 `bool` - 是否启用敏感词过滤总开关
@@ -1277,6 +1313,10 @@ pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
             // AI Agent 相关
             ConfigKey::AiEnabled => serde_json::to_value(&cfg.ai_enabled),
             ConfigKey::AiService => serde_json::to_value(&cfg.ai_service),
+            ConfigKey::AiProvider => serde_json::to_value(&cfg.ai_provider),
+            ConfigKey::AiModel => serde_json::to_value(&cfg.ai_model),
+            ConfigKey::AiBaseUrl => serde_json::to_value(&cfg.ai_base_url),
+            ConfigKey::AiTemperature => serde_json::to_value(&cfg.ai_temperature),
             ConfigKey::AiApiKey => serde_json::to_value(&cfg.ai_api_key),
             ConfigKey::AiAutoTag => serde_json::to_value(&cfg.ai_auto_tag),
             ConfigKey::AiAutoSummary => serde_json::to_value(&cfg.ai_auto_summary),
