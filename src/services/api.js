@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE_URL = 'http://101.42.152.3/api';
 
 // 提取媒体文件的基础 URL 
 // 它假设 media 文件路径是相对于 API_BASE_URL 的前缀而言的
