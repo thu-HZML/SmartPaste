@@ -32,6 +32,8 @@ use std::sync::atomic::{AtomicBool, Ordering,AtomicU32};
 use std::sync::OnceLock;
 use std::thread;
 use serde_json::json;
+use serde::Serialize; 
+use walkdir;
 
 #[tauri::command]
 pub fn test_function() -> String {
@@ -1138,12 +1140,29 @@ pub async fn read_file_base64(file_path: String) -> Result<String, String> {
 }
 
 /**
- * 【新增命令】将配置内容字符串写入本地配置文件。
- * 用于实现登录成功后从云端同步配置到本地。
- * @param content: String - 配置文件的内容 (JSON 字符串)。
+ * 【新增命令】读取本地 config.json 文件内容，返回 JSON 字符串。
+ * 对应前端调用: readLocalConfigContent
  */
 #[tauri::command]
-pub async fn update_local_config_file(content: String) -> Result<(), String> {
+pub async fn read_local_config_content() -> Result<String, String> {
+    use std::fs;
+    tauri::async_runtime::spawn_blocking(move || {
+        let config_path = crate::config::get_config_path(); // 假设 config 模块提供此函数
+        fs::read_to_string(config_path)
+            .map_err(|e| format!("读取 config.json 失败: {}", e))
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/**
+ * 将配置内容字符串写入本地配置文件。
+ * 用于实现登录成功后从云端同步配置到本地。
+ * @param content: String - 配置文件的内容 (JSON 字符串)。
+ * 对应前端调用: writeLocalConfigContent
+ */
+#[tauri::command]
+pub async fn write_local_config_file(content: String) -> Result<(), String> {
     use std::fs;
     
     // 文件 I/O 是阻塞操作
@@ -1156,6 +1175,248 @@ pub async fn update_local_config_file(content: String) -> Result<(), String> {
         // 【关键】写入新配置后，需要重新加载配置到内存中，以便立即生效
         let reload_msg = crate::config::reload_config(); 
         println!("同步配置写入后，配置刷新结果: {}", reload_msg);
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/**
+ * 【新增命令】读取本地 smartpaste.db 文件内容，返回 Base64 字符串。
+ * 对应前端调用: readDbFileBase64
+ */
+#[tauri::command]
+pub async fn read_db_file_base64() -> Result<String, String> {
+    use base64::{engine::general_purpose, Engine as _};
+    use std::fs;
+    use std::io::Read;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let db_path = root_path.join("smartpaste.db");
+        
+        if !db_path.exists() {
+            return Err("本地数据库文件不存在".to_string());
+        }
+
+        let mut file = fs::File::open(db_path).map_err(|e| format!("无法打开数据库文件: {}", e))?;
+        let mut buffer = Vec::new();
+        
+        file.read_to_end(&mut buffer).map_err(|e| format!("读取数据库文件失败: {}", e))?;
+        
+        let base64_content = general_purpose::STANDARD.encode(buffer);
+        
+        Ok(base64_content)
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/**
+ * 【新增命令】将 Base64 内容解码并替换本地 smartpaste.db 文件。
+ * 对应前端调用: replaceLocalDbFile
+ */
+#[tauri::command]
+pub async fn replace_local_db_file(base64_content: String) -> Result<(), String> {
+    use base64::{engine::general_purpose, Engine as _};
+    use std::fs;
+    use std::io::Write;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let db_path = root_path.join("smartpaste.db");
+        
+        // 1. Base64 解码
+        let decoded_bytes = general_purpose::STANDARD.decode(base64_content)
+            .map_err(|e| format!("Base64 解码失败: {}", e))?;
+        
+        // 2. 写入文件
+        fs::write(&db_path, decoded_bytes)
+            .map_err(|e| format!("写入数据库文件失败: {} (文件可能被占用)", e))?;
+
+        println!("✅ 本地数据库文件已更新");
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/**
+ * 【新增命令】通知数据库模块重新加载连接。（占位实现）
+ * 对应前端调用: refreshDatabaseConnection
+ */
+#[tauri::command]
+pub fn refresh_database_connection() -> Result<(), String> {
+    println!("⚠️ 尝试刷新数据库连接 (需要实现 crate::db::refresh_connection)");
+    Ok(())
+}
+
+// -----------------------------------------------------
+// 文件同步相关辅助结构体
+// -----------------------------------------------------
+
+/// 用于前端接收本地文件列表，包含相对路径和绝对路径
+#[derive(Debug, Serialize)]
+struct LocalFileInfo {
+    relative_path: String,
+    file_path: String,
+}
+
+/**
+ * 【新增命令】获取本地剪贴板文件目录(files/)中的所有文件列表。
+ * 返回一个包含相对路径和绝对路径的结构体列表。
+ * 对应前端调用: getLocalFilesToUpload
+ */
+#[tauri::command]
+pub async fn get_local_files_to_upload() -> Result<Vec<LocalFileInfo>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let files_dir = root_path.join("files");
+        let mut file_list: Vec<LocalFileInfo> = Vec::new();
+
+        if !files_dir.exists() {
+            return Ok(file_list); // 目录不存在，返回空列表
+        }
+
+        // 遍历 files 目录
+        for entry in walkdir::WalkDir::new(&files_dir).into_iter().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            
+            // 忽略目录本身
+            if path.is_dir() {
+                continue;
+            }
+
+            // 计算相对于 files_dir 的相对路径
+            let relative_path_os = path.strip_prefix(&files_dir)
+                .map_err(|e| format!("计算相对路径失败: {}", e))?;
+            
+            let relative_path = relative_path_os.to_string_lossy().to_string().replace("\\", "/");
+            let absolute_path = path.to_string_lossy().to_string().replace("\\", "/");
+            
+            file_list.push(LocalFileInfo {
+                relative_path,
+                file_path: absolute_path,
+            });
+        }
+
+        Ok(file_list)
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/**
+ * 【新增命令】将 Base64 内容解码并保存到本地剪贴板文件目录。
+ * @param relative_path: String - 相对于 files/ 目录的路径。
+ * @param base64_content: String - 文件的 Base64 内容。
+ * 对应前端调用: saveClipboardFile
+ */
+#[tauri::command]
+pub async fn save_clipboard_file(relative_path: String, base64_content: String) -> Result<(), String> {
+    use base64::{engine::general_purpose, Engine as _};
+    use std::fs;
+    use std::io::Write;
+    use std::path::Path;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let files_dir = root_path.join("files");
+        
+        // 目标绝对路径: {ROOT}/files/{RELATIVE_PATH}
+        let file_path = files_dir.join(&relative_path);
+        
+        // 安全检查：防止相对路径包含 '..' 试图跳出目录 (Zip Slip 风险)
+        if file_path.components().any(|c| c == std::path::Component::ParentDir) {
+            return Err("相对路径包含非法字符 '..'".to_string());
+        }
+
+        // 1. 确保父目录存在
+        if let Some(parent_dir) = file_path.parent() {
+            fs::create_dir_all(parent_dir)
+                .map_err(|e| format!("创建目录失败: {}", e))?;
+        }
+
+        // 2. Base64 解码
+        let decoded_bytes = general_purpose::STANDARD.decode(base64_content)
+            .map_err(|e| format!("Base64 解码失败: {}", e))?;
+        
+        // 3. 写入文件
+        fs::write(&file_path, decoded_bytes)
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+        
+        println!("💾 文件保存成功: {}", relative_path);
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/**
+ * 【新增命令】清理本地文件目录 (files/) 中，不在 server_paths 列表中的文件。
+ * 对应前端调用: cleanLocalFiles
+ */
+#[tauri::command]
+pub async fn clean_local_files(server_paths: Vec<String>) -> Result<(), String> {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let files_dir = root_path.join("files");
+        
+        if !files_dir.exists() {
+            return Ok(());
+        }
+
+        let server_paths_set: std::collections::HashSet<String> = server_paths.into_iter().collect();
+
+        let mut deleted_count = 0;
+        
+        // 遍历 files 目录 (由深到浅，以便删除空目录)
+        for entry in walkdir::WalkDir::new(&files_dir).into_iter().rev().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            
+            let is_dir = path.is_dir();
+            
+            // 忽略根目录
+            if path == files_dir {
+                continue;
+            }
+
+            // 计算相对于 files_dir 的相对路径
+            let relative_path_os = match path.strip_prefix(&files_dir) {
+                Ok(p) => p,
+                Err(_) => continue, 
+            };
+            
+            // 统一路径分隔符为 / 进行对比
+            let relative_path_str = relative_path_os.to_string_lossy().to_string().replace("\\", "/");
+            
+            if is_dir {
+                // 如果是空目录，删除
+                if path.read_dir().map_or(false, |mut i| i.next().is_none()) {
+                    if let Err(e) = fs::remove_dir(path) {
+                        eprintln!("清理空目录失败 {}: {}", relative_path_str, e);
+                    } else {
+                        // println!("🗑️ 删除空目录: {}", relative_path_str);
+                    }
+                }
+            } else {
+                // 如果是文件，并且不在服务器列表中
+                if !server_paths_set.contains(&relative_path_str) {
+                    if let Err(e) = fs::remove_file(path) {
+                        eprintln!("清理文件失败 {}: {}", relative_path_str, e);
+                    } else {
+                        deleted_count += 1;
+                        println!("🗑️ 删除旧文件: {}", relative_path_str);
+                    }
+                }
+            }
+        }
+        
+        println!("✅ 文件清理完成，删除 {} 个冗余文件。", deleted_count);
 
         Ok(())
     })

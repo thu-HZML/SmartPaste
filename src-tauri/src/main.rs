@@ -103,7 +103,7 @@ fn main() {
             config::set_config_item,
             config::get_config_item,
             utils::read_file_base64,
-            utils::update_local_config_file,
+            utils::write_local_config_file,
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录
