@@ -3,22 +3,19 @@ use crate::clipboard::ClipboardItem;
 use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 
 // --- 测试辅助函数 ---
 
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
 }
+
+use uuid::Uuid;
 
 fn set_test_db_path() {
     let mut p = std::env::temp_dir();
-    p.push("smartpaste_test_private.db"); // 使用独立的文件名
+    let filename = format!("smartpaste_test_private_{}.db", Uuid::new_v4());
+    p.push(filename); // 使用独立的文件名
     set_db_path(p);
     let _ = crate::clipboard::take_last_inserted();
 }
@@ -26,7 +23,14 @@ fn set_test_db_path() {
 fn clear_db_file() {
     let p: PathBuf = get_db_path();
     if p.exists() {
-        let _ = fs::remove_file(p);
+        for _ in 0..5 {
+            if fs::remove_file(&p).is_ok() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // Try one last time and panic if fails
+        fs::remove_file(&p).expect("failed to remove test db file");
     }
 }
 
@@ -75,8 +79,8 @@ fn test_mark_passwords() {
     let item3 = make_item("pw-3", "Hello world", "Just a note");
     // 匹配其他关键词 (login) - 移至 notes
     let item4 = make_item("pw-4", "some content", "Login credentials for site");
-    // 匹配中文notes - 注意：正则使用 \b 边界，中文前后通常需要分隔符才能匹配 \b
-    let item5 = make_item("pw-5", "普通文本", "这是一个 密码");
+    // 匹配中文notes - 中文不再强制要求 \b 边界
+    let item5 = make_item("pw-5", "普通文本", "这是一个密码");
 
     insert_received_db_data(item1.clone()).unwrap();
     insert_received_db_data(item2.clone()).unwrap();
@@ -261,7 +265,8 @@ fn test_get_all_private_data() {
     mark_phone_numbers_as_private(true).unwrap();
 
     // 3. 获取所有隐私数据
-    let json_result = get_all_private_data().expect("get_all_private_data failed");
+    let json_result =
+        comprehensive_search("", Some("private"), None, None).expect("comprehensive_search failed");
     let items: Vec<ClipboardItem> =
         serde_json::from_str(&json_result).expect("failed to parse json");
 

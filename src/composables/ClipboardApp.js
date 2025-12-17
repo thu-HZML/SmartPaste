@@ -289,13 +289,23 @@ export function useClipboardApp() {
   // 删除所有历史记录
   const deleteAllHistory = async () => {
     try {
-      if (settings.keep_favorites_on_delete) {
-        await invoke('delete_unfavorited_data')
-        showMessage('已清除所有未收藏记录')
-      } else {
-        await invoke('delete_all_data')
-        showMessage('已清除所有历史记录')
+      let currentCategory = activeCategory.value
+      if (currentCategory === 'all') {
+        currentCategory = null
       }
+      else if (currentCategory === 'favorite'){
+        return
+      }
+      else if (currentCategory === 'folder') {
+        currentCategory = currentFolder.value.id
+      }
+
+      await invoke('delete_all_data', {
+        itemType: currentCategory,
+        keepFavorites: settings.keep_favorites_on_delete
+      })
+
+      showMessage('已清除记录')
       handleSearch()
     } catch(err) {
       console.error('清除历史记录失败:', err)
@@ -1010,7 +1020,8 @@ export function useClipboardApp() {
     console.log('开始初始化...')
 
     // 保存当前参数状态
-    const shouldShowFavorites = route.query.category === 'favorite'
+    const shouldShowFavorites = route.query.category
+    console.log('跳转到的页面：',shouldShowFavorites)
 
     // 立即清除所有参数
     if (route.query.category) {
@@ -1034,7 +1045,7 @@ export function useClipboardApp() {
 
     // 根据保存的状态执行操作
     if (shouldShowFavorites) {
-      activeCategory.value = 'favorite'
+      activeCategory.value = shouldShowFavorites
       console.log('跳转到收藏界面')
     }
     

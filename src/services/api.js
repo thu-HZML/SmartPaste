@@ -83,11 +83,10 @@ class ApiService {
       if (!response.ok) {
         throw new Error('登录失败');
       }
-
-      const token = result.token;
-      if (token) {
-        localStorage.setItem('token', token);
-      }
+      
+      const token = result.jwt.access;
+      localStorage.setItem('token', token);
+      console.log('登录接口返回的完整数据结构111:', token);
       
       // 在同步前和返回前，修正头像 URL
       if (result && result.user && result.user.avatar) {
@@ -107,6 +106,7 @@ class ApiService {
       };
     }
   }
+
   // 更新用户资料
   async updateProfile(data) {
     let result = null;
@@ -121,7 +121,7 @@ class ApiService {
         method: 'PATCH', 
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Token ${token}`, // 使用Token认证
+          'Authorization': `Bearer ${token}`, // 使用Token认证
         },
         body: JSON.stringify(data), // 发送 { bio: 'new bio' }
       });
@@ -159,6 +159,7 @@ class ApiService {
     }
   }
 
+  // 修改密码
   async changePassword(data, refreshToken) { 
     let result = null;
 
@@ -183,7 +184,7 @@ class ApiService {
         method: 'POST', 
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Token ${authToken}`,
+          'Authorization': `Bearer ${authToken}`,
         },
         body: JSON.stringify(requestData), 
       });
@@ -246,7 +247,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/accounts/delete/`, {
         method: 'DELETE', // 使用 DELETE 方法
         headers: {
-          'Authorization': `Token ${authToken}`, // 使用Token认证
+          'Authorization': `Bearer ${authToken}`, // 使用Token认证
         },
       });
 
@@ -311,7 +312,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/accounts/avatar/`, {
         method: 'POST',
         headers: {
-          'Authorization': `Token ${token}`,
+          'Authorization': `Bearer ${token}`,
           // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
         },
         body: formData,
@@ -394,7 +395,7 @@ class ApiService {
         method: 'POST',
         headers: {
           // fetch 在使用 FormData 时会自动设置 Content-Type: multipart/form-data
-          'Authorization': `Token ${token}`, // 使用Token认证
+          'Authorization': `Bearer ${token}`, // 使用Token认证
         },
         body: formData, // 发送 FormData
       });
@@ -449,7 +450,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/sync/config/`, {
         method: 'GET', // 使用 GET 方法下载配置
         headers: {
-          'Authorization': `Token ${token}`, // 使用Token认证
+          'Authorization': `Bearer ${token}`, // 使用Token认证
         },
       });
 
@@ -483,6 +484,63 @@ class ApiService {
         success: true,
         message: '配置下载成功',
         data: configContent
+      };
+
+    } catch (error) {
+      console.error('下载配置错误:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '网络错误',
+        data: null
+      };
+    }
+  }
+
+  /**
+   * 进行ai对话。
+   * 接口: POST /ai/chat/
+   * @returns {Promise<{success: boolean, message: string, data: string|null}>} data 是配置文件的内容字符串。
+   */
+  async aiChat(chatBody) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error('未登录或Token缺失');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/ai/chat/`, {
+        method: 'POST', // 使用 POST 方法调用api
+        headers: {
+          'Authorization': `Bearer ${token}`, // 使用Token认证
+        },
+        body: chatBody
+      });
+      
+      // 检查响应状态是否成功 (200 OK)
+      if (!response.ok) {
+        // 尝试解析JSON响应以获取可能的错误信息
+        try {
+            result = await response.json();
+            console.log('ai API返回响应：', result)
+        } catch (e) {
+             // 忽略没有 JSON body 的情况
+        }
+        
+        // 尝试从API响应的JSON中获取错误信息
+        const errorMessage = (result && result.detail) ? result.detail : `配置下载失败，状态码: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+      
+      // 成功 (200 OK)，获取配置内容 (文本格式，因为是config.json)
+      result = await response.json();
+      console.log('ai回复：', result)
+
+      return {
+        success: true,
+        message: '配置下载成功',
+        data: result.data
       };
 
     } catch (error) {

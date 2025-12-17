@@ -2,25 +2,22 @@
 /// 此文件提供高级功能点测试，包括筛选、搜索、收藏状态切换等
 /// 测试使用临时数据库文件，避免污染真实数据
 use super::*;
+use crate::clipboard::ClipboardItem;
 // use serde_json;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
-
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    // 如果 mutex 被 poison，恢复并返回被污染时的 guard（避免测试间直接失败）
-    TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
 }
+
+use uuid::Uuid;
 
 fn set_test_db_path() {
     // 在临时目录下使用独立数据库文件，避免污染真实数据
     let mut p = std::env::temp_dir();
-    p.push("smartpaste_test.db");
+    let filename = format!("smartpaste_test_adv_{}.db", Uuid::new_v4());
+    p.push(filename);
     // 覆盖全局 OnceLock（只会在第一次调用设置）
     set_db_path(p);
     // 确保清理全局 last_inserted，避免跨测试遗留状态导致断言失败
@@ -29,7 +26,16 @@ fn set_test_db_path() {
 
 fn clear_db_file() {
     let p: PathBuf = get_db_path();
-    let _ = fs::remove_file(p);
+    if p.exists() {
+        for _ in 0..5 {
+            if fs::remove_file(&p).is_ok() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // Try one last time and panic if fails
+        fs::remove_file(&p).expect("failed to remove test db file");
+    }
 }
 
 fn make_item(id: &str, item_type: &str, content: &str) -> ClipboardItem {
@@ -66,6 +72,8 @@ fn test_filter_data_by_type_comprehensive() {
     ] {
         insert_received_db_data((*item).clone()).expect("insert failed");
     }
+
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // 测试筛选 text 类型
     let text_json = filter_data_by_type("text").expect("filter text failed");
@@ -427,6 +435,7 @@ fn test_filter_data_by_type() {
     insert_received_db_data(item1.clone()).unwrap();
     insert_received_db_data(item2.clone()).unwrap();
     insert_received_db_data(item3.clone()).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
 
     let results_json = filter_data_by_type("text").expect("filter failed");
     let results: Vec<ClipboardItem> =
@@ -455,6 +464,8 @@ fn test_filter_data_by_favorite() {
     for it in &items {
         insert_received_db_data(it.clone()).expect("insert failed");
     }
+
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // 收藏 fav1 和 fav3
     let r1 = set_favorite_status_by_id("fav1").expect("favorite fav1 failed");
@@ -551,6 +562,8 @@ fn test_insert_get_icon_data() {
 
     let item = make_item("icon-1", "file", "/tmp/somefile.bin");
     insert_received_db_data(item.clone()).expect("insert item for icon");
+
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
     // 插入 icon_data（这里用简单 base64 字符串作为示例）
     let sample_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAUA";

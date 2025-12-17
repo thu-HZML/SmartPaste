@@ -508,36 +508,7 @@
               <p>查看和管理标记为隐私的记录</p>
             </div>
             <div class="setting-control">
-              <button class="btn btn-secondary">查看隐私记录</button>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动清理隐私记录</h3>
-              <p>自动删除超过指定天数的隐私记录</p>
-            </div>
-            <div class="setting-control">
-              <select 
-                v-model="settings.privacy_retention_days" 
-                @change="updateSetting('privacy_retention_days', Number($event.target.value))" 
-                class="select-input"
-              >
-                <option value="1">1天</option>
-                <option value="7">7天</option>
-                <option value="30">30天</option>
-                <option value="0">手动删除</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>删除所有隐私记录</h3>
-              <p>永久删除所有标记为隐私的记录</p>
-            </div>
-            <div class="setting-control">
-              <button class="btn btn-danger">删除所有隐私记录</button>
+              <button class="btn btn-secondary" @click="showPrivate">查看隐私记录</button>
             </div>
           </div>
         </div>
@@ -1073,6 +1044,9 @@ const {
   importData,
   createBackup,
 
+  // 隐私管理方法
+  showPrivate,
+  
   // 云端同步方法
   formatTime,
   manualSync,

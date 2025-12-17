@@ -1,22 +1,21 @@
 use super::*;
+use crate::clipboard::ClipboardItem;
 use chrono::Utc;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 
 // 复制 test_db_base.rs 中的辅助函数，因为它们不是 public 的
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
 }
+
+use uuid::Uuid;
 
 fn set_test_db_path() {
     let mut p = std::env::temp_dir();
-    p.push("smartpaste_test_extend.db"); // 使用不同的文件名避免冲突
+    let filename = format!("smartpaste_test_extend_{}.db", Uuid::new_v4());
+    p.push(filename); // 使用不同的文件名避免冲突
     set_db_path(p);
     let _ = crate::clipboard::take_last_inserted();
 }
@@ -24,7 +23,14 @@ fn set_test_db_path() {
 fn clear_db_file() {
     let p: PathBuf = get_db_path();
     if p.exists() {
-        let _ = fs::remove_file(p);
+        for _ in 0..5 {
+            if fs::remove_file(&p).is_ok() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // Try one last time and panic if fails
+        fs::remove_file(&p).expect("failed to remove test db file");
     }
 }
 

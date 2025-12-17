@@ -354,6 +354,101 @@ export async function toggleFavoritesWindow() {
   }
 }
 
+/**
+ * 创建隐私窗口
+ * @param {Object} options 窗口配置
+ */
+export async function createPrivateWindow(options = {}) {
+  const windowId = 'clipboard'
+  
+  try {
+    const { x = 100, y = 100, width = 400, height = 600 } = options
+    
+    const webview = new WebviewWindow(windowId, {
+      url: '/clipboardapp?category=private', // 直接跳转到剪贴板页面的隐私界面
+      title: '隐私',
+      width,
+      height,
+      x,
+      y,
+      resizable: true,
+      minimizable: true,
+      maximizable: false,
+      decorations: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hiddenTitle: true,
+      focus: true
+    })
+    
+    webview.once('tauri://created', () => {
+      console.log('隐私窗口创建成功:', windowId)
+      windowInstances.set(windowId, webview)
+    })
+    
+    webview.once('tauri://error', (e) => {
+      console.error('隐私窗口创建失败:', e)
+    })
+    
+    // 监听窗口关闭
+    webview.listen('tauri://destroyed', () => {
+      console.log('隐私窗口已关闭:', windowId)
+      windowInstances.delete(windowId)
+    })
+    
+    return webview
+  } catch (error) {
+    console.error('创建隐私窗口错误:', error)
+  }
+}
+
+/**
+ * 获取或切换隐私窗口
+ */
+export async function togglePrivateWindow() {
+  // 查找已存在的隐私窗口
+  const privateWindow = Array.from(windowInstances.entries())
+    .find(([key]) => key === 'clipboard')
+  
+  if (privateWindow) {
+    // 如果存在收藏夹窗口，关闭
+    try {
+      const [windowId, window] = privateWindow
+      await window.close()
+      windowInstances.delete(windowId)
+    } catch (error) {
+      console.error('关闭隐私窗口失败:', error)
+    }
+    return null
+  } else {
+    // 如果不存在，创建新窗口
+    try {
+      const savedState = localStorage.getItem('clipboardWindowState')
+      
+      if (savedState) {
+        const windowState = JSON.parse(savedState)
+        
+        // 检查保存的状态是否在合理范围内（防止窗口出现在屏幕外）
+        const { x, y, width, height } = windowState
+        
+        if (width > 0 && height > 0) {
+          await createPrivateWindow({ // 创建上次位置的窗口
+            x: x,
+            y: y,
+            width: width, // 剪贴板窗口宽度
+            height: height // 剪贴板窗口高度
+          })
+        }
+      } else {
+        await createPrivateWindow() // 创建默认位置的窗口
+      }
+    } catch (error) {
+      console.error('创建隐私窗口错误:', error)
+      return await createPrivateWindow() // 创建默认位置的窗口
+    }
+  }
+}
+
 // 创建设置窗口
 export async function createSetWindow(options = {}) {
   const windowId = 'preferences'

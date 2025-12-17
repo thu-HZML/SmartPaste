@@ -65,7 +65,6 @@ fn main() {
             db::get_latest_data,
             db::get_data_by_id,
             db::delete_all_data,
-            db::delete_unfavorited_data,
             db::delete_data,
             db::delete_data_by_id,
             db::update_data_content_by_id,
@@ -74,7 +73,6 @@ fn main() {
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
             db::get_favorite_data_count,
-            // db::search_data,
             db::add_notes_by_id,
             db::filter_data_by_type,
             db::comprehensive_search,
@@ -93,7 +91,6 @@ fn main() {
             db::mark_bank_cards_as_private,
             db::mark_identity_numbers_as_private,
             db::mark_phone_numbers_as_private,
-            db::get_all_private_data,
             db::clear_all_private_data,
             db::auto_mark_private_data,
             db::trigger_cleanup,
@@ -128,11 +125,11 @@ fn main() {
             };
             // 接着使用提取出来的字符串进行逻辑处理
             if let Some(ref path_str) = custom_storage_path {
-                let custom_path = PathBuf::from(path_str);
-
                 // 规范化路径逻辑
                 #[cfg(target_os = "windows")]
                 let custom_path = PathBuf::from(path_str.replace("/", "\\"));
+                #[cfg(not(target_os = "windows"))]
+                let custom_path = PathBuf::from(path_str);
 
                 if !path_str.trim().is_empty() {
                     println!("✅ 检测到配置的存储路径: {}", custom_path.display());
@@ -217,7 +214,7 @@ fn main() {
             // 7. 打印最终使用的配置路径
             let current_config_path = config::get_config_path();
             println!("📄 最终配置文件路径: {}", current_config_path.display());
-          
+
             // 8. 根据配置自动标记隐私数据
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
@@ -230,6 +227,30 @@ fn main() {
                 ) {
                     Ok(count) => println!("✅ 初始化隐私标记完成，受影响记录数: {}", count),
                     Err(e) => eprintln!("❌ 初始化隐私标记失败: {}", e),
+                }
+            }
+
+            // 9. 获取OCR配置并初始化OCR引擎
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("👁️ 正在初始化 OCR 引擎...");
+
+                let provider = cfg.ocr_provider.clone();
+                let languages = cfg.ocr_languages.clone();
+
+                // 转换 Vec<String> 为 Vec<&str> 以匹配 configure_ocr 签名
+                let languages_ref: Option<Vec<&str>> = if let Some(ref langs) = languages {
+                    Some(langs.iter().map(|s| s.as_str()).collect())
+                } else {
+                    None
+                };
+
+                let confidence = cfg.ocr_confidence_threshold;
+                let timeout = cfg.ocr_timeout_secs;
+
+                match ocr::configure_ocr(provider, languages_ref, confidence, timeout) {
+                    Ok(msg) => println!("✅ OCR引擎初始化成功: {}", msg),
+                    Err(e) => eprintln!("❌ OCR引擎初始化失败: {}", e),
                 }
             }
 
@@ -283,27 +304,5 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("❌ 启动 Tauri 应用失败: {:?}", e);
-    }
-}
-
-// 辅助函数：切换窗口显示/隐藏
-fn toggle_window_visibility(window: &tauri::WebviewWindow) {
-    match window.is_visible() {
-        Ok(visible) => {
-            if visible {
-                if let Err(e) = window.hide() {
-                    eprintln!("❌ 隐藏窗口失败: {:?}", e);
-                } else {
-                    println!("👻 隐藏桌宠窗口");
-                }
-            } else {
-                if let Err(e) = window.show() {
-                    eprintln!("❌ 显示窗口失败: {:?}", e);
-                } else {
-                    println!("👀 显示桌宠窗口");
-                }
-            }
-        }
-        Err(e) => eprintln!("❌ 获取窗口可见性失败: {:?}", e),
     }
 }
