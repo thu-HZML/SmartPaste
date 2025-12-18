@@ -1199,6 +1199,32 @@ pub fn reload_config() -> String {
     }
 }
 
+/// 全量同步并应用配置。作为 Tauri Command 暴露给前端调用。
+#[tauri::command]
+pub async fn sync_and_apply_config(app: tauri::AppHandle, content: String) -> Result<String, String> {
+    // 1. 解析 JSON 确保数据格式正确
+    let new_config: Config = serde_json::from_str(&content)
+        .map_err(|e| format!("解析配置失败: {}", e))?;
+
+    // 2. 调用你提到的 save_config 将配置写入磁盘
+    save_config(new_config)?;
+
+    // 3. 调用 reload_config 将磁盘内容加载到内存变量 CONFIG
+    let reload_res = reload_config();
+    if reload_res != "reloaded successfully" {
+        return Err(format!("内存刷新失败: {}", reload_res));
+    }
+
+    // 4. 关键步骤：重置快捷键监听
+    // 必须调用 app_setup 中的函数，否则系统依然占用旧的快捷键
+    if let Err(e) = crate::app_setup::setup_global_shortcuts(app) {
+        return Err(format!("配置已保存但快捷键重置失败: {}", e));
+    }
+
+    println!("🚀 配置全量同步完成，快捷键已即时刷新");
+    Ok("Config synchronized and applied".to_string())
+}
+
 /// 按传入参数获取配置信息。作为 Tauri Command 暴露给前端调用。
 ///
 /// 该函数是前端获取配置的统一入口。根据传入的 `key` 找到对应的配置项，并返回其当前值。

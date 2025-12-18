@@ -55,7 +55,7 @@ export function usePreferences() {
   
   // 登录表单数据
   const loginData = reactive({
-    email: '',
+    username: '',
     password: ''
   })
 
@@ -363,10 +363,11 @@ export function usePreferences() {
         loadUsername()
         // 关闭登录对话框
         showLoginDialog.value = false
+        await handleCloudPull(true);
         
         // 清空表单数据
         Object.assign(loginData, {
-          email: '',
+          username: '',
           password: ''
         })
       } else {
@@ -1107,6 +1108,119 @@ const updateRetentionDays = async () => {
     }
   }
 
+  /**
+   * 云端推送/上传主函数 (直接对接后端接口)
+   */
+  const handleCloudPush = async () => {
+    if (isSyncing.value) return;
+    
+    // 权限预检查
+    if (!localStorage.getItem('token')) {
+      showMessage('请先登录后进行同步', 'error');
+      return;
+    }
+
+    isSyncing.value = true;
+    
+    try {
+      showMessage('正在推送数据至云端...', 'info');
+
+      // 1. 同步配置：从本地读取并上传
+      // 直接调用 Rust 获取文件内容，随后对接 Web 接口
+      const configTxt = await invoke('get_config_json'); 
+      const configRes = await apiService.uploadConfig(configTxt);
+      if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
+
+      // 2. 同步数据库：读本地DB并推送
+      // 后端 views.py 的 SqlitePushView 会自动合并数据
+      const dbBase64 = await invoke('read_db_file_base64');
+      const dbBlob = base64ToBlob(dbBase64, 'application/x-sqlite3');
+      const dbRes = await apiService.pushSqliteDatabase(dbBlob);
+      if (!dbRes.success) throw new Error(`数据库推送失败: ${dbRes.message}`);
+
+      // 3. 同步文件：遍历本地目录并逐个上传
+      const localFiles = await invoke('get_local_files_to_upload');
+      for (const fileInfo of localFiles) {
+        // 读取二进制内容并转为 Web 可发送的 Blob 对象
+        const content = await invoke('read_file_base64', { filePath: fileInfo.file_path });
+        const blob = base64ToBlob(content, 'application/octet-stream');
+        
+        // 调用 apiService 接口上传，后端会根据 relative_path 自动处理覆盖或新增
+        const fileRes = await apiService.uploadClipboardFile(blob, fileInfo.relative_path);
+        if (!fileRes.success) {
+          console.warn(`文件上传失败 (${fileInfo.relative_path}):`, fileRes.message);
+        }
+      }
+
+      // 成功处理
+      showMessage('云端数据推送成功！', 'success');
+      lastSyncTime.value = Date.now();
+      localStorage.setItem('lastSyncTime', lastSyncTime.value);
+
+    } catch (error) {
+      // 错误处理逻辑：打印日志并反馈给用户
+      console.error('云端推送错误:', error);
+      showMessage(error.message || '网络同步出错，请检查连接', 'error');
+    } finally {
+      isSyncing.value = false;
+    }
+  };
+
+  const handleCloudPull = async (isSilent = false) => {
+    if (isSyncing.value) return;
+    isSyncing.value = true;
+    try {
+      if (!isSilent) showMessage('正在同步云端数据...', 'info');
+
+      // 1. 下载配置
+      const configRes = await apiService.downloadConfig();
+      if (configRes.success && configRes.data) {
+        await invoke('sync_and_apply_config', { content: configRes.data });
+      }
+
+      // 2. 下载数据库 (Blob 转 Base64 传给 Rust 写入)
+      const dbRes = await apiService.getSqliteDatabaseAsJson();
+      if (dbRes.success && dbRes.data && dbRes.data.data) {
+        console.log("正在同步数据库 JSON 数据...", dbRes.data);
+        // 将整个数据对象转为 JSON 字符串传给 Rust
+        const jsonString = JSON.stringify(dbRes.data);
+        await invoke('sync_cloud_data', { jsonData: jsonString });
+      }
+
+      // 3. 下载剪贴板媒体文件 (镜像同步)
+      const listRes = await apiService.getCloudFileList();
+      if (listRes.success) {
+        const serverPaths = listRes.data.map(item => item.relative_path);
+        for (const item of listRes.data) {
+          // 直接通过 Web URL 下载 Blob
+          const fileUrl = ensureAbsoluteAvatarUrl(item.file);
+          const fileBlob = await fetch(fileUrl, {
+            headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+          }).then(r => r.blob());
+          
+          // 转 Base64 传给 Rust 保存
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result.split(',')[1];
+            await invoke('save_clipboard_file', { relativePath: item.relative_path, base64Content: base64 });
+          };
+          reader.readAsDataURL(fileBlob);
+        }
+        // 清理本地不在云端的文件 (镜像清理)
+        //await invoke('clean_local_files', { serverPaths });
+      }
+
+      lastSyncTime.value = Date.now();
+      localStorage.setItem('lastSyncTime', lastSyncTime.value);
+      if (!isSilent) showMessage('云端数据拉取成功', 'success');
+    } catch (error) {
+      console.error('拉取失败:', error);
+      if (!isSilent) showMessage('同步拉取失败', 'error');
+    } finally {
+      isSyncing.value = false;
+    }
+  };
+
   // 辅助方法
   const getAIServiceName = (service) => {
     const serviceMap = {
@@ -1173,6 +1287,16 @@ const updateRetentionDays = async () => {
       console.error('设置窗口关闭监听器失败:', error)
       return null
     }
+  }
+
+  const base64ToBlob = (base64Content, mimeType) => {
+      const byteString = atob(base64Content);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeType });
   }
 
   // 生命周期
@@ -1285,6 +1409,7 @@ const updateRetentionDays = async () => {
     manualSync,
     syncNow,
     checkSyncStatus,
+    handleCloudPush,
 
     // 用户管理方法
     changeAvatar,

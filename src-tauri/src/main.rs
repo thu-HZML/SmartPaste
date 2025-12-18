@@ -102,8 +102,11 @@ fn main() {
             config::get_config_json,
             config::set_config_item,
             config::get_config_item,
+            config::sync_and_apply_config,
             utils::read_file_base64,
-            utils::update_local_config_file,
+            utils::get_local_files_to_upload,
+            utils::read_db_file_base64,
+            utils::save_clipboard_file,
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录

@@ -587,7 +587,7 @@
               </span>
             </div>
             <div class="status-actions">
-              <button class="btn btn-small" @click="manualSync" :disabled="isSyncing">
+              <button class="btn btn-small" @click="handleCloudPush" :disabled="isSyncing">
                 {{ isSyncing ? '同步中...' : '立即同步' }}
               </button>
             </div>
@@ -645,40 +645,6 @@
                   <option value="containphoto">包含图片</option>
                   <option value="containfile">包含文件</option>
                 </select>
-              </div>
-            </div>
-            
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>加密同步数据</h3>
-                <p>使用端到端加密保护您的剪贴板数据</p>
-              </div>
-              <div class="setting-control">
-                <label class="toggle-switch">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.encrypt_cloud_data" 
-                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
-                  >
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>仅WiFi下同步</h3>
-                <p>仅WiFi下同步</p>
-              </div>
-              <div class="setting-control">
-                <label class="toggle-switch">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.sync_only_wifi" 
-                    @change="updateSetting('sync_only_wifi', $event.target.checked)"
-                  >
-                  <span class="slider"></span>
-                </label>
               </div>
             </div>
             
@@ -1052,6 +1018,7 @@ const {
   manualSync,
   syncNow,
   checkSyncStatus,
+  handleCloudPush,
 
   // 用户管理方法
   changeAvatar,
