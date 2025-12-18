@@ -44,9 +44,12 @@
           </div>
           <span class="loading-text">AI正在思考...</span>
         </div>
-        <div v-else-if="hasResponse" class="response-text">
-          {{ responseText }}
-        </div>
+        <!-- 修改这里：使用v-html渲染Markdown -->
+        <div 
+          v-else-if="hasResponse" 
+          class="response-text markdown-body"
+          v-html="formattedResponse"
+        ></div>
       </div>
       
       <!-- 响应操作按钮 -->
@@ -94,6 +97,8 @@ import { Square2StackIcon, XMarkIcon, PaperAirplaneIcon, ChatBubbleLeftRightIcon
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { marked } from 'marked' // 添加marked库用于Markdown解析
+import DOMPurify from 'dompurify' // 添加DOMPurify用于HTML净化
 import { updateAiWindowHeight } from '../utils/actions.js'
 import { apiService } from '../services/api'
 
@@ -157,13 +162,52 @@ const aiActions = ref([
   { id: 'translate', label: '翻译' },
   { id: 'search', label: '搜索' }
 ])
-/*
-// 监听内容变化，更新窗口高度
-watch([responseText, hasResponse], async () => {
-  console.log('内容发生变化')
-  updateWindowHeight()
+
+// 计算属性：将Markdown转换为安全的HTML
+const formattedResponse = computed(() => {
+  if (!responseText.value) return ''
+  
+  try {
+    // 配置marked选项
+    marked.setOptions({
+      breaks: true, // 启用换行符转换
+      gfm: true, // 启用GitHub风格的Markdown
+      highlight: (code, lang) => {
+        // 这里可以添加代码高亮功能
+        return `<pre><code class="language-${lang}">${escapeHtml(code)}</code></pre>`
+      }
+    })
+    
+    // 将Markdown转换为HTML
+    const rawHtml = marked(responseText.value)
+    
+    // 净化HTML，防止XSS攻击
+    return DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: [
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'p', 'br', 'hr',
+        'strong', 'b', 'em', 'i', 'u', 's', 'del',
+        'code', 'pre', 'blockquote',
+        'ul', 'ol', 'li',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'a', 'img',
+        'div', 'span'
+      ],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'class', 'id']
+    })
+  } catch (error) {
+    console.error('Markdown解析失败:', error)
+    // 如果解析失败，返回原始文本
+    return escapeHtml(responseText.value)
+  }
 })
-*/
+
+// 辅助函数：HTML转义
+const escapeHtml = (text) => {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
 
 // 更新窗口高度
 const updateWindowHeight = async () => {  
@@ -298,19 +342,8 @@ const submitQuestion = async () => {
   try {
     let aiChatSuccess = await useAi()
 
-    if (aiChatSuccess) {/*
-      
-      // 添加到对话历史
-      conversationHistory.value.push({
-        type: 'user',
-        content: userQuest,
-        action: 'question'
-      })
-      conversationHistory.value.push({
-        type: 'assistant',
-        content: response.data.reply,
-        action: 'question'
-      })*/
+    if (aiChatSuccess) {
+      // 这里可以添加对话历史的处理
     }
     
   } catch (error) {
@@ -342,19 +375,19 @@ const useAi = async () => {
     // 根据action类型设置不同的参数
     switch(currentAction.value) {
       case 'question':
-        userQuest = '请回答以下问题：' + questionInput.value
+        userQuest = '请用Markdown格式回答以下问题：' + questionInput.value
         break
         
       case 'summarize':
-        userQuest = '请总结以下内容：'
+        userQuest = '请用Markdown格式总结以下内容：'
         break
         
       case 'translate':
-        userQuest = '请将以下内容翻译成中文：'
+        userQuest = '请将以下内容翻译成中文，使用Markdown格式：'
         break
         
       case 'search':
-        userQuest = `请给出以下与内容相关的网址：`
+        userQuest = `请给出以下与内容相关的网址，使用Markdown格式：`
         break       
     }
     
@@ -369,7 +402,6 @@ const useAi = async () => {
       formdata.append("user_quest", userQuest)
 
       // 读取文件内容为 Base64 编码字符串
-      // 该命令接收文件路径，读取文件内容并返回 Base64 编码字符串。
       const osPath = await invoke('get_config_item', { key: 'storage_path'})
       let filePath = osPath.replace(/\//g, '\\') + '\\' + clipboardContent.value
       console.log('获取的文件路径：', filePath)
@@ -384,7 +416,6 @@ const useAi = async () => {
       const fileName = filePath.substring(filePath.lastIndexOf('\\') + 1)
       
       // 将 Base64 转换为 File 对象
-      // 移除可能的前缀 'data:mime/type;base64,'
       const base64Data = base64Content.split(',').pop();
       const binaryString = atob(base64Data);
       const len = binaryString.length;
@@ -423,6 +454,9 @@ const useAi = async () => {
     formdata.append('provider', aiProvider)
     formdata.append('ai_config', JSON.stringify(aiConfig))
 
+    // 修改请求，告诉API我们需要Markdown格式的回复
+    formdata.append('response_format', 'markdown')
+
     const response = await apiService.aiChat(formdata, (chunk, fullText) => {
       loading.value = false
       // 流式输出回调
@@ -456,6 +490,7 @@ const useAi = async () => {
 
   return false
 }
+
 // 取消提问
 const cancelQuestion = () => {
   showQuestionInput.value = false
@@ -688,13 +723,180 @@ defineExpose({
   font-size: 14px;
 }
 
-/* 响应文本 */
-.response-text {
+/* 响应文本 - 修改为Markdown样式 */
+.response-text.markdown-body {
   font-size: 14px;
   line-height: 1.6;
   color: #333;
-  white-space: pre-wrap;
-  word-break: break-word;
+}
+
+/* Markdown样式 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-body h1 {
+  font-size: 1.5em;
+  color: #24292e;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h2 {
+  font-size: 1.25em;
+  color: #24292e;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h3 {
+  font-size: 1.1em;
+  color: #24292e;
+}
+
+.markdown-body h4 {
+  font-size: 1em;
+  color: #24292e;
+}
+
+.markdown-body h5 {
+  font-size: 0.875em;
+  color: #6a737d;
+}
+
+.markdown-body h6 {
+  font-size: 0.85em;
+  color: #6a737d;
+}
+
+.markdown-body p {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.markdown-body blockquote {
+  margin: 0;
+  padding: 0 1em;
+  color: #6a737d;
+  border-left: 0.25em solid #dfe2e5;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-left: 2em;
+  color: #333;
+}
+
+.markdown-body li {
+  margin-bottom: 0.25em;
+}
+
+.markdown-body li > p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.markdown-body code {
+  padding: 0.2em 0.4em;
+  margin: 0;
+  font-size: 85%;
+  background-color: rgba(27, 31, 35, 0.05);
+  border-radius: 3px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  color: #e83e8c;
+}
+
+.markdown-body pre {
+  padding: 12px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  background-color: #f6f8fa;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.markdown-body pre code {
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  border: 0;
+  font-size: 100%;
+  color: #333;
+}
+
+.markdown-body a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+  color: #0056b3;
+}
+
+.markdown-body strong,
+.markdown-body b {
+  font-weight: 600;
+  color: #24292e;
+}
+
+.markdown-body em,
+.markdown-body i {
+  font-style: italic;
+  color: #24292e;
+}
+
+.markdown-body hr {
+  height: 0.25em;
+  padding: 0;
+  margin: 24px 0;
+  background-color: #e1e4e8;
+  border: 0;
+  border-radius: 2px;
+}
+
+.markdown-body table {
+  display: block;
+  width: 100%;
+  overflow: auto;
+  margin-top: 0;
+  margin-bottom: 16px;
+  border-spacing: 0;
+  border-collapse: collapse;
+}
+
+.markdown-body th {
+  font-weight: 600;
+  background-color: #f6f8fa;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 6px 13px;
+  border: 1px solid #dfe2e5;
+}
+
+.markdown-body tr {
+  background-color: #fff;
+  border-top: 1px solid #c6cbd1;
+}
+
+.markdown-body tr:nth-child(2n) {
+  background-color: #f6f8fa;
 }
 
 /* 响应操作按钮 */
