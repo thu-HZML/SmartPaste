@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
-//const API_BASE_URL = 'http://101.42.152.3/api';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE_URL = 'http://101.42.152.3/api';
+// const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 
 // 提取媒体文件的基础 URL 
@@ -531,7 +531,7 @@ class ApiService {
         }
         
         // 尝试从API响应的JSON中获取错误信息
-        const errorMessage = (result && result.detail) ? result.detail : `配置下载失败，状态码: ${response.status}`;
+        const errorMessage = (result && result.detail) ? result.detail : `AI调用失败，状态码: ${response.status}`;
         throw new Error(errorMessage);
       }
       
@@ -631,7 +631,7 @@ class ApiService {
       return {
         success: false,
         message: error instanceof Error ? error.message : '网络错误',
-        data: null
+        data: result.message
       };
     }
   }
