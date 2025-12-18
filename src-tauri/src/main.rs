@@ -102,12 +102,10 @@ fn main() {
             config::get_config_json,
             config::set_config_item,
             config::get_config_item,
+            config::sync_and_apply_config,
             utils::read_file_base64,
-            utils::write_local_config_file,
-            utils::read_local_config_content,
             utils::get_local_files_to_upload,
             utils::read_db_file_base64,
-            utils::replace_local_db_file,
             utils::save_clipboard_file,
         ])
         .setup(move |app| {

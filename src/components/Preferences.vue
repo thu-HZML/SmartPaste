@@ -648,40 +648,6 @@
               </div>
             </div>
             
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>加密同步数据</h3>
-                <p>使用端到端加密保护您的剪贴板数据</p>
-              </div>
-              <div class="setting-control">
-                <label class="toggle-switch">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.encrypt_cloud_data" 
-                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
-                  >
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>仅WiFi下同步</h3>
-                <p>仅WiFi下同步</p>
-              </div>
-              <div class="setting-control">
-                <label class="toggle-switch">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.sync_only_wifi" 
-                    @change="updateSetting('sync_only_wifi', $event.target.checked)"
-                  >
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-            
             <div class="account-status" v-if="!userLoggedIn">
               <p>您尚未登录，请登录以启用云端同步功能</p>  
               <div class="account-buttons">

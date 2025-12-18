@@ -1126,7 +1126,7 @@ const updateRetentionDays = async () => {
 
       // 1. 同步配置：从本地读取并上传
       // 直接调用 Rust 获取文件内容，随后对接 Web 接口
-      const configTxt = await invoke('read_local_config_content'); 
+      const configTxt = await invoke('get_config_json'); 
       const configRes = await apiService.uploadConfig(configTxt);
       if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
 
@@ -1174,7 +1174,7 @@ const updateRetentionDays = async () => {
       // 1. 下载配置
       const configRes = await apiService.downloadConfig();
       if (configRes.success && configRes.data) {
-        await invoke('write_local_config_file', { content: configRes.data });
+        await invoke('sync_and_apply_config', { content: configRes.data });
       }
 
       // 2. 下载数据库 (Blob 转 Base64 传给 Rust 写入)

@@ -1151,48 +1151,6 @@ pub async fn read_file_base64(file_path: String) -> Result<String, String> {
 }
 
 /**
- * 【新增命令】读取本地 config.json 文件内容，返回 JSON 字符串。
- * 对应前端调用: readLocalConfigContent
- */
-#[tauri::command]
-pub async fn read_local_config_content() -> Result<String, String> {
-    use std::fs;
-    tauri::async_runtime::spawn_blocking(move || {
-        let config_path = crate::config::get_config_path(); // 假设 config 模块提供此函数
-        fs::read_to_string(config_path)
-            .map_err(|e| format!("读取 config.json 失败: {}", e))
-    })
-    .await
-    .map_err(|e| format!("异步任务执行失败: {}", e))?
-}
-
-/**
- * 将配置内容字符串写入本地配置文件。
- * 用于实现登录成功后从云端同步配置到本地。
- * @param content: String - 配置文件的内容 (JSON 字符串)。
- * 对应前端调用: writeLocalConfigContent
- */
-#[tauri::command]
-pub async fn write_local_config_file(content: String) -> Result<(), String> {
-    use std::fs;
-
-    // 文件 I/O 是阻塞操作
-    tauri::async_runtime::spawn_blocking(move || {
-        let config_path = crate::config::get_config_path(); // 假设 crate::config 模块提供了 get_config_path
-
-        fs::write(&config_path, content).map_err(|e| format!("写入本地配置文件失败: {}", e))?;
-
-        // 【关键】写入新配置后，需要重新加载配置到内存中，以便立即生效
-        let reload_msg = crate::config::reload_config();
-        println!("同步配置写入后，配置刷新结果: {}", reload_msg);
-
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("异步任务执行失败: {}", e))?
-}
-
-/**
  * 【新增命令】读取本地 smartpaste.db 文件内容，返回 Base64 字符串。
  * 对应前端调用: readDbFileBase64
  */
@@ -1223,44 +1181,6 @@ pub async fn read_db_file_base64() -> Result<String, String> {
     .map_err(|e| format!("异步任务执行失败: {}", e))?
 }
 
-/**
- * 【新增命令】将 Base64 内容解码并替换本地 smartpaste.db 文件。
- * 对应前端调用: replaceLocalDbFile
- */
-#[tauri::command]
-pub async fn replace_local_db_file(base64_content: String) -> Result<(), String> {
-    use base64::{engine::general_purpose, Engine as _};
-    use std::fs;
-    use std::io::Write;
-
-    tauri::async_runtime::spawn_blocking(move || {
-        let root_path = crate::config::get_current_storage_path();
-        let db_path = root_path.join("smartpaste.db");
-        
-        // 1. Base64 解码
-        let decoded_bytes = general_purpose::STANDARD.decode(base64_content)
-            .map_err(|e| format!("Base64 解码失败: {}", e))?;
-        
-        // 2. 写入文件
-        fs::write(&db_path, decoded_bytes)
-            .map_err(|e| format!("写入数据库文件失败: {} (文件可能被占用)", e))?;
-
-        println!("✅ 本地数据库文件已更新");
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("异步任务执行失败: {}", e))?
-}
-
-/**
- * 【新增命令】通知数据库模块重新加载连接。（占位实现）
- * 对应前端调用: refreshDatabaseConnection
- */
-#[tauri::command]
-pub fn refresh_database_connection() -> Result<(), String> {
-    println!("⚠️ 尝试刷新数据库连接 (需要实现 crate::db::refresh_connection)");
-    Ok(())
-}
 
 // -----------------------------------------------------
 // 文件同步相关辅助结构体
