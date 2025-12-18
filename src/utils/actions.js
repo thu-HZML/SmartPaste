@@ -613,14 +613,7 @@ export async function toggleAiWindow() {
   
   if (aiWindowInstance) {
     // 如果存在ai窗口，关闭
-    try {
-      console.log('关闭ai窗口 (全局查找)')
-      await aiWindowInstance.close()
-
-    } catch (error) {
-      console.error('关闭ai窗口失败:', error)
-      return
-    }
+    return
   } else {
     // 如果不存在，创建新窗口
     try {

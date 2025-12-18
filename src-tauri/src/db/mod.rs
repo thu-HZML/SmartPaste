@@ -8,6 +8,7 @@ pub mod extended;
 pub mod folders;
 pub mod privacy;
 pub mod search;
+pub mod sync;
 
 pub use self::cleanup::*;
 pub use self::core::*;
@@ -15,6 +16,7 @@ pub use self::extended::*;
 pub use self::folders::*;
 pub use self::privacy::*;
 pub use self::search::*;
+pub use self::sync::*;
 
 static DB_PATH_GLOBAL: RwLock<Option<PathBuf>> = RwLock::new(None);
 
@@ -119,6 +121,9 @@ mod test_db_folder;
 #[cfg(test)]
 #[path = "../test_unit/test_db_private.rs"]
 mod test_db_private;
+#[cfg(test)]
+#[path = "../test_unit/test_db_sync.rs"]
+mod test_db_sync;
 
 #[cfg(test)]
 pub static TEST_RUN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
