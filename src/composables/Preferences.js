@@ -990,6 +990,7 @@ const updateRetentionDays = async () => {
       
       // 获取文件信息
       const filePath = Array.isArray(selectedPath) ? selectedPath[0] : selectedPath
+      console.log('获取的头像路径：', filePath)
       const fileName = filePath.substring(filePath.lastIndexOf('\\') + 1)
       const fileExtension = fileName.split('.').pop().toLowerCase()
       const mimeType = {

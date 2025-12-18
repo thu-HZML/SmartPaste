@@ -164,6 +164,7 @@ watch([responseText, hasResponse], async () => {
   updateWindowHeight()
 })
 */
+
 // 更新窗口高度
 const updateWindowHeight = async () => {  
   // 获取组件的实际高度
@@ -261,6 +262,8 @@ const handleMouseEnter = () => {
 const executeAI = async (action) => {
   if (loading.value) return
 
+  currentAction.value = action
+
   // 对于提问按钮，显示输入框而不是直接调用API
   if (action === 'question') {
     showQuestionInput.value = true
@@ -283,10 +286,50 @@ const executeAI = async (action) => {
     return
   }
 
-  console.log('执行AI操作:', action)
+  await useAi()
+}
+
+// 提交用户提问
+const submitQuestion = async () => {
+  if (!questionInput.value.trim() || loading.value) return
+  
+  console.log('提交问题:', questionInput.value)
+  showQuestionInput.value = false
+  
+  try {
+    let aiChatSuccess = await useAi()
+
+    if (aiChatSuccess) {/*
+      
+      // 添加到对话历史
+      conversationHistory.value.push({
+        type: 'user',
+        content: userQuest,
+        action: 'question'
+      })
+      conversationHistory.value.push({
+        type: 'assistant',
+        content: response.data.reply,
+        action: 'question'
+      })*/
+    } else {
+      responseText.value = response.message || 'AI处理失败'
+    }
+    
+  } catch (error) {
+    console.error('AI调用失败:', error)
+    responseText.value = `AI服务错误: ${error.message || '未知错误'}`
+  } finally {
+    loading.value = false
+    questionInput.value = '' // 清空输入框
+  }
+}
+
+// 调用ai的api
+const useAi = async () => {
+  console.log('执行AI操作:', currentAction.value)
   loading.value = true
   isStreaming.value = true
-  currentAction.value = action
   hasResponse.value = true
   isTransparent.value = false
   
@@ -296,14 +339,14 @@ const executeAI = async (action) => {
 
   try {
     var formdata = new FormData();
-    let type = 'text'
+    let type = ''
     let content = clipboardContent.value
     let userQuest = ''
     
     // 根据action类型设置不同的参数
-    switch(action) {
+    switch(currentAction.value) {
       case 'question':
-        userQuest = '请回答以下问题：'
+        userQuest = '请回答以下问题：' + questionInput.value
         break
         
       case 'summarize':
@@ -319,13 +362,48 @@ const executeAI = async (action) => {
         break       
     }
     
-    formdata.append("type", type)
-    formdata.append("content", content)
-    formdata.append("user_quest", userQuest)
-    formdata.append("provider", "default")
+    if (clipboardType.value === 'text') {
+      formdata.append("type", 'text')
+      formdata.append("content", content)
+      formdata.append("user_quest", userQuest)
+      formdata.append("provider", "default")
+    }
+    else if (clipboardType.value === 'file') {
+      formdata.append("type", 'file')
+      formdata.append("content", '')
+      formdata.append("user_quest", userQuest)
+      formdata.append("provider", "default")
 
-    // const response = await apiService.aiChat(formdata)
-    // 调用支持流式的API
+      // 读取文件内容为 Base64 编码字符串
+      // 该命令接收文件路径，读取文件内容并返回 Base64 编码字符串。
+      const osPath = await invoke('get_config_item', { key: 'storage_path'})
+      let filePath = osPath.replace(/\//g, '\\') + '\\' + clipboardContent.value
+      console.log('获取的文件路径：', filePath)
+      let base64Content = null;
+      try {
+          base64Content = await invoke('read_file_base64', { filePath });
+      } catch (e) {
+          console.error('读取本地文件失败:', e);
+          showMessage('读取本地文件失败，请确保 Rust 命令已实现', 'error');
+          return;
+      }
+      const fileName = filePath.substring(filePath.lastIndexOf('\\') + 1)
+      
+      // 将 Base64 转换为 File 对象
+      // 移除可能的前缀 'data:mime/type;base64,'
+      const base64Data = base64Content.split(',').pop();
+      const binaryString = atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      // 创建 File 对象，供 fetch API 上传
+      const fileObject = new File([bytes], fileName);
+      formdata.append('file', fileObject, fileObject.name || 'avatar_upload'); 
+    }
+    
+
     const response = await apiService.aiChat(formdata, (chunk, fullText) => {
       loading.value = false
       // 流式输出回调
@@ -340,19 +418,13 @@ const executeAI = async (action) => {
         }
       })
     })
-/*
-    const response = await apiService.aiChat({
-      type: 'none',
-      content: '',
-      user_quest: 'hello',
-      provider: 'default'
-    })*/
 
     if (response.success) {
       // 如果流式输出过程中没有设置响应文本，使用最终结果
       if (!responseText.value && response.data?.reply) {
         responseText.value = response.data.reply
       }
+      return true
     } else {
       responseText.value = response.message || 'AI处理失败'
     }
@@ -362,87 +434,9 @@ const executeAI = async (action) => {
   } finally {
     loading.value = false
   }
+
+  return false
 }
-
-// 提交用户提问
-const submitQuestion = async () => {
-  if (!questionInput.value.trim() || loading.value) return
-  
-  console.log('提交问题:', questionInput.value)
-  loading.value = true
-  isStreaming.value = true
-  showQuestionInput.value = false
-  hasResponse.value = true
-  isTransparent.value = false
-
-  // 清空之前的响应
-  responseText.value = ''
-  streamingBuffer.value = ''
-  
-  try {
-    const formdata = new FormData()
-    const type = 'text'
-    const content = clipboardContent.value
-    const userQuest = questionInput.value
-    
-    formdata.append("type", type)
-    formdata.append("content", content)
-    formdata.append("user_quest", userQuest)
-    formdata.append("provider", "default")
-    
-    console.log('发送AI提问请求:', {
-      type,
-      content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
-      user_quest: userQuest
-    })
-    
-    // 调用支持流式的API
-    const response = await apiService.aiChat(formdata, (chunk, fullText) => {
-      loading.value = false
-      // 流式输出回调
-      streamingBuffer.value += chunk
-      responseText.value = streamingBuffer.value
-      
-      // 如果内容很多，自动滚动到底部
-      nextTick(() => {
-        const responseEl = aiAssistantRef.value?.querySelector('.ai-response')
-        if (responseEl) {
-          responseEl.scrollTop = responseEl.scrollHeight
-        }
-      })
-    })
-    // const response = await apiService.aiChat(formdata)
-    
-    if (response.success) {
-      // 如果流式输出过程中没有设置响应文本，使用最终结果
-      if (!responseText.value && response.data?.reply) {
-        responseText.value = response.data.reply
-      }
-      
-      // 添加到对话历史
-      conversationHistory.value.push({
-        type: 'user',
-        content: userQuest,
-        action: 'question'
-      })
-      conversationHistory.value.push({
-        type: 'assistant',
-        content: response.data.reply,
-        action: 'question'
-      })
-    } else {
-      responseText.value = response.message || 'AI处理失败'
-    }
-    
-  } catch (error) {
-    console.error('AI调用失败:', error)
-    responseText.value = `AI服务错误: ${error.message || '未知错误'}`
-  } finally {
-    loading.value = false
-    questionInput.value = '' // 清空输入框
-  }
-}
-
 // 取消提问
 const cancelQuestion = () => {
   showQuestionInput.value = false
@@ -528,6 +522,7 @@ onMounted( async () => {
   const latestData = JSON.parse(jsonString)
   clipboardContent.value = latestData.content
   clipboardType.value = latestData.item_type
+  console.log('接收到的信息：', clipboardType.value, clipboardContent.value)
 
   // 创建 ResizeObserver 监听元素尺寸变化
   resizeObserver = new ResizeObserver( async (entries) => {
