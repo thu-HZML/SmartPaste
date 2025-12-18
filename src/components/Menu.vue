@@ -1,7 +1,8 @@
 <template>
   <div class="main-menu">
     <!-- 用户信息区域 -->
-    <div class="flex-row items-center user-section">
+    <div class="flex-row items-center user-section"@click="openSettings('user')" 
+      style="cursor: pointer;">
       <div class="user-avatar">
         <!-- 如果有用户头像则显示，否则显示默认图标 -->
         <img 
@@ -41,7 +42,7 @@
 
     <!-- 第二行：设置、云端、AI助手 -->
     <div class="flex-row menu-row">
-      <div class="menu-item" @click="openSettings">
+      <div class="menu-item" @click="openSettings('general')">
         <div class="menu-icon">
           <Cog6ToothIcon class="icon-default" />
         </div>

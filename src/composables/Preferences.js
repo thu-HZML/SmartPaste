@@ -1318,6 +1318,17 @@ const updateRetentionDays = async () => {
       console.error('加载用户信息失败:', error)
     }
 
+    // 从URL参数设置初始导航项
+    const urlParams = new URLSearchParams(window.location.search);
+    const navFromUrl = urlParams.get('nav');
+    if (navFromUrl) {
+      activeNav.value = navFromUrl;
+    }
+
+    onUnmounted(() => {
+      if (unlisten) unlisten();
+    });
+
     // 设置窗口关闭监听器
     unlistenCloseRequested = await setupWindowCloseListener()
   })

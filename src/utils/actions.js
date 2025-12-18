@@ -450,14 +450,14 @@ export async function togglePrivateWindow() {
 }
 
 // 创建设置窗口
-export async function createSetWindow(options = {}) {
+export async function createSetWindow(options = {},initialNav = 'general') {
   const windowId = 'preferences'
   
   try {
     const { x = 100, y = 100, width = 800, height = 580 } = options
     
     const webview = new WebviewWindow(windowId, {
-      url: '/preferences', // 直接跳转到剪贴板页面的收藏界面
+      url: `/preferences?nav=${initialNav}`,
       title: '设置',
       width,
       height,
@@ -503,7 +503,7 @@ export async function createSetWindow(options = {}) {
 /**
  * 获取或切换设置窗口
  */
-export async function toggleSetWindow() {
+export async function toggleSetWindow(navId = 'general') {
   const windowId = 'preferences'
   const allWindows = await WebviewWindow.getAll()
   const setsWindowInstance = allWindows.find(w => w.label === windowId)
@@ -535,10 +535,10 @@ export async function toggleSetWindow() {
             y: y,
             width: width, // 菜单窗口宽度
             height: height // 菜单窗口高度
-          })
+          },navId)
         }
       } else {
-        await createSetWindow() // 创建默认位置的窗口
+        await createSetWindow(navId) // 创建默认位置的窗口
       }
     } catch (error) {
       if (error.payload && typeof error.payload === 'string' && error.payload.includes('already exists')) {

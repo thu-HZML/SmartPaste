@@ -1,5 +1,6 @@
 // src/components/MenuFunctions.js
 import { ref } from "vue";
+import { emit } from '@tauri-apps/api/event'
 import { toggleClipboardWindow, toggleFavoritesWindow } from '../utils/actions.js'
 
 const username = ref("未登录");
@@ -79,13 +80,13 @@ export function useMenuFunctions() {
     }
   }
 
-  const openSettings = async () => {
-    console.log('打开设置')
+  const openSettings = async (navId = 'general') => {
+    console.log(`尝试打开设置，目标子页面: ${navId}`)
     try {
-      await toggleSetWindow()
+      await toggleSetWindow(navId)
       console.log('设置窗口已打开')
     } catch (error) {
-      console.error('打开设置窗口失败:', error)
+      console.error('打开设置失败:', error)
     }
   }
 
