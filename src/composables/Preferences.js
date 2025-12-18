@@ -254,19 +254,32 @@ export function usePreferences() {
         showMessage('注册成功！', 'success')
         console.log('登录成功返回信息:', response.data)
         
-        // 保存用户信息到本地存储
-        if (response.data) {
-          localStorage.setItem('user', JSON.stringify(response.data))
-          userLoggedIn.value = true
-          userEmail.value = response.data.user.email || registerData.email
-          userInfo.username = response.data.user.username || registerData.username
-          userInfo.email = response.data.user.email || registerData.email
-          userInfo.bio = response.data.user.bio 
-        }
-        
         // 关闭注册对话框
         showRegisterDialog.value = false
-        
+
+        const responselogin = await apiService.login({
+        username: registerData.username,
+        password: registerData.password
+        })
+
+        if (responselogin.success) {
+          // 登录成功
+          showMessage('登录成功！', 'success')
+          console.log('登录成功返回信息:', responselogin.data)
+          // 保存用户信息到本地存储
+          if (responselogin.data) {
+            localStorage.setItem('user', JSON.stringify(responselogin.data))
+            localStorage.setItem('token', responselogin.data.token || '')
+            userLoggedIn.value = true
+            userEmail.value = responselogin.data.user.email || loginData.email
+            userInfo.username = responselogin.data.user.username || '当前用户'
+            userInfo.email = responselogin.data.user.email || loginData.email
+            userInfo.bio = responselogin.data.user.bio
+            userInfo.avatar = responselogin.data.user.avatar || ''
+          }
+          loadUsername()
+        }
+
         // 清空表单数据
         Object.assign(registerData, {
           username: '',
