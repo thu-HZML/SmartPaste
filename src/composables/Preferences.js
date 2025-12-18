@@ -1232,6 +1232,16 @@ const updateRetentionDays = async () => {
     }
   }
 
+  const base64ToBlob = (base64Content, mimeType) => {
+      const byteString = atob(base64Content);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeType });
+  }
+
   // 生命周期
   onMounted(async () => {
     // 检查本地存储中是否有用户信息

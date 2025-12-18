@@ -35,7 +35,6 @@ use std::sync::OnceLock;
 use std::thread;
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 use serde::Serialize; 
-use serde_json::json;
 use walkdir::WalkDir;
 
 #[tauri::command]
