@@ -694,6 +694,20 @@ pub fn top_data_by_id(id: &str) -> Result<String, String> {
     )
     .map_err(|e| e.to_string())?;
 
+    // 对数据库进行重排序，按 timestamp 降序排列
+    conn.execute(
+        "CREATE TEMPORARY TABLE temp_data AS 
+         SELECT * FROM data ORDER BY timestamp DESC;
+         
+         DELETE FROM data;
+         
+         INSERT INTO data SELECT * FROM temp_data;
+         
+         DROP TABLE temp_data;",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
     // 返回更新后的记录（以 JSON 字符串形式）
     let json = get_data_by_id(id)?;
     if json == "null" {
