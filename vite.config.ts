@@ -28,5 +28,9 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+    fs: {
+      // 忽略 Rust 的 target/doc 目录，避免扫描其中的大量文件
+      deny: ['.git', 'src-tauri/target']
+    }
   },
 }));
