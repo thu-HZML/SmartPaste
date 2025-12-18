@@ -269,7 +269,6 @@ export function usePreferences() {
           // 保存用户信息到本地存储
           if (responselogin.data) {
             localStorage.setItem('user', JSON.stringify(responselogin.data))
-            localStorage.setItem('token', responselogin.data.token || '')
             userLoggedIn.value = true
             userEmail.value = responselogin.data.user.email || loginData.email
             userInfo.username = responselogin.data.user.username || '当前用户'

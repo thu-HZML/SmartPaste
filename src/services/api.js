@@ -86,7 +86,7 @@ class ApiService {
       
       const token = result.jwt.access;
       localStorage.setItem('token', token);
-      console.log('登录接口返回的完整数据结构111:', token);
+      console.log('登录接口返回的完整数据结构:', token);
       
       // 在同步前和返回前，修正头像 URL
       if (result && result.user && result.user.avatar) {
