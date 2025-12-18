@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 
-const API_BASE_URL = 'http://101.42.152.3/api';
+//const API_BASE_URL = 'http://101.42.152.3/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+
 
 // 提取媒体文件的基础 URL 
 // 它假设 media 文件路径是相对于 API_BASE_URL 的前缀而言的
@@ -501,7 +503,7 @@ class ApiService {
    * 接口: POST /ai/chat/
    * @returns {Promise<{success: boolean, message: string, data: string|null}>} data 是配置文件的内容字符串。
    */
-  async aiChat(chatBody) {
+  async aiChat(chatBody, onProgress = null) {
     let result = null;
     try {
       const token = localStorage.getItem('token');
@@ -534,15 +536,96 @@ class ApiService {
       }
       
       // 成功 (200 OK)，获取配置内容 (文本格式，因为是config.json)
-      result = await response.json();
-      console.log('ai回复：', result)
+      if (onProgress) {
+        // 处理流式响应
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullResponse = '';
 
-      return {
-        success: true,
-        message: '配置下载成功',
-        data: result.data
-      };
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              // 流结束
+              if (buffer.trim()) {
+                // 处理剩余的buffer
+                const finalData = this.parseSSEData(buffer);
+                if (finalData) {
+                  fullResponse += finalData;
+                  onProgress(finalData, fullResponse);
+                }
+              }
+              break;
+            }
 
+            // 解码数据
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+
+            // 按行分割处理 SSE 格式
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || ''; // 最后一行可能不完整，留到下次处理
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const dataStr = line.substring(6); // 去掉 "data: "
+
+                // 检查结束标记
+                if (dataStr.trim() === '[DONE]') {
+                  console.log('Stream finished');
+                  continue;
+                }
+
+                try {
+                  const data = JSON.parse(dataStr);
+                  
+                  if (data.type === 'delta' && data.content) {
+                    // 流式文本输出
+                    fullResponse += data.content;
+                    // 调用进度回调
+                    onProgress(data.content, fullResponse);
+                  } else if (data.type === 'full' && data.content) {
+                    // 完整响应
+                    fullResponse = data.content;
+                    onProgress(data.content, fullResponse);
+                  } else if (data.type === 'error') {
+                    // 错误处理
+                    throw new Error(data.message || 'AI服务返回错误');
+                  }
+                } catch (e) {
+                  console.error('Failed to parse SSE data:', e, 'Raw data:', dataStr);
+                  // 如果无法解析为JSON，可能是普通文本，直接作为输出
+                  if (dataStr.trim() && !dataStr.includes('[DONE]')) {
+                    fullResponse += dataStr + '\n';
+                    onProgress(dataStr + '\n', fullResponse);
+                  }
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+
+        // 返回完整结果
+        return {
+          success: true,
+          message: 'AI回复完成',
+          data: { reply: fullResponse }
+        };
+      } else {
+        // 非流式响应，按原方式处理
+        result = await response.json();
+        console.log('AI回复：', result);
+        
+        return {
+          success: true,
+          message: 'AI回复成功',
+          data: result.data
+        };
+      }
     } catch (error) {
       console.error('下载配置错误:', error);
       return {
@@ -553,6 +636,30 @@ class ApiService {
     }
   }
 
+  /**
+   * 解析SSE数据
+   * @param {string} dataStr - SSE数据字符串
+   * @returns {string|null} 解析出的内容
+   */
+  parseSSEData(dataStr) {
+    if (!dataStr.trim() || dataStr.trim() === '[DONE]') {
+      return null;
+    }
+    
+    try {
+      const data = JSON.parse(dataStr);
+      if (data.type === 'delta' && data.content) {
+        return data.content;
+      } else if (data.type === 'full' && data.content) {
+        return data.content;
+      }
+    } catch (e) {
+      // 如果不是JSON，直接返回原始文本
+      return dataStr;
+    }
+    
+    return null;
+  }
 }
 
 /**
