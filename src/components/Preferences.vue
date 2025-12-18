@@ -448,7 +448,7 @@
             <div class="setting-item">
               <div class="setting-info">
                 <h3>采样温度</h3>
-                <p>设置识别结果的置信度阈值，低于此值的结果将被忽略</p>
+                <p>采样温度越高，ai生成文本的随机性和多样性越强</p>
               </div>
               <div class="setting-control">
                 <div class="slider-container">
