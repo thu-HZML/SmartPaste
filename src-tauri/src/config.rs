@@ -357,19 +357,19 @@ pub fn config_to_json(config: &Config) -> String {
 
 // 辅助函数，防止旧 config.json 缺少字段导致解析失败
 fn default_shortcut() -> String {
-    "Alt+Shift+V".to_string()
+    "Shift+V".to_string()
 }
 fn default_shortcut_2() -> String {
-    "Alt+Shift+C".to_string()
+    "Shift+Alt+C".to_string()
 }
 fn default_shortcut_3() -> String {
-    "Alt+Shift+A".to_string()
+    "Shift+Alt+A".to_string()
 } // 新增
 fn default_shortcut_4() -> String {
-    "Ctrl+Shift+V".to_string()
+    "Shift+Ctrl+V".to_string()
 } // 新增
 fn default_shortcut_5() -> String {
-    "Ctrl+Shift+Delete".to_string()
+    "Shift+Ctrl+Delete".to_string()
 } // 新增
 
 /// 为 Config 实现 Default trait，提供默认配置值。

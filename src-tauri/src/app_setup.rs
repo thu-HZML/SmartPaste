@@ -68,7 +68,7 @@ lazy_static::lazy_static! {
         let mut m = std::collections::HashMap::new();
         m.insert("toggleWindow", ShortcutConfig {
             storage_key: "global_shortcut",
-            default_value: "Alt+Shift+V",
+            default_value: "Shift+V",
             handler: |app, _shortcut| {
                 println!("🎯 执行主窗口切换");
                 if let Some(window) = app.get_webview_window("main") {
@@ -78,7 +78,7 @@ lazy_static::lazy_static! {
         });
         m.insert("pasteWindow", ShortcutConfig {
             storage_key: "global_shortcut_2",
-            default_value: "Alt+Shift+C",
+            default_value: "Shift+Alt+C",
             handler: |app, shortcut| {
                 println!("🎯 执行剪贴板窗口切换，快捷键: {}", shortcut);
                 if let Some(window) = app.get_webview_window("main") {
@@ -93,7 +93,7 @@ lazy_static::lazy_static! {
         });
         m.insert("AIWindow", ShortcutConfig {
             storage_key: "global_shortcut_3",
-            default_value: "Ctrl+Shift+A",
+            default_value: "Shift+Ctrl+A",
             handler: |app, shortcut| {
                 println!("🤖 执行AI窗口切换，快捷键: {}", shortcut);
                 if let Some(window) = app.get_webview_window("main") {
@@ -108,7 +108,7 @@ lazy_static::lazy_static! {
         });
         m.insert("setWindow", ShortcutConfig {
             storage_key: "global_shortcut_4",
-            default_value: "Ctrl+Shift+V",
+            default_value: "Shift+Ctrl+V",
             handler: |app, shortcut| {
                 println!("⚙️ 执行设置窗口切换，快捷键: {}", shortcut);
                 if let Some(window) = app.get_webview_window("main") {
@@ -123,7 +123,7 @@ lazy_static::lazy_static! {
         });
         m.insert("clearHistory", ShortcutConfig {
             storage_key: "global_shortcut_5",
-            default_value: "Ctrl+Shift+Delete",
+            default_value: "Shift+Ctrl+Delete",
             handler: |app, shortcut| {
                 println!("🗑️ 执行清空历史，快捷键: {}", shortcut);
                 if let Some(window) = app.get_webview_window("main") {
