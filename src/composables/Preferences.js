@@ -363,6 +363,7 @@ export function usePreferences() {
         loadUsername()
         // 关闭登录对话框
         showLoginDialog.value = false
+        await handleCloudPull(true);
         
         // 清空表单数据
         Object.assign(loginData, {
@@ -1159,6 +1160,61 @@ const updateRetentionDays = async () => {
       // 错误处理逻辑：打印日志并反馈给用户
       console.error('云端推送错误:', error);
       showMessage(error.message || '网络同步出错，请检查连接', 'error');
+    } finally {
+      isSyncing.value = false;
+    }
+  };
+
+  const handleCloudPull = async (isSilent = false) => {
+    if (isSyncing.value) return;
+    isSyncing.value = true;
+    try {
+      if (!isSilent) showMessage('正在同步云端数据...', 'info');
+
+      // 1. 下载配置
+      const configRes = await apiService.downloadConfig();
+      if (configRes.success && configRes.data) {
+        await invoke('write_local_config_file', { content: configRes.data });
+      }
+
+      // 2. 下载数据库 (Blob 转 Base64 传给 Rust 写入)
+      const dbRes = await apiService.getSqliteDatabaseAsJson();
+      if (dbRes.success && dbRes.data && dbRes.data.data) {
+        console.log("正在同步数据库 JSON 数据...", dbRes.data);
+        // 将整个数据对象转为 JSON 字符串传给 Rust
+        const jsonString = JSON.stringify(dbRes.data);
+        await invoke('sync_cloud_data', { jsonData: jsonString });
+      }
+
+      // 3. 下载剪贴板媒体文件 (镜像同步)
+      const listRes = await apiService.getCloudFileList();
+      if (listRes.success) {
+        const serverPaths = listRes.data.map(item => item.relative_path);
+        for (const item of listRes.data) {
+          // 直接通过 Web URL 下载 Blob
+          const fileUrl = ensureAbsoluteAvatarUrl(item.file);
+          const fileBlob = await fetch(fileUrl, {
+            headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+          }).then(r => r.blob());
+          
+          // 转 Base64 传给 Rust 保存
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result.split(',')[1];
+            await invoke('save_clipboard_file', { relativePath: item.relative_path, base64Content: base64 });
+          };
+          reader.readAsDataURL(fileBlob);
+        }
+        // 清理本地不在云端的文件 (镜像清理)
+        //await invoke('clean_local_files', { serverPaths });
+      }
+
+      lastSyncTime.value = Date.now();
+      localStorage.setItem('lastSyncTime', lastSyncTime.value);
+      if (!isSilent) showMessage('云端数据拉取成功', 'success');
+    } catch (error) {
+      console.error('拉取失败:', error);
+      if (!isSilent) showMessage('同步拉取失败', 'error');
     } finally {
       isSyncing.value = false;
     }

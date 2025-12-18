@@ -107,6 +107,8 @@ fn main() {
             utils::read_local_config_content,
             utils::get_local_files_to_upload,
             utils::read_db_file_base64,
+            utils::replace_local_db_file,
+            utils::save_clipboard_file,
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录
