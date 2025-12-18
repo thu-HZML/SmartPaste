@@ -140,6 +140,10 @@ const questionInput = ref('') // 用户输入的问题
 const questionInputRef = ref(null) // 输入框引用
 const conversationHistory = ref([]) // 对话历史
 
+// 流式响应相关状态
+const isStreaming = ref(false) // 是否正在流式输出
+const streamingBuffer = ref('') // 流式缓冲区
+
 // 配置
 const maxResponseHeight = 400 // 最大响应高度
 const autoCloseDelay = 5000 // 自动关闭延迟(5秒)
@@ -281,10 +285,15 @@ const executeAI = async (action) => {
 
   console.log('执行AI操作:', action)
   loading.value = true
+  isStreaming.value = true
   currentAction.value = action
   hasResponse.value = true
   isTransparent.value = false
   
+  // 清空之前的响应
+  responseText.value = ''
+  streamingBuffer.value = ''
+
   try {
     var formdata = new FormData();
     let type = 'text'
@@ -315,7 +324,22 @@ const executeAI = async (action) => {
     formdata.append("user_quest", userQuest)
     formdata.append("provider", "default")
 
-    const response = await apiService.aiChat(formdata)
+    // const response = await apiService.aiChat(formdata)
+    // 调用支持流式的API
+    const response = await apiService.aiChat(formdata, (chunk, fullText) => {
+      loading.value = false
+      // 流式输出回调
+      streamingBuffer.value += chunk
+      responseText.value = streamingBuffer.value
+      
+      // 如果内容很多，自动滚动到底部
+      nextTick(() => {
+        const responseEl = aiAssistantRef.value?.querySelector('.ai-response')
+        if (responseEl) {
+          responseEl.scrollTop = responseEl.scrollHeight
+        }
+      })
+    })
 /*
     const response = await apiService.aiChat({
       type: 'none',
@@ -325,22 +349,13 @@ const executeAI = async (action) => {
     })*/
 
     if (response.success) {
-      responseText.value = response.data.reply
-    }
-    
-    /*
-    // 处理响应
-    if (response && response.success) {
-      responseText.value = response.result || 'AI未返回有效内容'
-      
-      // 如果是流式响应，这里可以处理实时更新
-      if (response.streaming) {
-        // 模拟实时更新（实际使用时需要根据后端API调整）
-        simulateStreamingResponse(response.result)
+      // 如果流式输出过程中没有设置响应文本，使用最终结果
+      if (!responseText.value && response.data?.reply) {
+        responseText.value = response.data.reply
       }
     } else {
-      responseText.value = response?.error || 'AI处理失败'
-    }*/  
+      responseText.value = response.message || 'AI处理失败'
+    }
   } catch (error) {
     console.error('AI调用失败:', error)
     responseText.value = `AI服务错误: ${error.message || '未知错误'}`
@@ -349,29 +364,20 @@ const executeAI = async (action) => {
   }
 }
 
-// 模拟流式响应（实际使用时根据后端API实现）
-const simulateStreamingResponse = (text) => {
-  responseText.value = ''
-  let index = 0
-  const interval = setInterval(() => {
-    if (index < text.length) {
-      responseText.value += text.charAt(index)
-      index++
-    } else {
-      clearInterval(interval)
-    }
-  }, 20)
-}
-
 // 提交用户提问
 const submitQuestion = async () => {
   if (!questionInput.value.trim() || loading.value) return
   
   console.log('提交问题:', questionInput.value)
   loading.value = true
+  isStreaming.value = true
   showQuestionInput.value = false
   hasResponse.value = true
   isTransparent.value = false
+
+  // 清空之前的响应
+  responseText.value = ''
+  streamingBuffer.value = ''
   
   try {
     const formdata = new FormData()
@@ -390,10 +396,28 @@ const submitQuestion = async () => {
       user_quest: userQuest
     })
     
-    const response = await apiService.aiChat(formdata)
+    // 调用支持流式的API
+    const response = await apiService.aiChat(formdata, (chunk, fullText) => {
+      loading.value = false
+      // 流式输出回调
+      streamingBuffer.value += chunk
+      responseText.value = streamingBuffer.value
+      
+      // 如果内容很多，自动滚动到底部
+      nextTick(() => {
+        const responseEl = aiAssistantRef.value?.querySelector('.ai-response')
+        if (responseEl) {
+          responseEl.scrollTop = responseEl.scrollHeight
+        }
+      })
+    })
+    // const response = await apiService.aiChat(formdata)
     
     if (response.success) {
-      responseText.value = response.data.reply
+      // 如果流式输出过程中没有设置响应文本，使用最终结果
+      if (!responseText.value && response.data?.reply) {
+        responseText.value = response.data.reply
+      }
       
       // 添加到对话历史
       conversationHistory.value.push({
