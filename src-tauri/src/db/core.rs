@@ -674,3 +674,31 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
 
     clipboard_items_to_json(results)
 }
+
+/// 根据ID将数据置顶。作为 Tauri command 暴露给前端调用。
+/// # Param
+/// id: &str - 要置顶数据的 ID
+/// # Returns
+/// String - 该修改后的数据记录的 JSON 字符串，若报错则返回错误信息
+#[tauri::command]
+pub fn top_data_by_id(id: &str) -> Result<String, String> {
+    let db_path = get_db_path();
+    init_db(db_path.as_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let current_timestamp = chrono::Utc::now().timestamp_millis();
+
+    conn.execute(
+        "UPDATE data SET timestamp = ?1 WHERE id = ?2",
+        params![current_timestamp, id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // 返回更新后的记录（以 JSON 字符串形式）
+    let json = get_data_by_id(id)?;
+    if json == "null" {
+        Err("Item not found after update".to_string())
+    } else {
+        Ok(json)
+    }
+}
