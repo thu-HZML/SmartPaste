@@ -95,6 +95,7 @@ fn main() {
             db::clear_all_private_data,
             db::auto_mark_private_data,
             db::trigger_cleanup,
+            db::sync_cloud_data,
             db::top_data_by_id,
             ocr::configure_ocr,
             ocr::ocr_image,
