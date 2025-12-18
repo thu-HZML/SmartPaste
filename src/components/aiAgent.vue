@@ -269,7 +269,6 @@ const executeAI = async (action) => {
     showQuestionInput.value = true
     hasResponse.value = true
     isTransparent.value = false
-    currentAction.value = action
     
     // 设置输入框默认值（可选）
     questionInput.value = ''
@@ -312,13 +311,10 @@ const submitQuestion = async () => {
         content: response.data.reply,
         action: 'question'
       })*/
-    } else {
-      responseText.value = response.message || 'AI处理失败'
     }
     
   } catch (error) {
     console.error('AI调用失败:', error)
-    responseText.value = `AI服务错误: ${error.message || '未知错误'}`
   } finally {
     loading.value = false
     questionInput.value = '' // 清空输入框
@@ -366,13 +362,11 @@ const useAi = async () => {
       formdata.append("type", 'text')
       formdata.append("content", content)
       formdata.append("user_quest", userQuest)
-      formdata.append("provider", "default")
     }
     else if (clipboardType.value === 'file') {
       formdata.append("type", 'file')
       formdata.append("content", '')
       formdata.append("user_quest", userQuest)
-      formdata.append("provider", "default")
 
       // 读取文件内容为 Base64 编码字符串
       // 该命令接收文件路径，读取文件内容并返回 Base64 编码字符串。
@@ -400,9 +394,34 @@ const useAi = async () => {
       }
       // 创建 File 对象，供 fetch API 上传
       const fileObject = new File([bytes], fileName);
-      formdata.append('file', fileObject, fileObject.name || 'avatar_upload'); 
+      console.log('文件：', fileObject)
+      formdata.append('file', fileObject, fileObject.name); 
     }
     
+    // ai的其他参数
+    const aiProvider = await invoke('get_config_item', { key: 'ai_provider'})
+    const aiApiKey = await invoke('get_config_item', { key: 'ai_api_key'})
+    const aiModel = await invoke('get_config_item', { key: 'ai_model'})
+    const aiBaseUrl = await invoke('get_config_item', { key: 'ai_base_url'})
+    const aiTemperature = await invoke('get_config_item', { key: 'ai_temperature'})
+
+    let aiConfig = null
+    if (aiProvider === 'default') {
+      aiConfig = {
+        model: aiModel,
+        ai_temperature: aiTemperature
+      }
+    } else {
+      aiConfig = {
+        api_key: aiApiKey,
+        base_url: aiBaseUrl,
+        model: aiModel,
+        ai_temperature: aiTemperature
+      }
+    }
+
+    formdata.append('provider', aiProvider)
+    formdata.append('ai_config', JSON.stringify(aiConfig))
 
     const response = await apiService.aiChat(formdata, (chunk, fullText) => {
       loading.value = false
@@ -426,7 +445,7 @@ const useAi = async () => {
       }
       return true
     } else {
-      responseText.value = response.message || 'AI处理失败'
+      responseText.value = response.data || 'AI处理失败'
     }
   } catch (error) {
     console.error('AI调用失败:', error)
