@@ -309,3 +309,66 @@ fn test_clear_all_private_data() {
     let json = get_data_by_id(&item1.id).unwrap();
     assert_ne!(json, "null", "Actual data item should still exist");
 }
+
+#[test]
+fn test_encrypted_db_upload_and_restore() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据
+    let item1 = make_item("enc-1", "Secret Content 1", "Note 1");
+    let item2 = make_item("enc-2", "Public Content 2", "Note 2");
+    
+    insert_received_db_data(item1.clone()).unwrap();
+    insert_received_db_data(item2.clone()).unwrap();
+
+    // 2. 准备密钥 (32 bytes hex)
+    // "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    let dek_hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f".to_string();
+
+    // 3. 生成加密 DB
+    let encrypted_b64 = prepare_encrypted_db_upload(dek_hex.clone())
+        .expect("Failed to prepare encrypted db");
+    
+    assert!(!encrypted_b64.is_empty());
+
+    // 4. 模拟数据丢失 (清空当前 DB)
+    clear_db_file();
+    // 重新初始化空 DB 以便验证它确实是空的
+    let db_path = get_db_path();
+    init_db(&db_path).unwrap();
+    {
+        let conn = Connection::open(&db_path).unwrap();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM data", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0, "DB should be empty before restore");
+    }
+
+    // 5. 恢复 DB
+    restore_from_encrypted_db(dek_hex, encrypted_b64)
+        .expect("Failed to restore from encrypted db");
+
+    // 6. 验证数据
+    let conn = Connection::open(&db_path).unwrap();
+    
+    // 验证 item1
+    let (content1, notes1): (String, String) = conn.query_row(
+        "SELECT content, notes FROM data WHERE id = ?1",
+        [&item1.id],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).expect("Item 1 not found after restore");
+    
+    assert_eq!(content1, item1.content);
+    assert_eq!(notes1, item1.notes);
+
+    // 验证 item2
+    let (content2, notes2): (String, String) = conn.query_row(
+        "SELECT content, notes FROM data WHERE id = ?1",
+        [&item2.id],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).expect("Item 2 not found after restore");
+    
+    assert_eq!(content2, item2.content);
+    assert_eq!(notes2, item2.notes);
+}
+
