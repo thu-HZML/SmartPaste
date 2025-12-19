@@ -1,7 +1,14 @@
 use super::{get_db_path, init_db};
 use crate::clipboard::ClipboardItem;
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use base64::{engine::general_purpose, Engine as _};
+use rand::Rng;
 use regex::Regex;
 use rusqlite::{params, Connection};
+use std::fs;
 
 /// 利用备注内容匹配内容是否可能为密码，若匹配则标记或删除为隐私数据。作为 Tauri command 暴露给前端调用。
 /// **匹配关键词**：
@@ -488,4 +495,221 @@ pub fn check_and_mark_private_item(
         .unwrap_or(0);
 
     Ok(count > 0)
+}
+
+/// 准备加密的数据库文件用于上传
+/// # Param
+/// dek_hex: String - 32字节的数据加密密钥 (Hex 编码)
+/// # Returns
+/// Result<String, String> - 加密后的数据库文件的 Base64 编码，若失败则返回错误信息
+#[tauri::command]
+pub fn prepare_encrypted_db_upload(dek_hex: String) -> Result<String, String> {
+    // 1. 对 DEK 进行解码
+    let key_bytes = hex::decode(&dek_hex).map_err(|e| format!("Invalid DEK hex: {}", e))?;
+    if key_bytes.len() != 32 {
+        return Err("DEK must be 32 bytes (64 hex chars)".to_string());
+    }
+
+    // 2. 将当前 DB 复制到临时文件
+    let db_path = get_db_path();
+    let temp_path = db_path.with_extension("enc.db");
+    fs::copy(&db_path, &temp_path).map_err(|e| e.to_string())?;
+
+    // 3. 打开临时 DB 并加密内容
+    // 确保在此作用域内连接有效
+    {
+        let mut conn = Connection::open(&temp_path).map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        // 4. 读取所有数据并加密
+        // 使用单独的块来读取数据，确保 stmt 在块结束时被销毁，释放对 tx 的借用
+        let all_rows = {
+            let mut stmt = tx
+                .prepare("SELECT id, content, notes FROM data")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+
+            rows.collect::<Result<Vec<(String, String, Option<String>)>, _>>()
+                .map_err(|e| e.to_string())?
+        };
+
+        // 使用单独的块来更新数据，确保 update_stmt 在块结束时被销毁
+        {
+            let mut update_stmt = tx
+                .prepare("UPDATE data SET content = ?1, notes = ?2 WHERE id = ?3")
+                .map_err(|e| e.to_string())?;
+
+            for (id, content, notes) in all_rows {
+                let enc_content = encrypt_string(&key_bytes, &content)?;
+                let enc_notes = if let Some(n) = notes {
+                    Some(encrypt_string(&key_bytes, &n)?)
+                } else {
+                    None
+                };
+
+                update_stmt
+                    .execute(params![enc_content, enc_notes, id])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+
+    // 5. 读取加密后的文件内容并进行 Base64 编码
+    let file_content = fs::read(&temp_path).map_err(|e| e.to_string())?;
+    let base64_str = general_purpose::STANDARD.encode(file_content);
+
+    // 6. 删除临时文件
+    let _ = fs::remove_file(temp_path);
+
+    Ok(base64_str)
+}
+
+fn encrypt_string(key: &[u8], plaintext: &str) -> Result<String, String> {
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
+    let mut rng = rand::rng();
+    let mut nonce_bytes = [0u8; 12];
+    rng.fill(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    let nonce_b64 = general_purpose::STANDARD.encode(nonce_bytes);
+    let cipher_b64 = general_purpose::STANDARD.encode(ciphertext);
+
+    Ok(format!("{}:{}", nonce_b64, cipher_b64))
+}
+
+/// 从加密的数据库文件恢复
+/// # Param
+/// dek_hex: String - 32字节的数据加密密钥 (Hex 编码)
+/// encrypted_db_base64: String - 加密后的数据库文件的 Base64 编码
+/// # Returns
+/// Result<(), String> - 成功返回 Ok(())
+#[tauri::command]
+pub fn restore_from_encrypted_db(
+    dek_hex: String,
+    encrypted_db_base64: String,
+) -> Result<(), String> {
+    // 1. 对 DEK 进行解码
+    let key_bytes = hex::decode(&dek_hex).map_err(|e| format!("Invalid DEK hex: {}", e))?;
+    if key_bytes.len() != 32 {
+        return Err("DEK must be 32 bytes (64 hex chars)".to_string());
+    }
+
+    // 2. 对加密的 DB 进行 Base64 解码
+    let db_bytes = general_purpose::STANDARD
+        .decode(encrypted_db_base64)
+        .map_err(|e| e.to_string())?;
+
+    // 3. 写入临时文件
+    let db_path = get_db_path();
+    let temp_path = db_path.with_extension("dec.db");
+    fs::write(&temp_path, db_bytes).map_err(|e| e.to_string())?;
+
+    // 4. 打开临时 DB 并解密内容
+    {
+        let mut conn = Connection::open(&temp_path).map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        // 读取所有数据
+        let all_rows = {
+            let mut stmt = tx
+                .prepare("SELECT id, content, notes FROM data")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+
+            rows.collect::<Result<Vec<(String, String, Option<String>)>, _>>()
+                .map_err(|e| e.to_string())?
+        };
+
+        // 更新解密后的数据
+        {
+            let mut update_stmt = tx
+                .prepare("UPDATE data SET content = ?1, notes = ?2 WHERE id = ?3")
+                .map_err(|e| e.to_string())?;
+
+            for (id, content, notes) in all_rows {
+                // Try to decrypt. If fail (e.g. not encrypted or bad key), maybe keep as is or error?
+                // For now, assume all are encrypted.
+                let dec_content = decrypt_string(&key_bytes, &content).unwrap_or(content.clone());
+                let dec_notes = if let Some(n) = notes {
+                    Some(decrypt_string(&key_bytes, &n).unwrap_or(n))
+                } else {
+                    None
+                };
+
+                update_stmt
+                    .execute(params![dec_content, dec_notes, id])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+
+    // 5. 替代原数据库文件
+    // 先备份旧文件
+    let backup_path = db_path.with_extension("bak");
+    let _ = fs::copy(&db_path, &backup_path);
+
+    // 备份后替换，若失败则保留旧文件
+    match fs::rename(&temp_path, &db_path) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // If rename fails (e.g. cross-device link or locked), try copy and delete
+            fs::copy(&temp_path, &db_path)
+                .map_err(|e2| format!("Rename failed: {}, Copy failed: {}", e, e2))?;
+            let _ = fs::remove_file(temp_path);
+            Ok(())
+        }
+    }
+}
+
+/// 辅助函数：解密字符串
+/// # Param
+/// key: &[u8] - 32字节的密钥
+/// ciphertext_combined: &str - 包含 nonce 和密文的字符串，格式为 "nonce:ciphertext"
+/// # Returns
+/// Result<String, String> - 解密后的明文字符串，若失败则返回错误信息
+fn decrypt_string(key: &[u8], ciphertext_combined: &str) -> Result<String, String> {
+    let parts: Vec<&str> = ciphertext_combined.split(':').collect();
+    if parts.len() != 2 {
+        return Err("Invalid ciphertext format".to_string());
+    }
+
+    let nonce_bytes = general_purpose::STANDARD
+        .decode(parts[0])
+        .map_err(|e| e.to_string())?;
+    let cipher_bytes = general_purpose::STANDARD
+        .decode(parts[1])
+        .map_err(|e| e.to_string())?;
+
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let plaintext = cipher
+        .decrypt(nonce, cipher_bytes.as_ref())
+        .map_err(|e| e.to_string())?;
+
+    String::from_utf8(plaintext).map_err(|e| e.to_string())
 }
