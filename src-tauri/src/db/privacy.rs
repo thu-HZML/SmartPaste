@@ -713,3 +713,96 @@ fn decrypt_string(key: &[u8], ciphertext_combined: &str) -> Result<String, Strin
 
     String::from_utf8(plaintext).map_err(|e| e.to_string())
 }
+
+/// 加密单个文件
+/// # Param
+/// input_path: String - 源文件路径
+/// output_path: String - 输出加密文件的路径
+/// dek_hex: String - 32字节的数据加密密钥 (Hex 编码)
+/// # Returns
+/// Result<(), String> - 成功返回 Ok(())
+#[tauri::command]
+pub fn encrypt_file(
+    input_path: String,
+    output_path: String,
+    dek_hex: String,
+) -> Result<(), String> {
+    // 1. Decode DEK
+    let key_bytes = hex::decode(&dek_hex).map_err(|e| format!("Invalid DEK hex: {}", e))?;
+    if key_bytes.len() != 32 {
+        return Err("DEK must be 32 bytes (64 hex chars)".to_string());
+    }
+
+    // 2. Read file content
+    let plaintext =
+        fs::read(&input_path).map_err(|e| format!("Failed to read input file: {}", e))?;
+
+    // 3. Encrypt
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let mut rng = rand::rng();
+    let mut nonce_bytes = [0u8; 12];
+    rng.fill(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_ref())
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    // 4. Write to output file (Format: [Nonce 12 bytes][Ciphertext ...])
+    let mut output_file = fs::File::create(&output_path)
+        .map_err(|e| format!("Failed to create output file: {}", e))?;
+
+    use std::io::Write;
+    output_file
+        .write_all(&nonce_bytes)
+        .map_err(|e| e.to_string())?;
+    output_file
+        .write_all(&ciphertext)
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// 解密单个文件
+/// # Param
+/// input_path: String - 加密文件路径
+/// output_path: String - 输出解密文件的路径
+/// dek_hex: String - 32字节的数据加密密钥 (Hex 编码)
+/// # Returns
+/// Result<(), String> - 成功返回 Ok(())
+#[tauri::command]
+pub fn decrypt_file(
+    input_path: String,
+    output_path: String,
+    dek_hex: String,
+) -> Result<(), String> {
+    // 1. Decode DEK
+    let key_bytes = hex::decode(&dek_hex).map_err(|e| format!("Invalid DEK hex: {}", e))?;
+    if key_bytes.len() != 32 {
+        return Err("DEK must be 32 bytes (64 hex chars)".to_string());
+    }
+
+    // 2. Read encrypted file
+    let file_bytes =
+        fs::read(&input_path).map_err(|e| format!("Failed to read encrypted file: {}", e))?;
+
+    if file_bytes.len() < 12 {
+        return Err("File too short to be a valid encrypted file".to_string());
+    }
+
+    // 3. Extract Nonce and Ciphertext
+    let (nonce_bytes, ciphertext_bytes) = file_bytes.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    // 4. Decrypt
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext_bytes)
+        .map_err(|e| format!("Decryption failed: {}", e))?;
+
+    // 5. Write to output file
+    fs::write(&output_path, plaintext)
+        .map_err(|e| format!("Failed to write output file: {}", e))?;
+
+    Ok(())
+}

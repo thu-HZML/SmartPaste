@@ -99,6 +99,8 @@ fn main() {
             db::trigger_cleanup,
             db::sync_cloud_data,
             db::sync_encrypted_cloud_data,
+            db::encrypt_file,
+            db::decrypt_file,
             db::top_data_by_id,
             ocr::configure_ocr,
             ocr::ocr_image,
