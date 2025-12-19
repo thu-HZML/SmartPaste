@@ -62,8 +62,8 @@ pub struct Config {
     // --- AI Agent 相关 ---
     /// 是否启用 AI 助手
     pub ai_enabled: bool,
-    /// AI 服务提供商标识（例如 "openai"、"azure" 等）
-    pub ai_service: Option<String>,
+    // AI 服务提供商标识（例如 "openai"、"azure" 等）
+    // pub ai_service: Option<String>,
     /// AI 提供商 (default | openai | google | custom | ...)
     pub ai_provider: String,
     /// AI 模型名称
@@ -191,8 +191,8 @@ pub enum ConfigKey {
     // AI Agent 相关
     /// 是否启用 AI 助手
     AiEnabled,
-    /// AI 服务提供商标识
-    AiService,
+    // AI 服务提供商标识
+    // AiService,
     /// AI 提供商
     AiProvider,
     /// AI 模型名称
@@ -303,7 +303,7 @@ pub fn parse_config_key(key: &str) -> Option<ConfigKey> {
 
         // AI Agent 相关
         "ai_enabled" => Some(ConfigKey::AiEnabled),
-        "ai_service" => Some(ConfigKey::AiService),
+        // "ai_service" => Some(ConfigKey::AiService),
         "ai_provider" => Some(ConfigKey::AiProvider),
         "ai_model" => Some(ConfigKey::AiModel),
         "ai_base_url" => Some(ConfigKey::AiBaseUrl),
@@ -400,8 +400,8 @@ impl Default for Config {
             auto_sort: false,               // 自动排序：否
 
             // AI
-            ai_enabled: false,                  // AI 助手：关
-            ai_service: None,                   // AI 服务提供商：无
+            ai_enabled: false, // AI 助手：关
+            // ai_service: None,                   // AI 服务提供商：无
             ai_provider: "default".to_string(), // AI 提供商：默认
             ai_model: "".to_string(),           // AI 模型名称：空
             ai_base_url: None,
@@ -643,7 +643,7 @@ fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Resul
         ConfigKey::KeepFavoritesOnDelete => update_cfg!(keep_favorites_on_delete, bool),
         ConfigKey::AutoSort => update_cfg!(auto_sort, bool),
         ConfigKey::AiEnabled => update_cfg!(ai_enabled, bool),
-        ConfigKey::AiService => update_cfg!(ai_service, Option<String>),
+        // ConfigKey::AiService => update_cfg!(ai_service, Option<String>),
         ConfigKey::AiProvider => update_cfg!(ai_provider, String),
         ConfigKey::AiModel => update_cfg!(ai_model, String),
         ConfigKey::AiBaseUrl => update_cfg!(ai_base_url, Option<String>),
@@ -873,7 +873,6 @@ pub fn get_current_storage_path() -> PathBuf {
 ///
 /// **AI Agent 相关**
 /// * `"ai_enabled"`: `bool` - 是否启用 AI 助手
-/// * `"ai_service"`: `Option<String>` - AI 服务提供商标识 (如 "openai")
 /// * `"ai_api_key"`: `Option<String>` - AI API Key
 /// * `"ai_auto_tag"`: `bool` - 是否启用 AI 自动打标签
 /// * `"ai_auto_summary"`: `bool` - 是否启用 AI 自动摘要
@@ -1257,7 +1256,6 @@ pub async fn sync_and_apply_config(app: tauri::AppHandle, content: String) -> Re
 ///
 /// **AI Agent 相关**
 /// * `"ai_enabled"`: 返回 `bool` - 是否启用 AI 助手
-/// * `"ai_service"`: 返回 `Option<String>` - AI 服务提供商标识
 /// * `"ai_api_key"`: 返回 `Option<String>` - AI API Key
 /// * `"ai_auto_tag"`: 返回 `bool` - 是否启用 AI 自动打标签
 /// * `"ai_auto_summary"`: 返回 `bool` - 是否启用 AI 自动摘要
@@ -1338,7 +1336,7 @@ pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
 
             // AI Agent 相关
             ConfigKey::AiEnabled => serde_json::to_value(&cfg.ai_enabled),
-            ConfigKey::AiService => serde_json::to_value(&cfg.ai_service),
+            // ConfigKey::AiService => serde_json::to_value(&cfg.ai_service),
             ConfigKey::AiProvider => serde_json::to_value(&cfg.ai_provider),
             ConfigKey::AiModel => serde_json::to_value(&cfg.ai_model),
             ConfigKey::AiBaseUrl => serde_json::to_value(&cfg.ai_base_url),
