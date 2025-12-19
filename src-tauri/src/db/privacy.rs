@@ -813,7 +813,7 @@ pub fn decrypt_file(
 
 // --- 密钥管理辅助函数 (Key Management) ---
 
-/// 生成随机 Salt (Hex 编码)
+/// 生成随机 Salt (Hex 编码)，作为 Tauri command 暴露给前端调用。
 /// # Returns
 /// String - Hex 编码的 Salt
 #[tauri::command]
@@ -822,7 +822,7 @@ pub fn generate_salt() -> String {
     hex::encode(salt.as_str().as_bytes())
 }
 
-/// 生成随机 DEK (Hex 编码)
+/// 生成随机 DEK (Hex 编码)，作为 Tauri command 暴露给前端调用。
 /// # Returns
 /// String - Hex 编码的 DEK (32 bytes)
 #[tauri::command]
@@ -832,7 +832,7 @@ pub fn generate_dek() -> String {
     hex::encode(key)
 }
 
-/// 使用 Argon2id 从密码和 Salt 派生主密钥 (MK)
+/// 使用 Argon2id 从密码和 Salt 派生主密钥 (MK)，作为 Tauri command 暴露给前端调用。
 /// # Param
 /// password: &str - 用户密码
 /// salt_hex: &str - Hex 编码的 Salt
@@ -863,7 +863,7 @@ pub fn derive_mk(password: &str, salt_hex: &str) -> Result<String, String> {
     Ok(hex::encode(output_key))
 }
 
-/// 使用 MK 加密 DEK (Key Wrapping)
+/// 使用 MK 加密 DEK (Key Wrapping)，作为 Tauri command 暴露给前端调用。
 /// # Param
 /// dek_hex: &str - 明文 DEK (Hex)
 /// mk_hex: &str - 主密钥 MK (Hex)
@@ -895,7 +895,7 @@ pub fn wrap_dek(dek_hex: &str, mk_hex: &str) -> Result<String, String> {
     Ok(hex::encode(result))
 }
 
-/// 使用 MK 解密 DEK (Key Unwrapping)
+/// 使用 MK 解密 DEK (Key Unwrapping)，作为 Tauri command 暴露给前端调用。
 /// # Param
 /// encrypted_dek_hex: &str - 加密后的 DEK (Hex)
 /// mk_hex: &str - 主密钥 MK (Hex)
