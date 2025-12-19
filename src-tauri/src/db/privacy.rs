@@ -4,6 +4,10 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
+use argon2::{
+    password_hash::{rand_core::OsRng as ArgonOsRng, SaltString},
+    Argon2,
+};
 use base64::{engine::general_purpose, Engine as _};
 use rand::Rng;
 use regex::Regex;
@@ -805,4 +809,120 @@ pub fn decrypt_file(
         .map_err(|e| format!("Failed to write output file: {}", e))?;
 
     Ok(())
+}
+
+// --- 密钥管理辅助函数 (Key Management) ---
+
+/// 生成随机 Salt (Hex 编码)
+/// # Returns
+/// String - Hex 编码的 Salt
+#[tauri::command]
+pub fn generate_salt() -> String {
+    let salt = SaltString::generate(&mut ArgonOsRng);
+    hex::encode(salt.as_str().as_bytes())
+}
+
+/// 生成随机 DEK (Hex 编码)
+/// # Returns
+/// String - Hex 编码的 DEK (32 bytes)
+#[tauri::command]
+pub fn generate_dek() -> String {
+    let mut key = [0u8; 32];
+    rand::rng().fill(&mut key);
+    hex::encode(key)
+}
+
+/// 使用 Argon2id 从密码和 Salt 派生主密钥 (MK)
+/// # Param
+/// password: &str - 用户密码
+/// salt_hex: &str - Hex 编码的 Salt
+/// # Returns
+/// Result<String, String> - Hex 编码的 MK (32 bytes)
+#[tauri::command]
+pub fn derive_mk(password: &str, salt_hex: &str) -> Result<String, String> {
+    // 1. Decode salt hex to bytes, then to string (Argon2 expects string salt format usually,
+    // but here we treat the input salt_hex as the raw salt bytes or the salt string itself?
+    // To be compatible with standard Argon2 usage, let's assume salt_hex decodes to the raw salt bytes.
+    // However, the `argon2` crate's `SaltString` has specific format requirements.
+    // For simplicity and robustness, we will use the decoded bytes as the salt directly if possible,
+    // or if we generated it using SaltString, we should pass it as string.
+
+    // Let's assume salt_hex is the hex representation of the raw salt bytes.
+    let salt_bytes = hex::decode(salt_hex).map_err(|e| format!("Invalid salt hex: {}", e))?;
+
+    // Argon2 configuration
+    let argon2 = Argon2::default();
+
+    // We need a buffer to store the output key
+    let mut output_key = [0u8; 32]; // 256-bit key
+
+    argon2
+        .hash_password_into(password.as_bytes(), &salt_bytes, &mut output_key)
+        .map_err(|e| format!("Argon2 derivation failed: {}", e))?;
+
+    Ok(hex::encode(output_key))
+}
+
+/// 使用 MK 加密 DEK (Key Wrapping)
+/// # Param
+/// dek_hex: &str - 明文 DEK (Hex)
+/// mk_hex: &str - 主密钥 MK (Hex)
+/// # Returns
+/// Result<String, String> - 加密后的 DEK (Hex)
+#[tauri::command]
+pub fn wrap_dek(dek_hex: &str, mk_hex: &str) -> Result<String, String> {
+    let dek_bytes = hex::decode(dek_hex).map_err(|e| format!("Invalid DEK hex: {}", e))?;
+    let mk_bytes = hex::decode(mk_hex).map_err(|e| format!("Invalid MK hex: {}", e))?;
+
+    if mk_bytes.len() != 32 {
+        return Err("MK must be 32 bytes".to_string());
+    }
+
+    let cipher = Aes256Gcm::new_from_slice(&mk_bytes).map_err(|e| e.to_string())?;
+    let mut nonce_bytes = [0u8; 12];
+    rand::rng().fill(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, dek_bytes.as_ref())
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    // Format: [Nonce 12][Ciphertext]
+    let mut result = Vec::new();
+    result.extend_from_slice(&nonce_bytes);
+    result.extend_from_slice(&ciphertext);
+
+    Ok(hex::encode(result))
+}
+
+/// 使用 MK 解密 DEK (Key Unwrapping)
+/// # Param
+/// encrypted_dek_hex: &str - 加密后的 DEK (Hex)
+/// mk_hex: &str - 主密钥 MK (Hex)
+/// # Returns
+/// Result<String, String> - 明文 DEK (Hex)
+#[tauri::command]
+pub fn unwrap_dek(encrypted_dek_hex: &str, mk_hex: &str) -> Result<String, String> {
+    let encrypted_bytes =
+        hex::decode(encrypted_dek_hex).map_err(|e| format!("Invalid encrypted DEK hex: {}", e))?;
+    let mk_bytes = hex::decode(mk_hex).map_err(|e| format!("Invalid MK hex: {}", e))?;
+
+    if mk_bytes.len() != 32 {
+        return Err("MK must be 32 bytes".to_string());
+    }
+
+    if encrypted_bytes.len() < 12 {
+        return Err("Encrypted data too short".to_string());
+    }
+
+    let (nonce_bytes, ciphertext) = encrypted_bytes.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let cipher = Aes256Gcm::new_from_slice(&mk_bytes).map_err(|e| e.to_string())?;
+
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("Decryption failed (Wrong password?): {}", e))?;
+
+    Ok(hex::encode(plaintext))
 }
