@@ -91,7 +91,7 @@ pub fn get_all_data() -> Result<String, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, item_type, content, size, is_favorite, notes, timestamp FROM data")
+        .prepare("SELECT id, item_type, content, size, is_favorite, notes, timestamp FROM data ORDER BY timestamp DESC") // 添加 ORDER BY
         .map_err(|e| e.to_string())?;
 
     let clipboard_iter = stmt
@@ -543,7 +543,8 @@ pub fn filter_data_by_favorite(is_favorite: bool) -> Result<String, String> {
         .prepare(
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
-             WHERE is_favorite = ?1",
+             WHERE is_favorite = ?1
+             ORDER BY timestamp DESC",
         )
         .map_err(|e| e.to_string())?;
 
@@ -646,7 +647,8 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
         (
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
-             WHERE item_type IN ('folder', 'file')",
+             WHERE item_type IN ('folder', 'file')
+             ORDER BY timestamp DESC",
             vec![],
         )
     } else {
@@ -654,7 +656,8 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
         (
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
-             WHERE item_type = ?1",
+             WHERE item_type = ?1
+             ORDER BY timestamp DESC",
             vec![item_type],
         )
     };
@@ -704,20 +707,6 @@ pub fn top_data_by_id(id: &str) -> Result<String, String> {
     conn.execute(
         "UPDATE data SET timestamp = ?1 WHERE id = ?2",
         params![current_timestamp, id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // 对数据库进行重排序，按 timestamp 降序排列
-    conn.execute(
-        "CREATE TEMPORARY TABLE temp_data AS 
-         SELECT * FROM data ORDER BY timestamp DESC;
-         
-         DELETE FROM data;
-         
-         INSERT INTO data SELECT * FROM temp_data;
-         
-         DROP TABLE temp_data;",
-        [],
     )
     .map_err(|e| e.to_string())?;
 
