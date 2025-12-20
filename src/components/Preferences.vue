@@ -465,45 +465,6 @@
                 </div>
               </div>
             </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>AI功能开关</h3>
-                <p>启用或禁用各项AI功能</p>
-              </div>
-              <div class="setting-control">
-                <div class="checkbox-group">
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_auto_tag" 
-                      @change="updateSetting('ai_auto_tag', $event.target.checked)"
-                    > 自动打Tag
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_auto_summary" 
-                      @change="updateSetting('ai_auto_summary', $event.target.checked)"
-                    > 自动总结
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_translation" 
-                      @change="updateSetting('ai_translation', $event.target.checked)"
-                    > 翻译
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_web_search" 
-                      @change="updateSetting('ai_web_search', $event.target.checked)"
-                    > 联网搜索
-                  </label>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
