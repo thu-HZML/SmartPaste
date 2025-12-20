@@ -606,7 +606,7 @@ pub fn save_config(config: Config) -> Result<(), String> {
 /// 返回 Ok(true) 表示已处理并更新内存
 /// 返回 Ok(false) 表示该 key (如 Autostart) 需要特殊处理，未更新
 /// 返回 Err 表示类型错误或其他错误
-fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Result<bool, String> {
+pub fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Result<bool, String> {
     macro_rules! update_cfg {
         ($field:ident, $type:ty) => {{
             match serde_json::from_value::<$type>(value) {
