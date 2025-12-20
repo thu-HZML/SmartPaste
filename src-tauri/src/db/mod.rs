@@ -124,6 +124,9 @@ mod test_db_private;
 #[cfg(test)]
 #[path = "../test_unit/test_db_sync.rs"]
 mod test_db_sync;
+#[cfg(test)]
+#[path = "../test_unit/test_utils.rs"]
+mod test_utils;
 
 #[cfg(test)]
 pub static TEST_RUN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
