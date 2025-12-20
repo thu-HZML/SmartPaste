@@ -19,6 +19,8 @@
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-window": "^2.0.0-alpha.1",
+    "dompurify": "^3.3.1",
+    "marked": "^17.0.1",
     "pinia": "^3.0.4",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^6.5.8",
