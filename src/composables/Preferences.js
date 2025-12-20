@@ -12,7 +12,10 @@ import {
   TvIcon,
   CloudIcon,
   ClipboardIcon,
-  UserIcon
+  UserIcon,
+  EyeSlashIcon,
+  InboxArrowDownIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/vue/24/outline'
 import { togglePrivateWindow } from '../utils/actions.js'
 
@@ -159,9 +162,9 @@ export function usePreferences() {
     { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
     { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
     { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
-    { id: 'ai', name: 'AI Agent 设置', icon: ClipboardIcon },
-    { id: 'security', name: '安全与隐私', icon: ClipboardIcon }, 
-    { id: 'backup', name: '数据备份', icon: ClipboardIcon },
+    { id: 'ai', name: 'AI Agent 设置', icon: ChatBubbleLeftRightIcon },
+    { id: 'security', name: '安全与隐私', icon: EyeSlashIcon }, 
+    { id: 'backup', name: '数据备份', icon: InboxArrowDownIcon },
     { id: 'cloud', name: '云端入口', icon: CloudIcon },
     { id: 'user', name: '用户信息', icon: UserIcon }
   ])
