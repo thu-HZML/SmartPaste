@@ -32,13 +32,13 @@
         </div>
         <span class="menu-text">收藏夹</span>
       </div>
-      <div class="menu-item" @click="openAIAssistant">
+      <div class="menu-item" @click="openCloud">
         <div class="menu-icon">
-          <img src="../assets/deepseek.svg" alt="AI助手" class="svg-icon" />
+          <CloudIcon class="icon-default" />
         </div>
-        <span class="menu-text">AI助手</span>
+        <span class="menu-text">云端</span>
       </div>
-    </div>
+    </div>   
 
     <!-- 第二行：设置、云端、AI助手 -->
     <div class="flex-row menu-row">
@@ -48,18 +48,14 @@
         </div>
         <span class="menu-text">设置</span>
       </div>
-      <div class="menu-item" @click="openCloud">
-        <div class="menu-icon">
-          <CloudIcon class="icon-default" />
-        </div>
-        <span class="menu-text">云端</span>
-      </div>
       <div class="menu-item" @click="openHelp">
         <div class="menu-icon">
           <QuestionMarkCircleIcon class="icon-default" />
         </div>
         <span class="menu-text">帮助</span>
       </div>
+      <!-- 空占位，保持与第一行对齐 -->
+      <div class="menu-item"></div>
     </div>
   </div>
 </template>
