@@ -286,3 +286,81 @@ fn test_sync_conflict_handling() {
 
     clear_db_file(&db_path);
 }
+
+#[test]
+fn test_sync_db_errors() {
+    let _guard = test_lock();
+    
+    // 1. Test with invalid DB path (directory instead of file)
+    let temp_dir = std::env::temp_dir();
+    let invalid_db_path = temp_dir.join(format!("invalid_db_{}", Uuid::new_v4()));
+    std::fs::create_dir(&invalid_db_path).unwrap();
+    
+    set_db_path(invalid_db_path.clone());
+    
+    let json_data = r#"{ "data": [], "folders": [], "folder_items": [], "extended_data": [] }"#;
+    
+    // This should fail at init_db or Connection::open
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_err());
+    
+    std::fs::remove_dir(invalid_db_path).ok();
+}
+
+#[test]
+fn test_sync_invalid_json() {
+    let _guard = test_lock();
+    // No need to setup DB for this test as it fails before DB access
+    
+    let json_data = "{ invalid json }";
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_err());
+    assert!(result.err().unwrap().contains("JSON 解析失败"));
+}
+
+#[test]
+fn test_sync_extended_data_optional_fields() {
+    let _guard = test_lock();
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+
+    let json_data = r#"{
+        "data": [
+            {
+                "id": "item_opt",
+                "item_type": "text",
+                "content": "content",
+                "size": 10,
+                "is_favorite": false,
+                "notes": "",
+                "timestamp": 1000
+            }
+        ],
+        "folders": [],
+        "folder_items": [],
+        "extended_data": [
+            {
+                "item_id": "item_opt",
+                "ocr_text": null,
+                "icon_data": null
+            }
+        ]
+    }"#;
+
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_ok());
+
+    let conn = Connection::open(&db_path).unwrap();
+    let (ocr, icon): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT ocr_text, icon_data FROM extended_data WHERE item_id = 'item_opt'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    
+    assert!(ocr.is_none());
+    assert!(icon.is_none());
+
+    clear_db_file(&db_path);
+}

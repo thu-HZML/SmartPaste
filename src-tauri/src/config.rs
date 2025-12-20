@@ -697,7 +697,7 @@ pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(
     }
 }
 /// 迁移数据到新的存储路径
-fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
+pub(crate) fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
     println!(
         "🚚 开始迁移数据文件从 {} 到 {}",
         old_path.display(),
@@ -783,7 +783,7 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
 }
 /// 递归复制目录
 /// 递归复制目录
-fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+pub(crate) fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     // 确保目标目录存在
     if !dst.exists() {
         fs::create_dir_all(dst)?;
