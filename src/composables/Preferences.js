@@ -159,7 +159,6 @@ export function usePreferences() {
     { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
     { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
     { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
-    { id: 'ocr', name: 'OCR设置', icon: ClipboardIcon },
     { id: 'ai', name: 'AI Agent 设置', icon: ClipboardIcon },
     { id: 'security', name: '安全与隐私', icon: ClipboardIcon }, 
     { id: 'backup', name: '数据备份', icon: ClipboardIcon },
