@@ -9,7 +9,10 @@ use std::time::Duration;
 use crate::utils;
 // 引入 config 模块
 use crate::config::{init_config, ConfigKey};
+use std::sync::Mutex;
 
+// 1. 定义一个静态互斥锁，强制测试排队执行
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
 /// 基于文件的全局锁
 struct GlobalFileLock {
     path: PathBuf,
@@ -67,6 +70,7 @@ fn manual_update_config_file(storage_path: &str) {
 
 /// 辅助函数：设置测试环境
 fn setup_test_env() -> (GlobalFileLock, PathBuf) {
+    //let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     let lock = GlobalFileLock::acquire();
 
     // 1. 初始化 (确保 lazy_static / OnceLock 触发)
