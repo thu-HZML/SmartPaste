@@ -236,3 +236,53 @@ fn test_sync_data_structs_coverage() {
     let json = serde_json::to_string(&sync_data).unwrap();
     assert!(json.contains("id"));
 }
+
+#[test]
+fn test_sync_conflict_handling() {
+    let _guard = test_lock();
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+
+    // 1. Insert local data
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute(
+        "INSERT INTO data (id, item_type, content, size, is_favorite, notes, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params!["conflict-id", "text", "local content", 10, 0, "", 1000],
+    ).unwrap();
+
+    // 2. Sync data with same ID but different content
+    let json_data = r#"{
+        "data": [
+            {
+                "id": "conflict-id",
+                "item_type": "text",
+                "content": "cloud content",
+                "size": 20,
+                "is_favorite": false,
+                "notes": "cloud note",
+                "timestamp": 2000
+            }
+        ],
+        "folders": [],
+        "folder_items": [],
+        "extended_data": []
+    }"#;
+
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_ok());
+
+    // 3. Verify local data is preserved (INSERT OR IGNORE)
+    let content: String = conn
+        .query_row(
+            "SELECT content FROM data WHERE id = 'conflict-id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        content, "local content",
+        "Local data should be preserved on conflict"
+    );
+
+    clear_db_file(&db_path);
+}

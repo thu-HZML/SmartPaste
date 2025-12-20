@@ -340,3 +340,188 @@ fn test_check_and_mark_private_item() {
     assert!(result.is_ok());
     assert!(!is_item_private(&item2.id));
 }
+
+#[test]
+fn test_unmark_privacy() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. Prepare items
+    // "password 123" matches \bpassword\b
+    let item_pwd = make_item("p-1", "content", "password 123");
+    // Valid Visa: 4000 0000 0000 0002
+    let item_card = make_item("p-2", "4000 0000 0000 0002", "notes");
+
+    insert_received_db_data(item_pwd.clone()).unwrap();
+    insert_received_db_data(item_card.clone()).unwrap();
+
+    // 2. Mark them first
+    let c1 = mark_passwords_as_private(true).unwrap();
+    assert_eq!(c1, 1, "Should mark 1 password");
+
+    let c2 = mark_bank_cards_as_private(true).unwrap();
+    assert_eq!(c2, 1, "Should mark 1 card");
+
+    assert!(is_item_private(&item_pwd.id), "pwd should be private");
+    assert!(is_item_private(&item_card.id), "card should be private");
+
+    // 3. Unmark passwords
+    let count = mark_passwords_as_private(false).unwrap();
+    assert_eq!(count, 1);
+    assert!(!is_item_private(&item_pwd.id));
+    assert!(is_item_private(&item_card.id)); // Card should still be private
+
+    // 4. Unmark cards
+    let count2 = mark_bank_cards_as_private(false).unwrap();
+    assert_eq!(count2, 1);
+    assert!(!is_item_private(&item_card.id));
+}
+
+#[test]
+fn test_luhn_algorithm_cases() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // Valid Visa: 4000 0000 0000 0002
+    // Invalid: 4000 0000 0000 0003
+    let valid_card = make_item("c-valid", "4000 0000 0000 0002", "");
+    let invalid_card = make_item("c-invalid", "4000 0000 0000 0003", "");
+    let mixed_text = make_item("c-mixed", "My card is 4000-0000-0000-0002 ok?", "");
+
+    insert_received_db_data(valid_card.clone()).unwrap();
+    insert_received_db_data(invalid_card.clone()).unwrap();
+    insert_received_db_data(mixed_text.clone()).unwrap();
+
+    let count = mark_bank_cards_as_private(true).unwrap();
+    assert_eq!(count, 2); // valid_card and mixed_text should be marked
+
+    assert!(is_item_private(&valid_card.id));
+    assert!(!is_item_private(&invalid_card.id));
+    assert!(is_item_private(&mixed_text.id));
+}
+
+#[test]
+fn test_is_valid_luhn_direct() {
+    // Test empty (Line 101 coverage)
+    assert!(!is_valid_luhn(""));
+    // Test non-digit (Line 101 coverage)
+    assert!(!is_valid_luhn("123a"));
+    // Test valid
+    assert!(is_valid_luhn("4000000000000002"));
+
+    // Test high digit (Line 115 coverage)
+    // 4000 0000 0000 0085
+    // Reversed: 5, 8, 0...
+    // Index 1 is 8. 8*2 = 16 > 9. 16-9=7. This triggers the digit -= 9 branch.
+    // Sum: 5 + 7 + 0... + 8 (from 4*2) = 20. Valid.
+    assert!(is_valid_luhn("4000000000000085"));
+}
+
+#[test]
+fn test_luhn_coverage_high_digit() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 4000 0000 0000 0085
+    // Reversed: 5, 8, 0...
+    // Index 1 is 8. 8*2 = 16 > 9. 16-9=7. This triggers the digit -= 9 branch.
+    // Sum: 5 + 7 + 0... + 8 (from 4*2) = 20. Valid.
+    let item = make_item("c-high", "4000 0000 0000 0085", "");
+    insert_received_db_data(item.clone()).unwrap();
+
+    let count = mark_bank_cards_as_private(true).unwrap();
+    assert_eq!(count, 1);
+    assert!(is_item_private(&item.id));
+}
+
+#[test]
+fn test_auto_mark_private_data_coverage() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    let item_pwd = make_item("auto-1", "content", "password 123");
+    let item_card = make_item("auto-2", "4000 0000 0000 0002", "");
+    let item_id = make_item("auto-3", "110101199003071234", ""); // Valid ID regex
+    let item_phone = make_item("auto-4", "13800138000", ""); // Valid Phone regex
+
+    insert_received_db_data(item_pwd.clone()).unwrap();
+    insert_received_db_data(item_card.clone()).unwrap();
+    insert_received_db_data(item_id.clone()).unwrap();
+    insert_received_db_data(item_phone.clone()).unwrap();
+
+    // Enable all flags
+    let count = auto_mark_private_data(true, true, true, true).unwrap();
+    assert_eq!(count, 4);
+
+    assert!(is_item_private(&item_pwd.id));
+    assert!(is_item_private(&item_card.id));
+    assert!(is_item_private(&item_id.id));
+    assert!(is_item_private(&item_phone.id));
+}
+
+#[test]
+fn test_check_and_mark_private_item_coverage() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. Password
+    let item_pwd = make_item("chk-1", "content", "password 123");
+    insert_received_db_data(item_pwd.clone()).unwrap();
+
+    // Mark
+    let res = check_and_mark_private_item(item_pwd.clone(), true, false, false, false).unwrap();
+    assert!(res);
+    assert!(is_item_private(&item_pwd.id));
+
+    // Unmark
+    let res = check_and_mark_private_item(item_pwd.clone(), false, false, false, false).unwrap();
+    assert!(!res);
+    assert!(!is_item_private(&item_pwd.id));
+
+    // 2. Bank Card
+    let item_card = make_item("chk-2", "4000 0000 0000 0002", "");
+    insert_received_db_data(item_card.clone()).unwrap();
+
+    // Mark
+    let res = check_and_mark_private_item(item_card.clone(), false, true, false, false).unwrap();
+    assert!(res);
+    assert!(is_item_private(&item_card.id));
+
+    // Unmark
+    let res = check_and_mark_private_item(item_card.clone(), false, false, false, false).unwrap();
+    assert!(!res);
+    assert!(!is_item_private(&item_card.id));
+
+    // 3. ID Number
+    let item_id = make_item("chk-3", "110101199003071234", "");
+    insert_received_db_data(item_id.clone()).unwrap();
+
+    // Mark
+    let res = check_and_mark_private_item(item_id.clone(), false, false, true, false).unwrap();
+    assert!(res);
+    assert!(is_item_private(&item_id.id));
+
+    // Unmark
+    let res = check_and_mark_private_item(item_id.clone(), false, false, false, false).unwrap();
+    assert!(!res);
+    assert!(!is_item_private(&item_id.id));
+
+    // 4. Phone Number
+    let item_phone = make_item("chk-4", "13800138000", "");
+    insert_received_db_data(item_phone.clone()).unwrap();
+
+    // Mark
+    let res = check_and_mark_private_item(item_phone.clone(), false, false, false, true).unwrap();
+    assert!(res);
+    assert!(is_item_private(&item_phone.id));
+
+    // Unmark
+    let res = check_and_mark_private_item(item_phone.clone(), false, false, false, false).unwrap();
+    assert!(!res);
+    assert!(!is_item_private(&item_phone.id));
+}
