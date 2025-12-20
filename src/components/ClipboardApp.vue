@@ -93,6 +93,7 @@
             v-for="(item, index) in filteredHistory" 
             :key="index" 
             class="history-item"
+            :id="`history-item-${item.id}`"
             :class="{ 'selected': item.is_selected }"
             tabindex="0"
             @click="handleItemClick(item, $event)"

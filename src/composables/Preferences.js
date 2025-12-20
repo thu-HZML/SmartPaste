@@ -16,6 +16,54 @@ import {
 } from '@heroicons/vue/24/outline'
 import { togglePrivateWindow } from '../utils/actions.js'
 
+const base64ToBlob = (base64Content, mimeType) => {
+  const byteString = atob(base64Content);
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([ab], { type: mimeType });
+}
+
+// 导出 executeCloudPush 函数 (核心同步逻辑，不包含 UI 交互)
+export const executeCloudPush = async () => {
+  // 权限检查
+  if (!localStorage.getItem('token')) {
+    throw new Error('未登录');
+  }
+
+  try {
+    // 1. 同步配置
+    const configTxt = await invoke('get_config_json'); 
+    const configRes = await apiService.uploadConfig(configTxt);
+    if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
+
+    // 2. 同步数据库
+    const dbBase64 = await invoke('read_db_file_base64');
+    const dbBlob = base64ToBlob(dbBase64, 'application/x-sqlite3');
+    const dbRes = await apiService.pushSqliteDatabase(dbBlob);
+    if (!dbRes.success) throw new Error(`数据库推送失败: ${dbRes.message}`);
+
+    // 3. 同步文件
+    const localFiles = await invoke('get_local_files_to_upload');
+    for (const fileInfo of localFiles) {
+      const content = await invoke('read_file_base64', { filePath: fileInfo.file_path });
+      const blob = base64ToBlob(content, 'application/octet-stream');
+      
+      const fileRes = await apiService.uploadClipboardFile(blob, fileInfo.relative_path);
+      if (!fileRes.success) {
+        console.warn(`文件上传失败 (${fileInfo.relative_path}):`, fileRes.message);
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('后台同步执行出错:', error);
+    throw error;
+  }
+};
+
 export function usePreferences() {
   const router = useRouter()
   const currentWindow = getCurrentWindow();
@@ -1124,33 +1172,7 @@ const updateRetentionDays = async () => {
     
     try {
       showMessage('正在推送数据至云端...', 'info');
-
-      // 1. 同步配置：从本地读取并上传
-      // 直接调用 Rust 获取文件内容，随后对接 Web 接口
-      const configTxt = await invoke('get_config_json'); 
-      const configRes = await apiService.uploadConfig(configTxt);
-      if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
-
-      // 2. 同步数据库：读本地DB并推送
-      // 后端 views.py 的 SqlitePushView 会自动合并数据
-      const dbBase64 = await invoke('read_db_file_base64');
-      const dbBlob = base64ToBlob(dbBase64, 'application/x-sqlite3');
-      const dbRes = await apiService.pushSqliteDatabase(dbBlob);
-      if (!dbRes.success) throw new Error(`数据库推送失败: ${dbRes.message}`);
-
-      // 3. 同步文件：遍历本地目录并逐个上传
-      const localFiles = await invoke('get_local_files_to_upload');
-      for (const fileInfo of localFiles) {
-        // 读取二进制内容并转为 Web 可发送的 Blob 对象
-        const content = await invoke('read_file_base64', { filePath: fileInfo.file_path });
-        const blob = base64ToBlob(content, 'application/octet-stream');
-        
-        // 调用 apiService 接口上传，后端会根据 relative_path 自动处理覆盖或新增
-        const fileRes = await apiService.uploadClipboardFile(blob, fileInfo.relative_path);
-        if (!fileRes.success) {
-          console.warn(`文件上传失败 (${fileInfo.relative_path}):`, fileRes.message);
-        }
-      }
+      await executeCloudPush();
 
       // 成功处理
       showMessage('云端数据推送成功！', 'success');
