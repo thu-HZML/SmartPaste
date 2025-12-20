@@ -211,126 +211,6 @@
               </label>
             </div>
           </div>
-
-
-        </div>
-
-        <!-- OCR设置 -->
-        <div v-if="activeNav === 'ocr'" class="panel-section">
-          <h2>OCR设置</h2>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>OCR提供者</h3>
-              <p>选择OCR识别服务提供者</p>
-            </div>
-            <div class="setting-control">
-              <select 
-                v-model="settings.ocr_provider" 
-                @change="updateSetting('ocr_provider', $event.target.value)" 
-                class="select-input"
-              >
-                <option value="auto">默认</option>
-                <option value="tesseract">Tesseract</option>
-                <option value="windows">Windows OCR</option>
-                <option value="baidu">百度OCR</option>
-                <option value="google">Google Vision</option>
-                <option value="custom">自定义</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>识别语言</h3>
-              <p>选择OCR识别的语言，支持多语言同时识别</p>
-            </div>
-            <div class="setting-control">
-              <div class="checkbox-group">
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('chi_sim')" 
-                    @change="toggleOCRLanguage('chi_sim', $event.target.checked)"
-                  > 简体中文
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('eng')" 
-                    @change="toggleOCRLanguage('eng', $event.target.checked)"
-                  > 英语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('jpn')" 
-                    @change="toggleOCRLanguage('jpn', $event.target.checked)"
-                  > 日语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('kor')" 
-                    @change="toggleOCRLanguage('kor', $event.target.checked)"
-                  > 韩语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('fra')" 
-                    @change="toggleOCRLanguage('fra', $event.target.checked)"
-                  > 法语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('deu')" 
-                    @change="toggleOCRLanguage('deu', $event.target.checked)"
-                  > 德语
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>置信度阈值</h3>
-              <p>设置识别结果的置信度阈值，低于此值的结果将被忽略</p>
-            </div>
-            <div class="setting-control">
-              <div class="slider-container">
-                <input 
-                  type="range" 
-                  :value="settings.ocr_confidence_threshold" 
-                  min="0" 
-                  max="100" 
-                  step="1" 
-                  class="slider-input"
-                  @input="updateSetting('ocr_confidence_threshold', Number($event.target.value))"
-                >
-                <span class="slider-value">{{ settings.ocr_confidence_threshold }}%</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>超时时间</h3>
-              <p>设置OCR识别的最长等待时间（秒）</p>
-            </div>
-            <div class="setting-control">
-              <input 
-                type="number" 
-                v-model="settings.ocr_timeout_secs" 
-                min="5" 
-                max="120" 
-                class="number-input"
-                @change="updateSetting('ocr_timeout_secs', Number($event.target.value))"
-              >
-              <span class="unit">秒</span>
-            </div>
-          </div>
         </div>
 
         <!-- AI Agent 设置 -->
@@ -462,45 +342,6 @@
                     @input="updateSetting('ai_temperature', Number($event.target.value))"
                   >
                   <span class="slider-value">{{ settings.ai_temperature }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>AI功能开关</h3>
-                <p>启用或禁用各项AI功能</p>
-              </div>
-              <div class="setting-control">
-                <div class="checkbox-group">
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_auto_tag" 
-                      @change="updateSetting('ai_auto_tag', $event.target.checked)"
-                    > 自动打Tag
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_auto_summary" 
-                      @change="updateSetting('ai_auto_summary', $event.target.checked)"
-                    > 自动总结
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_translation" 
-                      @change="updateSetting('ai_translation', $event.target.checked)"
-                    > 翻译
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_web_search" 
-                      @change="updateSetting('ai_web_search', $event.target.checked)"
-                    > 联网搜索
-                  </label>
                 </div>
               </div>
             </div>
@@ -826,7 +667,7 @@
                 v-model="registerData.username"
                 type="text"
                 required
-                placeholder="请输入用户名（至少3个字符）"
+                placeholder="请输入用户名（不能为空）"
                 class="form-input"
                 :class="{ 'error': registerErrors.username }"
               />
@@ -854,7 +695,7 @@
                 v-model="registerData.password"
                 type="password"
                 required
-                placeholder="请输入密码（至少9位）"
+                placeholder="请输入密码（至少8位，不能为纯数字）"
                 class="form-input"
                 :class="{ 'error': registerErrors.password }"
               />
@@ -972,7 +813,7 @@
                 v-model="changePasswordData.new_password"
                 type="password"
                 required
-                placeholder="请输入新密码（至少6位）"
+                placeholder="请输入新密码（至少8位，不能为纯数字）"
                 class="form-input"
                 :class="{ 'error': changePasswordErrors.new_password }"
               />

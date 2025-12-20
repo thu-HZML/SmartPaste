@@ -88,7 +88,7 @@
           <p class="hint">复制的内容将显示在这里</p>
         </div>
         
-        <div v-else class="history-list-reverse">
+        <div v-else class="history-list">
           <div 
             v-for="(item, index) in filteredHistory" 
             :key="index" 
@@ -779,14 +779,6 @@ body {
 .hint {
   font-size: 14px;
   color: #bdc3c7;
-}
-
-/* 历史记录列表样式（倒序） */
-.history-list-reverse {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 12px;
-  max-width: 100%;
 }
 
 /* 历史记录列表样式（正序） */

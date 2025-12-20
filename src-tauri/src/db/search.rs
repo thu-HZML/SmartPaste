@@ -74,6 +74,8 @@ pub fn comprehensive_search(
         params.push(Box::new(end));
     }
 
+    sql.push_str(" ORDER BY data.timestamp DESC");
+
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
     let clipboard_iter = stmt

@@ -425,7 +425,7 @@ export function useDesktopPet() {
       const utilsDirPath = await invoke('get_utils_dir_path');
 
       // 替换成live2d资源在的绝对路径
-      const modelPath = utilsDirPath.replace('//?/', '').replace('/src-tauri/src', '') + '/public/resources/live2d';
+      const modelPath = utilsDirPath.replace('//?/', '').replace('/src-tauri/src', '/src-tauri') + '/resources/live2d'
       console.log('使用路径:', modelPath)
       
       const result = await live2d.load(modelPath)

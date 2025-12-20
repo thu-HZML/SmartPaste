@@ -13,7 +13,10 @@ import {
   TvIcon,
   CloudIcon,
   ClipboardIcon,
-  UserIcon
+  UserIcon,
+  EyeSlashIcon,
+  InboxArrowDownIcon,
+  ChatBubbleLeftRightIcon
 } from '@heroicons/vue/24/outline'
 import { togglePrivateWindow } from '../utils/actions.js'
 
@@ -229,10 +232,9 @@ export function usePreferences() {
     { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
     { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
     { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
-    { id: 'ocr', name: 'OCR设置', icon: ClipboardIcon },
-    { id: 'ai', name: 'AI Agent 设置', icon: ClipboardIcon },
-    { id: 'security', name: '安全与隐私', icon: ClipboardIcon }, 
-    { id: 'backup', name: '数据备份', icon: ClipboardIcon },
+    { id: 'ai', name: 'AI Agent 设置', icon: ChatBubbleLeftRightIcon },
+    { id: 'security', name: '安全与隐私', icon: EyeSlashIcon }, 
+    { id: 'backup', name: '数据备份', icon: InboxArrowDownIcon },
     { id: 'cloud', name: '云端入口', icon: CloudIcon },
     { id: 'user', name: '用户信息', icon: UserIcon }
   ])
@@ -277,9 +279,6 @@ export function usePreferences() {
     if (!registerData.username.trim()) {
       registerErrors.username = '用户名不能为空'
       isValid = false
-    } else if (registerData.username.length < 3) {
-      registerErrors.username = '用户名至少3个字符'
-      isValid = false
     }
     
     // 验证邮箱
@@ -292,12 +291,16 @@ export function usePreferences() {
       isValid = false
     }
     
-    // 验证密码
+    // 验证密码 - 根据密码限制信息修改
     if (!registerData.password) {
       registerErrors.password = '密码不能为空'
       isValid = false
-    } else if (registerData.password.length < 6) {
-      registerErrors.password = '密码至少6个字符'
+    } else if (registerData.password.length < 8) {
+      registerErrors.password = '密码至少8个字符'
+      isValid = false
+    } else if (/^\d+$/.test(registerData.password)) {
+      // 检查是否完全由数字组成
+      registerErrors.password = '密码不能完全由数字组成'
       isValid = false
     }
     
@@ -332,8 +335,12 @@ export function usePreferences() {
     if (!changePasswordData.new_password) {
       changePasswordErrors.new_password = '新密码不能为空'
       isValid = false
-    } else if (changePasswordData.new_password.length < 6) {
-      changePasswordErrors.new_password = '新密码至少6个字符'
+    } else if (changePasswordData.new_password.length < 8) {
+      changePasswordErrors.new_password = '新密码至少8个字符'
+      isValid = false
+    } else if (/^\d+$/.test(changePasswordData.new_password)) {
+      // 检查是否完全由数字组成
+      changePasswordErrors.new_password = '新密码不能完全由数字组成'
       isValid = false
     }
     

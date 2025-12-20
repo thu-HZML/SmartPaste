@@ -96,6 +96,7 @@ fn main() {
             db::mark_phone_numbers_as_private,
             db::clear_all_private_data,
             db::auto_mark_private_data,
+            db::check_and_mark_private_item,
             db::trigger_cleanup,
             db::sync_cloud_data,
             db::sync_encrypted_cloud_data,

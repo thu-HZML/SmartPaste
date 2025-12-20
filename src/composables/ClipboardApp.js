@@ -228,7 +228,7 @@ export function useClipboardApp() {
         item.timestamp = new Date().getTime()
         
         // 将项目添加到数组开头（顶部显示）
-        filteredHistory.value.push(item)
+        filteredHistory.value.unshift(item)
         
         // 在数据库中置顶该项目
         await invoke('top_data_by_id', {
