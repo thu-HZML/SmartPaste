@@ -96,6 +96,28 @@ fn test_insert_get_delete() {
 }
 
 #[test]
+fn test_insert_wrappers() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // Test insert_received_text_data
+    let text_content = "wrapper_text_content";
+    let json_res = insert_received_text_data(text_content).expect("insert text wrapper failed");
+    let inserted: ClipboardItem = serde_json::from_str(&json_res).expect("parse inserted text");
+    assert_eq!(inserted.content, text_content);
+    assert_eq!(inserted.item_type, "text");
+
+    // Test insert_received_data (JSON string input)
+    let item = make_item("wrapper-json-1", "text", "wrapper_json_content");
+    let item_json = serde_json::to_string(&item).unwrap();
+    let json_res2 = insert_received_data(item_json).expect("insert json wrapper failed");
+    let inserted2: ClipboardItem = serde_json::from_str(&json_res2).expect("parse inserted json");
+    assert_eq!(inserted2.id, item.id);
+    assert_eq!(inserted2.content, item.content);
+}
+
+#[test]
 fn test_not_text_data_insert_and_delete() {
     let _g = test_lock();
     set_test_db_path();

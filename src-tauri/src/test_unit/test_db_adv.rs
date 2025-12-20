@@ -723,3 +723,28 @@ fn test_comprehensive_search_with_ocr() {
         serde_json::from_str(&res_wrong_folder).expect("parse wrong folder res");
     assert_eq!(items_wrong_folder.len(), 0);
 }
+
+#[test]
+fn test_get_ocr_text_direct() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    let item = make_item("ocr-direct-1", "image", "/path/img.png");
+    insert_received_db_data(item.clone()).unwrap();
+
+    // 1. Test empty OCR
+    let res = get_ocr_text_by_item_id(&item.id).expect("get ocr failed");
+    assert_eq!(res, "", "Should return empty string for no OCR data");
+
+    // 2. Insert OCR
+    insert_ocr_text(&item.id, "Some OCR Text").expect("insert ocr failed");
+
+    // 3. Test get OCR
+    let res2 = get_ocr_text_by_item_id(&item.id).expect("get ocr failed");
+    assert_eq!(res2, "Some OCR Text");
+
+    // 4. Test non-existent item
+    let res3 = get_ocr_text_by_item_id("non-existent").expect("get ocr failed");
+    assert_eq!(res3, "", "Should return empty string for non-existent item");
+}

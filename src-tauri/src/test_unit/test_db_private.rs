@@ -7,7 +7,9 @@ use std::path::PathBuf;
 // --- 测试辅助函数 ---
 
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    crate::db::TEST_RUN_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
 }
 
 use uuid::Uuid;
@@ -330,7 +332,7 @@ fn test_check_and_mark_private_item() {
     let result = check_and_mark_private_item(item.clone(), false, false, false, false);
     assert!(result.is_ok());
     assert!(!is_item_private(&item.id));
-    
+
     // 4. Test non-matching item
     let item2 = make_item("p-item-2", "content", "Just normal text");
     insert_received_db_data(item2.clone()).unwrap();
@@ -338,4 +340,3 @@ fn test_check_and_mark_private_item() {
     assert!(result.is_ok());
     assert!(!is_item_private(&item2.id));
 }
-
