@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 //const API_BASE_URL = 'http://101.42.152.3/api';
- const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 
 // 提取媒体文件的基础 URL 
@@ -495,6 +495,77 @@ class ApiService {
         message: error instanceof Error ? error.message : '网络错误',
         data: null
       };
+    }
+  }
+
+  //端到端加密
+  /**
+   * [POST] 上传加密密钥配置
+   * 接口: POST /accounts/encryption-keys/
+   */
+  async uploadEncryptionKeys(data) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('未登录');
+
+      const response = await fetch(`${API_BASE_URL}/accounts/encryption-keys/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+
+      result = await response.json();
+      if (!response.ok) throw new Error(result.detail || '密钥配置上传失败');
+
+      return { success: true, message: '密钥配置已保存', data: result };
+    } catch (error) {
+      console.error('上传密钥配置错误:', error);
+      return { success: false, message: error.message, data: null };
+    }
+  }
+
+  /**
+   * [GET] 获取加密密钥配置
+   * 接口: GET /accounts/encryption-keys/
+   */
+  async getEncryptionKeys() {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('未登录');
+
+      const response = await fetch(`${API_BASE_URL}/accounts/encryption-keys/`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      // 情况 1: 新用户，没有配置 -> 返回无密钥状态
+      if (response.status === 404) {
+        return { success: true, has_keys: false, data: null };
+      }
+
+      result = await response.json();
+      
+      if (!response.ok) throw new Error(result.detail || '获取密钥配置失败');
+
+      // 情况 2: 后端返回了 200，但数据可能是空的或不完整
+      // 必须校验关键字段是否存在
+      if (!result || !result.data.kdf_salt || !result.data.encrypted_dek) {
+        console.warn("云端返回了密钥记录，但字段缺失 (视为无密钥):", result);
+        return { success: true, has_keys: false, data: null };
+      }
+
+      return { success: true, has_keys: true, data: result };
+    } catch (error) {
+      console.error('获取密钥配置错误:', error);
+      // 网络错误或其他异常，返回失败
+      return { success: false, message: error.message, data: null };
     }
   }
 

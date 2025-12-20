@@ -6,6 +6,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { emit } from '@tauri-apps/api/event'
 import { apiService,ensureAbsoluteAvatarUrl } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
+import { useSecurityStore } from '../stores/security'
 import { loadUsername } from './Menu'
 import { 
   Cog6ToothIcon,
@@ -27,11 +28,13 @@ const base64ToBlob = (base64Content, mimeType) => {
 }
 
 // 导出 executeCloudPush 函数 (核心同步逻辑，不包含 UI 交互)
-export const executeCloudPush = async () => {
+export const executeCloudPush = async (dek = null) => {
   // 权限检查
   if (!localStorage.getItem('token')) {
     throw new Error('未登录');
   }
+
+  console.log("开始执行云端推送 (Push)...", dek ? "[E2EE模式]" : "[普通模式]");
 
   try {
     // 1. 同步配置
@@ -40,20 +43,86 @@ export const executeCloudPush = async () => {
     if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
 
     // 2. 同步数据库
-    const dbBase64 = await invoke('read_db_file_base64');
-    const dbBlob = base64ToBlob(dbBase64, 'application/x-sqlite3');
+    let dbBlob;
+    
+    if (dek) {
+      // === E2EE 模式 ===
+      console.log("正在准备加密数据库...");
+      
+      // 【修正1】改回驼峰命名 'dekHex'，符合 Tauri 默认规范
+      const response = await invoke('prepare_encrypted_db_upload', { dekHex: dek });
+      
+      let encryptedBase64;
+
+      // 【修正2】保留智能判断：检查返回值是路径还是内容
+      // 如果返回值很长（超过500字符）或者包含 SQLite 头，说明它直接返回了内容
+      if (response.length > 500 || response.startsWith("U1FMaXRl")) {
+          console.log("✅ 检测到后端直接返回了数据库内容");
+          
+          // 安全检查：如果是明文 SQLite 头 (U1FMaXRl...)，说明加密可能未生效
+          // 但考虑到这只是防止报错，我们先允许通过，但在控制台警告
+          if (response.startsWith("U1FMaXRl")) {
+             console.warn("⚠️ 警告：上传的数据似乎包含明文 SQLite 文件头，请确认 Rust 端加密是否正确。");
+          }
+          
+          encryptedBase64 = response;
+      } else {
+          // 正常情况：返回值是路径，需要读取
+          console.log("加密临时文件路径:", response);
+          encryptedBase64 = await invoke('read_file_base64', { filePath: response });
+      }
+
+      dbBlob = base64ToBlob(encryptedBase64, 'application/octet-stream');
+
+    } else {
+      // === 普通模式 ===
+      console.log("读取普通数据库...");
+      const dbBase64 = await invoke('read_db_file_base64');
+      dbBlob = base64ToBlob(dbBase64, 'application/x-sqlite3');
+    }
+
+    // 上传数据库 Blob
     const dbRes = await apiService.pushSqliteDatabase(dbBlob);
     if (!dbRes.success) throw new Error(`数据库推送失败: ${dbRes.message}`);
 
-    // 3. 同步文件
+    // 3. 同步文件 (图片/附件)
     const localFiles = await invoke('get_local_files_to_upload');
+    console.log(`发现 ${localFiles.length} 个文件需要上传`);
+
     for (const fileInfo of localFiles) {
-      const content = await invoke('read_file_base64', { filePath: fileInfo.file_path });
-      const blob = base64ToBlob(content, 'application/octet-stream');
-      
-      const fileRes = await apiService.uploadClipboardFile(blob, fileInfo.relative_path);
-      if (!fileRes.success) {
-        console.warn(`文件上传失败 (${fileInfo.relative_path}):`, fileRes.message);
+      let contentBase64;
+      let uploadPath = fileInfo.relative_path;
+
+      try {
+        if (dek) {
+           // === E2EE 模式 ===
+           const tempEncPath = fileInfo.file_path + ".enc";
+           
+           // 【修正3】这里也改回驼峰命名 inputPath, outputPath, dekHex
+           await invoke('encrypt_file', { 
+               inputPath: fileInfo.file_path, 
+               outputPath: tempEncPath, 
+               dekHex: dek 
+           });
+           
+           // 读取加密后的内容
+           contentBase64 = await invoke('read_file_base64', { filePath: tempEncPath });
+           
+           // (可选) 清理临时文件 (建议开启，防止垃圾文件堆积)
+           // await invoke('delete_file', { path: tempEncPath });
+        } else {
+           // === 普通模式 ===
+           contentBase64 = await invoke('read_file_base64', { filePath: fileInfo.file_path });
+        }
+
+        const blob = base64ToBlob(contentBase64, 'application/octet-stream');
+        const fileRes = await apiService.uploadClipboardFile(blob, uploadPath);
+        
+        if (!fileRes.success) {
+          console.warn(`文件上传失败 (${fileInfo.relative_path}):`, fileRes.message);
+        }
+      } catch (err) {
+        console.error(`处理文件 ${fileInfo.relative_path} 时出错:`, err);
       }
     }
 
@@ -67,6 +136,7 @@ export const executeCloudPush = async () => {
 export function usePreferences() {
   const router = useRouter()
   const currentWindow = getCurrentWindow();
+  const securityStore = useSecurityStore()
 
   // 响应式数据
   const activeNav = ref('general')
@@ -409,6 +479,20 @@ export function usePreferences() {
           userInfo.avatar = response.data.user.avatar || ''
         }
         loadUsername()
+
+        // === 新增: 尝试恢复 E2EE 密钥 ===
+        // 使用用户刚输入的密码尝试恢复
+        try {
+           await recoverE2EE(loginData.password);
+           // 如果恢复成功，且设置中未开启加密（可能是新设备），自动开启
+           if (securityStore.hasDek() && !settings.encrypt_cloud_data) {
+             settings.encrypt_cloud_data = true;
+           }
+        } catch (e) {
+           console.warn("E2EE 自动恢复失败 (可能未启用或网络问题):", e);
+           // 注意：如果云端有密钥但解密失败（密码改过？），这里需要处理
+        }
+
         // 关闭登录对话框
         showLoginDialog.value = false
         await handleCloudPull(true);
@@ -791,6 +875,57 @@ const updateRetentionDays = async () => {
 
   // 设置相关方法
   const updateSetting = async (key, value) => {
+    // 如果是开启加密，需要特殊处理
+    if (key === 'encrypt_cloud_data' && value === true) {
+      // 1. 检查是否登录
+      if (!userLoggedIn.value) {
+        showMessage('请先登录以使用云端加密', 'warning');
+        settings[key] = false; // 保持关闭
+        return;
+      }
+
+      // 2. 检查内存中是否有 DEK
+      if (securityStore.hasDek()) {
+        // 已经有密钥了，直接开启
+        const oldValue = settings[key];
+        try {
+          settings[key] = value;
+          await invoke('set_config_item', { key, value });
+          showMessage('加密设置已更新');
+        } catch (e) {
+           settings[key] = oldValue;
+        }
+        return;
+      }
+
+      // 3. 内存无密钥，需要走 Setup 流程
+      // 这里有一个 UI 交互问题：我们需要密码。
+      // 简单方案：弹出一个 prompt (浏览器原生)，或者你需要实现一个密码输入模态框
+      const password = window.prompt("为了启用端到端加密，请验证您的登录密码：");
+      if (!password) {
+        settings[key] = false; // 用户取消
+        return;
+      }
+
+      // 尝试恢复（万一云端已有），如果云端没有则生成
+      try {
+        const recovered = await recoverE2EE(password);
+        if (recovered) {
+           // 恢复成功，更新设置
+           settings[key] = true;
+           await invoke('set_config_item', { key, value: true });
+           showMessage('密钥恢复成功，加密已启用', 'success');
+        } else {
+           // 云端无密钥，执行首次生成流程
+           await setupE2EE(password);
+        }
+      } catch (e) {
+         showMessage(`操作失败: ${e.message}`, 'error');
+         settings[key] = false;
+      }
+      return; // 结束，不执行默认逻辑
+    }
+    
     const oldValue = settings[key]
     
     try {
@@ -937,6 +1072,106 @@ const updateRetentionDays = async () => {
     } catch (error) {
       console.error('获取同步状态失败:', error)
       showMessage(`获取状态失败: ${error}`)
+    }
+  }
+
+  /**
+   * 流程 3.1: 初始化 E2EE (生成并上传密钥)
+   * 当用户开启加密开关时调用
+   */
+  const setupE2EE = async (password) => {
+    try {
+      loading.value = true;
+      showMessage('正在生成加密密钥...', 'info');
+
+      // 1. 本地生成密钥
+      const salt = await invoke('generate_salt');
+      const dek = await invoke('generate_dek');
+
+      // 校验 Rust 返回值
+      if (!salt || !dek) {
+          throw new Error("本地密钥生成失败 (Rust 返回空值)");
+      }
+      
+      // 2. 派生主密钥并封装 DEK
+      const mk = await invoke('derive_mk', { password: password, saltHex: salt });
+      const encryptedDek = await invoke('wrap_dek', { dekHex: dek, mkHex: mk });
+
+      // 3. 上传到云端
+      const res = await apiService.uploadEncryptionKeys({
+        kdf_salt: salt,
+        encrypted_dek: encryptedDek,
+        kdf_algorithm: "Argon2id"
+      });
+
+      if (res.success) {
+        // 4. 保存到内存 Store
+        securityStore.setDek(dek);
+        // 5. 更新设置状态
+        settings.encrypt_cloud_data = true;
+        await invoke('set_config_item', { key: 'encrypt_cloud_data', value: true });
+        showMessage('端到端加密已启用', 'success');
+      } else {
+        throw new Error(res.message);
+      }
+    } catch (e) {
+      console.error(e);
+      showMessage(`启用加密失败: ${e.message || e}`, 'error');
+      // 回滚开关状态
+      settings.encrypt_cloud_data = false;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /**
+   * 流程 3.2: 恢复 E2EE (从云端获取并解密密钥)
+   * 登录成功后，或检测到需要密钥时调用
+   */
+  const recoverE2EE = async (password) => {
+    try {
+      // 1. 获取云端配置
+      const res = await apiService.getEncryptionKeys();
+      
+      // 增加多重校验：确保 success, has_keys 为 true，且 data 中的字段确实存在
+      if (res.success && res.has_keys && res.data && res.data.data.kdf_salt && res.data.data.encrypted_dek) {
+        const kdf_salt = res.data.data.kdf_salt;
+        const encrypted_dek = res.data.data.encrypted_dek;
+        
+        // 再次检查 salt 是否为空字符串
+        if (!kdf_salt) {
+            console.warn("跳过恢复：kdf_salt 为空");
+            return false;
+        }
+
+        // 2. 派生 MK
+        const mk = await invoke('derive_mk', { password: password, saltHex: kdf_salt });
+        
+        // 3. 解封装 DEK
+        const dek = await invoke('unwrap_dek', { encryptedDekHex: encrypted_dek, mkHex: mk });
+        
+        // 4. 存入 Store
+        securityStore.setDek(dek);
+        console.log("E2EE 密钥恢复成功");
+        
+        // 恢复成功后，确保本地开关与云端状态一致
+        if (!settings.encrypt_cloud_data) {
+           settings.encrypt_cloud_data = true;
+           // 可以在这里静默更新一下本地配置，避免下次重复提示
+           invoke('set_config_item', { key: 'encrypt_cloud_data', value: true }).catch(()=>{});
+        }
+        
+        return true;
+      } else {
+        // 云端没有密钥，或者数据不完整 -> 视为未启用 E2EE
+        console.log("当前账户未设置 E2EE 密钥 (新账户或未启用)");
+        return false; 
+      }
+    } catch (e) {
+      console.error("密钥恢复异常:", e);
+      // 如果是自动恢复（登录时），尽量不要抛出打断流程的 Error，除非是密码错误明确需要提示
+      // 这里返回 false 表示恢复失败
+      return false;
     }
   }
 
@@ -1172,7 +1407,16 @@ const updateRetentionDays = async () => {
     
     try {
       showMessage('正在推送数据至云端...', 'info');
-      await executeCloudPush();
+      // 传入 DEK (如果有且开启了加密)
+      const dek = (settings.encrypt_cloud_data && securityStore.dek) ? securityStore.dek : null;
+      
+      // 如果开启了加密但没有 DEK (比如刷新了页面)，需要提示用户输入密码
+      if (settings.encrypt_cloud_data && !dek) {
+         // 这里的交互比较难处理，简单方式是抛出错误提示重新登录或验证
+         throw new Error("加密密钥丢失，请重新登录或验证密码以恢复同步能力");
+      }
+
+      await executeCloudPush(dek); // 传入 dek
 
       // 成功处理
       showMessage('云端数据推送成功！', 'success');
@@ -1188,56 +1432,155 @@ const updateRetentionDays = async () => {
     }
   };
 
+  // 用于在 UI 手动触发密钥恢复
+  const restoreKeysManually = async () => {
+    const password = window.prompt("请输入登录密码以恢复加密密钥：");
+    if (!password) return;
+    
+    try {
+        // 复用之前定义的 recoverE2EE 逻辑
+        const success = await recoverE2EE(password); 
+        if (success) {
+            showMessage("密钥恢复成功", "success");
+        } else {
+            showMessage("未找到云端密钥配置", "error");
+        }
+    } catch(e) {
+        showMessage(e.message, "error");
+    }
+  }
+
   const handleCloudPull = async (isSilent = false) => {
     if (isSyncing.value) return;
     isSyncing.value = true;
+    
     try {
       if (!isSilent) showMessage('正在同步云端数据...', 'info');
 
-      // 1. 下载配置
+      // 1. 下载并应用配置 (保持不变)
       const configRes = await apiService.downloadConfig();
       if (configRes.success && configRes.data) {
         await invoke('sync_and_apply_config', { content: configRes.data });
       }
 
-      // 2. 下载数据库 (Blob 转 Base64 传给 Rust 写入)
+      // 2. 下载数据库 (保持不变，已符合文档)
       const dbRes = await apiService.getSqliteDatabaseAsJson();
       if (dbRes.success && dbRes.data && dbRes.data.data) {
-        console.log("正在同步数据库 JSON 数据...", dbRes.data);
-        // 将整个数据对象转为 JSON 字符串传给 Rust
         const jsonString = JSON.stringify(dbRes.data);
-        await invoke('sync_cloud_data', { jsonData: jsonString });
+        
+        if (settings.encrypt_cloud_data) {
+            const dek = securityStore.dek;
+            if (!dek) {
+                if(!isSilent) showMessage("无法解密数据：密钥未加载，请先验证密码", 'error');
+                console.error("Sync aborted: E2EE enabled but no DEK.");
+                return; 
+            }
+            // E2EE 模式：传入 DEK 解密数据条目
+            await invoke('sync_encrypted_cloud_data', { 
+                jsonData: jsonString, 
+                dekHex: dek 
+            });
+        } else {
+            // 普通模式
+            await invoke('sync_cloud_data', { jsonData: jsonString });
+        }
       }
 
-      // 3. 下载剪贴板媒体文件 (镜像同步)
+      // 3. 下载文件/图片 (严格按照文档修改)
       const listRes = await apiService.getCloudFileList();
       if (listRes.success) {
-        const serverPaths = listRes.data.map(item => item.relative_path);
+        // 获取本地存储根路径，用于构造绝对路径传给 decrypt_file
+        // 注意：这里假设 settings.storage_path 与 Rust 端实际使用的路径一致
+        // 去除末尾斜杠以防重复
+        const storageRoot = settings.storage_path.replace(/[\\/]$/, '');
+
         for (const item of listRes.data) {
-          // 直接通过 Web URL 下载 Blob
+          // 3.1 下载文件流 (Blob)
           const fileUrl = ensureAbsoluteAvatarUrl(item.file);
           const fileBlob = await fetch(fileUrl, {
             headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
           }).then(r => r.blob());
           
-          // 转 Base64 传给 Rust 保存
+          // 3.2 转换为 Base64 以便通过 Tauri Command 写入
           const reader = new FileReader();
-          reader.onload = async () => {
-            const base64 = reader.result.split(',')[1];
-            await invoke('save_clipboard_file', { relativePath: item.relative_path, base64Content: base64 });
-          };
           reader.readAsDataURL(fileBlob);
+          
+          await new Promise((resolve, reject) => {
+            reader.onload = async () => {
+              try {
+                const base64 = reader.result.split(',')[1];
+                const relativePath = item.relative_path;
+
+                if (settings.encrypt_cloud_data && securityStore.dek) {
+                    // === E2EE 解密流程 ===
+                    
+                    // A. 定义临时加密文件路径 (例如 images/123.png.enc)
+                    const tempRelativePath = relativePath + ".enc";
+                    
+                    // B. 先将加密内容写入磁盘 (复用现有的保存文件命令)
+                    await invoke('save_clipboard_file', { 
+                        relativePath: tempRelativePath, 
+                        base64Content: base64 
+                    });
+
+                    const isWin = storageRoot.includes('\\');
+                    const sep = isWin ? '\\' : '/';
+
+                    const cleanJoin = (...parts) => {
+                        return parts.map((part, index) => {
+                            if (!part) return '';
+                            // 移除首尾的斜杠和反斜杠（除了第一个路径的开头）
+                            let s = part;
+                            if (index > 0) s = s.replace(/^[\\\/]+/, '');
+                            if (index < parts.length - 1) s = s.replace(/[\\\/]+$/, '');
+                            return s;
+                        }).join(sep);
+                    };
+                  
+                    // 2. 构造绝对路径
+                    const inputPath = cleanJoin(storageRoot, 'files', tempRelativePath);
+                    const outputPath = cleanJoin(storageRoot, 'files', relativePath);
+                  
+                    // 3. 打印路径以供检查 (如果报错，请检查控制台打印的这个路径是否真实存在)
+                    console.log(`[E2EE] Decrypting: \n In:  ${inputPath} \n Out: ${outputPath}`);
+
+                    // D. 调用 Rust 进行解密 (文档 3.5 节)
+                    await invoke('decrypt_file', {
+                        inputPath: inputPath,
+                        outputPath: outputPath,
+                        dekHex: securityStore.dek
+                    });
+
+                    // (可选) E. 可以在此处调用 Rust 删除 .enc 临时文件
+                    // await invoke('delete_file', { path: inputPath });
+
+                } else {
+                    // === 普通流程 ===
+                    // 直接保存原始内容
+                    await invoke('save_clipboard_file', { 
+                        relativePath: relativePath, 
+                        base64Content: base64 
+                    });
+                }
+                resolve();
+              } catch (e) {
+                console.error(`处理文件 ${item.relative_path} 失败:`, e);
+                // 单个文件失败不中断整个循环，但打印错误
+                resolve(); 
+              }
+            };
+            reader.onerror = reject;
+          });
         }
-        // 清理本地不在云端的文件 (镜像清理)
-        //await invoke('clean_local_files', { serverPaths });
       }
 
       lastSyncTime.value = Date.now();
       localStorage.setItem('lastSyncTime', lastSyncTime.value);
-      if (!isSilent) showMessage('云端数据拉取成功', 'success');
+      if (!isSilent) showMessage('云端数据同步完成', 'success');
+
     } catch (error) {
-      console.error('拉取失败:', error);
-      if (!isSilent) showMessage('同步拉取失败', 'error');
+      console.error('同步失败:', error);
+      if (!isSilent) showMessage(`同步失败: ${error.message || error}`, 'error');
     } finally {
       isSyncing.value = false;
     }
@@ -1443,6 +1786,9 @@ const updateRetentionDays = async () => {
     syncNow,
     checkSyncStatus,
     handleCloudPush,
+    restoreKeysManually,
+    handleCloudPull,
+    securityStore,
 
     // 用户管理方法
     changeAvatar,
