@@ -3,7 +3,7 @@ use uuid::Uuid;
 use std::path::{Path, PathBuf};
 use std::fs;
 use crate::clipboard::{ClipboardItem, clipboard_items_to_json, clipboard_item_to_json};
-use super::{get_db_path, init_db, notify_cleanup};
+use super::{get_db_path, init_db, notify_cleanup, check_and_mark_private_item};
 
 /// 将接收到的数据插入数据库。
 /// Param:
@@ -612,6 +612,19 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<String, String> {
     if json == "null" {
         Err("Item not found after update".to_string())
     } else {
+        // 尝试根据当前配置重新检查并标记隐私属性（失败不影响主流程）
+        if let Ok(item) = serde_json::from_str::<crate::clipboard::ClipboardItem>(&json) {
+            // 获取当前配置（回退为默认值以确保行为可预测）
+            let cfg = crate::config::CONFIG.get().map(|c| c.read().unwrap().clone()).unwrap_or_default();
+            let _ = check_and_mark_private_item(
+                item,
+                cfg.filter_passwords,
+                cfg.filter_bank_cards,
+                cfg.filter_id_cards,
+                cfg.filter_phone_numbers,
+            );
+        }
+
         Ok(json)
     }
 }
