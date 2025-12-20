@@ -651,7 +651,7 @@
                 v-model="registerData.username"
                 type="text"
                 required
-                placeholder="请输入用户名（至少3个字符）"
+                placeholder="请输入用户名（不能为空）"
                 class="form-input"
                 :class="{ 'error': registerErrors.username }"
               />
@@ -679,7 +679,7 @@
                 v-model="registerData.password"
                 type="password"
                 required
-                placeholder="请输入密码（至少9位）"
+                placeholder="请输入密码（至少8位，不能为纯数字）"
                 class="form-input"
                 :class="{ 'error': registerErrors.password }"
               />
@@ -797,7 +797,7 @@
                 v-model="changePasswordData.new_password"
                 type="password"
                 required
-                placeholder="请输入新密码（至少6位）"
+                placeholder="请输入新密码（至少8位，不能为纯数字）"
                 class="form-input"
                 :class="{ 'error': changePasswordErrors.new_password }"
               />
