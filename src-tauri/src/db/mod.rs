@@ -113,6 +113,9 @@ mod test_db_adv;
 #[path = "../test_unit/test_db_base.rs"]
 mod test_db_base;
 #[cfg(test)]
+#[path = "../test_unit/test_db_cleanup.rs"]
+mod test_db_cleanup;
+#[cfg(test)]
 #[path = "../test_unit/test_db_extend.rs"]
 mod test_db_extend;
 #[cfg(test)]
@@ -124,9 +127,6 @@ mod test_db_private;
 #[cfg(test)]
 #[path = "../test_unit/test_db_sync.rs"]
 mod test_db_sync;
-#[cfg(test)]
-#[path = "../test_unit/test_db_cleanup.rs"]
-mod test_db_cleanup;
 
 #[cfg(test)]
 pub static TEST_RUN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

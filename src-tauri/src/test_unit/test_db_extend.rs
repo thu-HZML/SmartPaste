@@ -7,7 +7,9 @@ use std::path::PathBuf;
 // 复制 test_db_base.rs 中的辅助函数，因为它们不是 public 的
 
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    crate::db::TEST_RUN_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
 }
 
 use uuid::Uuid;

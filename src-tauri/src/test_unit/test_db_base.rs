@@ -2,13 +2,15 @@
 /// 此文件提供基础功能点测试，包括增删改查等
 /// 测试使用临时数据库文件，避免污染真实数据
 use super::*;
-use crate::clipboard::{ClipboardItem, clipboard_item_to_json};
+use crate::clipboard::{clipboard_item_to_json, ClipboardItem};
 use serde_json;
 use std::fs;
 use std::path::PathBuf;
 
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    crate::db::TEST_RUN_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
 }
 
 use uuid::Uuid;

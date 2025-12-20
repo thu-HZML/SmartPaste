@@ -309,3 +309,33 @@ fn test_clear_all_private_data() {
     let json = get_data_by_id(&item1.id).unwrap();
     assert_ne!(json, "null", "Actual data item should still exist");
 }
+
+#[test]
+fn test_check_and_mark_private_item() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. Prepare item
+    let item = make_item("p-item-1", "content", "This is a secret password");
+    insert_received_db_data(item.clone()).unwrap();
+
+    // 2. Test marking as private (password flag = true)
+    let result = check_and_mark_private_item(item.clone(), true, false, false, false);
+    assert!(result.is_ok());
+    assert!(is_item_private(&item.id));
+
+    // 3. Test unmarking (password flag = false)
+    // Note: check_and_mark_private_item logic says: if match and flag false, delete.
+    let result = check_and_mark_private_item(item.clone(), false, false, false, false);
+    assert!(result.is_ok());
+    assert!(!is_item_private(&item.id));
+    
+    // 4. Test non-matching item
+    let item2 = make_item("p-item-2", "content", "Just normal text");
+    insert_received_db_data(item2.clone()).unwrap();
+    let result = check_and_mark_private_item(item2.clone(), true, true, true, true);
+    assert!(result.is_ok());
+    assert!(!is_item_private(&item2.id));
+}
+

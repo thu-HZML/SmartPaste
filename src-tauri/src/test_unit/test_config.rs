@@ -141,7 +141,7 @@ fn test_config_default_values() {
     assert_eq!(config.minimize_to_tray, false);
     assert_eq!(config.auto_save, true);
     assert_eq!(config.retention_days, 30);
-    assert_eq!(config.global_shortcut, "Alt+Shift+V");
+    assert_eq!(config.global_shortcut, "Shift+V");
 
     assert_eq!(config.max_history_items, 500);
     assert_eq!(config.ignore_short_text_len, 0);
