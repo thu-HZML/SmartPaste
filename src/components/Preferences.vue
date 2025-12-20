@@ -362,20 +362,22 @@
               </div>
               <div class="setting-control">
                 <select 
-                  v-model="settings.ai_service" 
-                  @change="updateSetting('ai_service', $event.target.value)" 
+                  v-model="settings.ai_provider" 
+                  @change="updateSetting('ai_provider', $event.target.value)" 
                   class="select-input"
                 >
+                  <option value="default">默认</option>
                   <option value="openai">OpenAI</option>
-                  <option value="claude">Claude</option>
-                  <option value="gemini">Gemini</option>
+                  <option value="google">Google</option>
+                  <option value="aliyun">Aliyun</option>
                   <option value="deepseek">DeepSeek</option>
+                  <option value="moonshot">Moonshot</option>
                   <option value="custom">自定义</option>
                 </select>
               </div>
             </div>
 
-            <div class="setting-item">
+            <div v-if="settings.ai_provider !== 'default'" class="setting-item">
               <div class="setting-info">
                 <h3>API密钥</h3>
                 <p>设置AI服务的API密钥</p>
@@ -388,6 +390,79 @@
                   class="text-input" 
                   placeholder="输入API密钥"
                 >
+              </div>
+            </div>
+
+            <div v-if="settings.ai_provider !== 'default'" class="setting-item">
+              <div class="setting-info">
+                <h3>base_url</h3>
+                <p>设置AI服务的基础URL，如(https://llmapi.paratera.com/v1)</p>
+              </div>
+              <div class="setting-control">
+                <input 
+                  type="text" 
+                  v-model="settings.ai_base_url" 
+                  @blur="updateSetting('ai_base_url', $event.target.value)"
+                  class="text-input" 
+                  placeholder="输入base_url"
+                >
+              </div>
+            </div>
+
+            <div v-if="settings.ai_provider !== 'default'" class="setting-item">
+              <div class="setting-info">
+                <h3>模型名称</h3>
+                <p>设置AI服务的模型</p>
+              </div>
+              <div class="setting-control">
+                <input 
+                  type="text" 
+                  v-model="settings.ai_model" 
+                  @blur="updateSetting('ai_model', $event.target.value)"
+                  class="text-input" 
+                  placeholder="输入模型名称"
+                >
+              </div>
+            </div>
+
+            <div v-if="settings.ai_provider === 'default'" class="setting-item">
+              <div class="setting-info">
+                <h3>选择AI模型</h3>
+                <p>选择使用的AI模型</p>
+              </div>
+              <div class="setting-control">
+                <select 
+                  v-model="settings.ai_model" 
+                  @change="updateSetting('ai_model', $event.target.value)" 
+                  class="select-input"
+                >
+                  <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
+                  <option value="Doubao-Seedream-4.0">Doubao-Seedream-4.0</option>
+                  <option value="Qwen3-VL-235B-A22B-Instruct">Qwen3-VL-235B-A22B-Instruct</option>
+                  <option value="Kimi-K2">Kimi-K2</option>
+                  <option value="GLM-4.6">GLM-4.6</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-info">
+                <h3>采样温度</h3>
+                <p>采样温度越高，ai生成文本的随机性和多样性越强</p>
+              </div>
+              <div class="setting-control">
+                <div class="slider-container">
+                  <input 
+                    type="range" 
+                    :value="settings.ai_temperature" 
+                    min="0.5" 
+                    max="2" 
+                    step="0.1" 
+                    class="slider-input"
+                    @input="updateSetting('ai_temperature', Number($event.target.value))"
+                  >
+                  <span class="slider-value">{{ settings.ai_temperature }}</span>
+                </div>
               </div>
             </div>
 
@@ -427,16 +502,6 @@
                     > 联网搜索
                   </label>
                 </div>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>清空AI对话历史</h3>
-                <p>清除所有AI对话记录</p>
-              </div>
-              <div class="setting-control">
-                <button class="btn btn-secondary" @click="clearAiHistory">清空历史</button>
               </div>
             </div>
           </div>
@@ -587,7 +652,7 @@
               </span>
             </div>
             <div class="status-actions">
-              <button class="btn btn-small" @click="manualSync" :disabled="isSyncing">
+              <button class="btn btn-small" @click="handleCloudPush" :disabled="isSyncing">
                 {{ isSyncing ? '同步中...' : '立即同步' }}
               </button>
             </div>
@@ -645,40 +710,6 @@
                   <option value="containphoto">包含图片</option>
                   <option value="containfile">包含文件</option>
                 </select>
-              </div>
-            </div>
-            
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>加密同步数据</h3>
-                <p>使用端到端加密保护您的剪贴板数据</p>
-              </div>
-              <div class="setting-control">
-                <label class="toggle-switch">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.encrypt_cloud_data" 
-                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
-                  >
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>仅WiFi下同步</h3>
-                <p>仅WiFi下同步</p>
-              </div>
-              <div class="setting-control">
-                <label class="toggle-switch">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.sync_only_wifi" 
-                    @change="updateSetting('sync_only_wifi', $event.target.checked)"
-                  >
-                  <span class="slider"></span>
-                </label>
               </div>
             </div>
             
@@ -1052,6 +1083,7 @@ const {
   manualSync,
   syncNow,
   checkSyncStatus,
+  handleCloudPush,
 
   // 用户管理方法
   changeAvatar,

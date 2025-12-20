@@ -62,8 +62,16 @@ pub struct Config {
     // --- AI Agent 相关 ---
     /// 是否启用 AI 助手
     pub ai_enabled: bool,
-    /// AI 服务提供商标识（例如 "openai"、"azure" 等）
-    pub ai_service: Option<String>,
+    // AI 服务提供商标识（例如 "openai"、"azure" 等）
+    // pub ai_service: Option<String>,
+    /// AI 提供商 (default | openai | google | custom | ...)
+    pub ai_provider: String,
+    /// AI 模型名称
+    pub ai_model: String,
+    /// AI 基础 URL (custom时)
+    pub ai_base_url: Option<String>,
+    /// AI 采样温度
+    pub ai_temperature: f32,
     /// AI API Key（如有则存储）
     pub ai_api_key: Option<String>,
     /// 是否启用 AI 自动打标签
@@ -183,8 +191,16 @@ pub enum ConfigKey {
     // AI Agent 相关
     /// 是否启用 AI 助手
     AiEnabled,
-    /// AI 服务提供商标识
-    AiService,
+    // AI 服务提供商标识
+    // AiService,
+    /// AI 提供商
+    AiProvider,
+    /// AI 模型名称
+    AiModel,
+    /// AI 基础 URL
+    AiBaseUrl,
+    /// AI 采样温度
+    AiTemperature,
     /// AI API Key
     AiApiKey,
     /// 是否启用 AI 自动打标签
@@ -287,7 +303,11 @@ pub fn parse_config_key(key: &str) -> Option<ConfigKey> {
 
         // AI Agent 相关
         "ai_enabled" => Some(ConfigKey::AiEnabled),
-        "ai_service" => Some(ConfigKey::AiService),
+        // "ai_service" => Some(ConfigKey::AiService),
+        "ai_provider" => Some(ConfigKey::AiProvider),
+        "ai_model" => Some(ConfigKey::AiModel),
+        "ai_base_url" => Some(ConfigKey::AiBaseUrl),
+        "ai_temperature" => Some(ConfigKey::AiTemperature),
         "ai_api_key" => Some(ConfigKey::AiApiKey),
         "ai_auto_tag" => Some(ConfigKey::AiAutoTag),
         "ai_auto_summary" => Some(ConfigKey::AiAutoSummary),
@@ -337,19 +357,19 @@ pub fn config_to_json(config: &Config) -> String {
 
 // 辅助函数，防止旧 config.json 缺少字段导致解析失败
 fn default_shortcut() -> String {
-    "Alt+Shift+V".to_string()
+    "Shift+V".to_string()
 }
 fn default_shortcut_2() -> String {
-    "Alt+Shift+C".to_string()
+    "Shift+Alt+C".to_string()
 }
 fn default_shortcut_3() -> String {
-    "Alt+Shift+A".to_string()
+    "Shift+Alt+A".to_string()
 } // 新增
 fn default_shortcut_4() -> String {
-    "Ctrl+Shift+V".to_string()
+    "Shift+Ctrl+V".to_string()
 } // 新增
 fn default_shortcut_5() -> String {
-    "Ctrl+Shift+Delete".to_string()
+    "Shift+Ctrl+Delete".to_string()
 } // 新增
 
 /// 为 Config 实现 Default trait，提供默认配置值。
@@ -380,8 +400,12 @@ impl Default for Config {
             auto_sort: false,               // 自动排序：否
 
             // AI
-            ai_enabled: false,      // AI 助手：关
-            ai_service: None,       // AI 服务提供商：无
+            ai_enabled: false, // AI 助手：关
+            // ai_service: None,                   // AI 服务提供商：无
+            ai_provider: "default".to_string(), // AI 提供商：默认
+            ai_model: "".to_string(),           // AI 模型名称：空
+            ai_base_url: None,
+            ai_temperature: 0.7,    // AI 采样温度：0.7
             ai_api_key: None,       // AI API Key：无
             ai_auto_tag: false,     // AI 自动打标签：否
             ai_auto_summary: false, // AI 自动摘要：否
@@ -619,7 +643,11 @@ fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Resul
         ConfigKey::KeepFavoritesOnDelete => update_cfg!(keep_favorites_on_delete, bool),
         ConfigKey::AutoSort => update_cfg!(auto_sort, bool),
         ConfigKey::AiEnabled => update_cfg!(ai_enabled, bool),
-        ConfigKey::AiService => update_cfg!(ai_service, Option<String>),
+        // ConfigKey::AiService => update_cfg!(ai_service, Option<String>),
+        ConfigKey::AiProvider => update_cfg!(ai_provider, String),
+        ConfigKey::AiModel => update_cfg!(ai_model, String),
+        ConfigKey::AiBaseUrl => update_cfg!(ai_base_url, Option<String>),
+        ConfigKey::AiTemperature => update_cfg!(ai_temperature, f32),
         ConfigKey::AiApiKey => update_cfg!(ai_api_key, Option<String>),
         ConfigKey::AiAutoTag => update_cfg!(ai_auto_tag, bool),
         ConfigKey::AiAutoSummary => update_cfg!(ai_auto_summary, bool),
@@ -845,12 +873,15 @@ pub fn get_current_storage_path() -> PathBuf {
 ///
 /// **AI Agent 相关**
 /// * `"ai_enabled"`: `bool` - 是否启用 AI 助手
-/// * `"ai_service"`: `Option<String>` - AI 服务提供商标识 (如 "openai")
 /// * `"ai_api_key"`: `Option<String>` - AI API Key
 /// * `"ai_auto_tag"`: `bool` - 是否启用 AI 自动打标签
 /// * `"ai_auto_summary"`: `bool` - 是否启用 AI 自动摘要
 /// * `"ai_translation"`: `bool` - 是否启用 AI 翻译功能
 /// * `"ai_web_search"`: `bool` - 是否启用 AI 联网搜索功能
+/// * `"ai_provider"`: `String` - AI 提供商名称
+/// * `"ai_model"`: `String` - AI 模型名称
+/// * `"ai_base_url"`: `Option<String>` - AI 服务基础 URL
+/// * `"ai_temperature"`: `f32` - AI 采样温度
 ///
 /// **安全与隐私**
 /// * `"sensitive_filter"`: `bool` - 是否启用敏感词过滤总开关
@@ -1167,6 +1198,32 @@ pub fn reload_config() -> String {
     }
 }
 
+/// 全量同步并应用配置。作为 Tauri Command 暴露给前端调用。
+#[tauri::command]
+pub async fn sync_and_apply_config(app: tauri::AppHandle, content: String) -> Result<String, String> {
+    // 1. 解析 JSON 确保数据格式正确
+    let new_config: Config = serde_json::from_str(&content)
+        .map_err(|e| format!("解析配置失败: {}", e))?;
+
+    // 2. 调用你提到的 save_config 将配置写入磁盘
+    save_config(new_config)?;
+
+    // 3. 调用 reload_config 将磁盘内容加载到内存变量 CONFIG
+    let reload_res = reload_config();
+    if reload_res != "reloaded successfully" {
+        return Err(format!("内存刷新失败: {}", reload_res));
+    }
+
+    // 4. 关键步骤：重置快捷键监听
+    // 必须调用 app_setup 中的函数，否则系统依然占用旧的快捷键
+    if let Err(e) = crate::app_setup::setup_global_shortcuts(app) {
+        return Err(format!("配置已保存但快捷键重置失败: {}", e));
+    }
+
+    println!("🚀 配置全量同步完成，快捷键已即时刷新");
+    Ok("Config synchronized and applied".to_string())
+}
+
 /// 按传入参数获取配置信息。作为 Tauri Command 暴露给前端调用。
 ///
 /// 该函数是前端获取配置的统一入口。根据传入的 `key` 找到对应的配置项，并返回其当前值。
@@ -1199,12 +1256,15 @@ pub fn reload_config() -> String {
 ///
 /// **AI Agent 相关**
 /// * `"ai_enabled"`: 返回 `bool` - 是否启用 AI 助手
-/// * `"ai_service"`: 返回 `Option<String>` - AI 服务提供商标识
 /// * `"ai_api_key"`: 返回 `Option<String>` - AI API Key
 /// * `"ai_auto_tag"`: 返回 `bool` - 是否启用 AI 自动打标签
 /// * `"ai_auto_summary"`: 返回 `bool` - 是否启用 AI 自动摘要
 /// * `"ai_translation"`: 返回 `bool` - 是否启用 AI 翻译功能
 /// * `"ai_web_search"`: 返回 `bool` - 是否启用 AI 联网搜索功能
+/// * `"ai_provider"`: 返回 `String` - AI 提供商
+/// * `"ai_model"`: 返回 `String` - AI 模型
+/// * `"ai_base_url"`: 返回 `Option<String>` - AI 基础 URL
+/// * `"ai_temperature"`: 返回 `f32` - AI 温度参数
 ///
 /// **安全与隐私**
 /// * `"sensitive_filter"`: 返回 `bool` - 是否启用敏感词过滤总开关
@@ -1276,7 +1336,11 @@ pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
 
             // AI Agent 相关
             ConfigKey::AiEnabled => serde_json::to_value(&cfg.ai_enabled),
-            ConfigKey::AiService => serde_json::to_value(&cfg.ai_service),
+            // ConfigKey::AiService => serde_json::to_value(&cfg.ai_service),
+            ConfigKey::AiProvider => serde_json::to_value(&cfg.ai_provider),
+            ConfigKey::AiModel => serde_json::to_value(&cfg.ai_model),
+            ConfigKey::AiBaseUrl => serde_json::to_value(&cfg.ai_base_url),
+            ConfigKey::AiTemperature => serde_json::to_value(&cfg.ai_temperature),
             ConfigKey::AiApiKey => serde_json::to_value(&cfg.ai_api_key),
             ConfigKey::AiAutoTag => serde_json::to_value(&cfg.ai_auto_tag),
             ConfigKey::AiAutoSummary => serde_json::to_value(&cfg.ai_auto_summary),

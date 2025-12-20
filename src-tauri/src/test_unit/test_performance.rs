@@ -12,14 +12,20 @@ mod tests {
 
     #[test]
     fn test_db_insert_performance() {
+        // Acquire global test lock to prevent interference with other tests
+        let _g = crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        
         println!("🚀 开始数据库插入性能测试...");
 
         // 设置临时的测试数据库路径
-        let test_db_path = PathBuf::from("test_perf.db");
-        if test_db_path.exists() {
-            let _ = std::fs::remove_file(&test_db_path);
+        let mut p = std::env::temp_dir();
+        let filename = format!("smartpaste_test_perf_{}.db", Uuid::new_v4());
+        p.push(filename);
+        
+        if p.exists() {
+            let _ = std::fs::remove_file(&p);
         }
-        db::set_db_path(test_db_path.clone());
+        db::set_db_path(p.clone());
 
         // 1. 测试主数据插入
         let item_id = Uuid::new_v4().to_string();
@@ -56,8 +62,8 @@ mod tests {
         println!("⏱️ [Test] insert_icon_data 耗时: {:?}", duration_icon);
 
         // 清理
-        if test_db_path.exists() {
-            let _ = std::fs::remove_file(test_db_path);
+        if p.exists() {
+            let _ = std::fs::remove_file(&p);
         }
     }
 }

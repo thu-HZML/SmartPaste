@@ -12,7 +12,7 @@ use std::io::Cursor;
 use std::io::{Read, Seek, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use tauri::{Emitter, Manager, State,AppHandle};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::MacosLauncher;
 use uuid::Uuid;
 use windows::core::PCWSTR;
@@ -23,15 +23,19 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
-use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, GetSystemMetrics, HICON, ICONINFO,SM_CXSCREEN,SM_CYSCREEN};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DestroyIcon, GetIconInfo, GetSystemMetrics, HICON, ICONINFO, SM_CXSCREEN, SM_CYSCREEN,
+};
 use zip::write::FileOptions;
 // main.rs 头部引入
-use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
-use rdev::{listen, EventType, Key,Button};
-use std::sync::atomic::{AtomicBool, Ordering,AtomicU32};
+use rdev::{listen, Button, EventType, Key};
+use serde::Serialize;
+use serde_json::json;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::OnceLock;
 use std::thread;
-use serde_json::json;
+use walkdir::WalkDir;
+use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 
 #[tauri::command]
 pub fn test_function() -> String {
@@ -788,7 +792,6 @@ impl<T: Copy, F: FnMut(T)> Drop for ScopeGuard<T, F> {
     }
 }
 
-
 // 在静态变量区域添加以下内容
 static IS_MONITORING: AtomicBool = AtomicBool::new(false);
 static IS_MOUSE_BUTTON_MONITORING: AtomicBool = AtomicBool::new(false);
@@ -809,7 +812,7 @@ pub fn start_key_listener(app: AppHandle) {
     // 如果线程还没启动，则启动它
     if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
         MONITOR_THREAD_STARTED.store(true, Ordering::SeqCst);
-        
+
         thread::spawn(move || {
             // rdev::listen 是阻塞的，会一直运行
             if let Err(error) = listen(move |event| {
@@ -820,19 +823,19 @@ pub fn start_key_listener(app: AppHandle) {
                         EventType::KeyRelease(key) => (format!("{:?}", key), "up"),
                         _ => ("".to_string(), ""), // 返回空字符串
                     };
-                    
+
                     if !key_name.is_empty() {
                         let payload = json!({
                             "key": key_name,
                             "type": event_type
                         });
-                        
+
                         if let Err(e) = app.emit("key-monitor-event", payload) {
                             eprintln!("❌ 发送键盘事件失败: {}", e);
                         }
                     }
                 }
-                
+
                 // 处理鼠标事件
                 handle_mouse_event(&app, &event);
             }) {
@@ -855,7 +858,7 @@ pub fn stop_key_listener() {
 pub fn start_mouse_button_listener(app: AppHandle) {
     println!("▶️ 开启鼠标按钮监听");
     IS_MOUSE_BUTTON_MONITORING.store(true, Ordering::SeqCst);
-    
+
     // 确保监听线程已启动
     if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
         // 如果监听线程没有启动，就启动它
@@ -868,10 +871,10 @@ pub fn start_mouse_button_listener(app: AppHandle) {
 pub fn start_mouse_move_listener(app: AppHandle) {
     println!("▶️ 开启鼠标移动监听");
     IS_MOUSE_MOVE_MONITORING.store(true, Ordering::SeqCst);
-    
+
     // 获取屏幕尺寸用于坐标归一化
     update_screen_size();
-    
+
     // 确保监听线程已启动
     if !MONITOR_THREAD_STARTED.load(Ordering::SeqCst) {
         // 如果监听线程没有启动，就启动它
@@ -904,14 +907,14 @@ fn update_screen_size() {
     // macOS 实现
     use cocoa::appkit::NSScreen;
     use cocoa::base::{id, nil};
-    
+
     unsafe {
         let main_screen = NSScreen::mainScreen(nil);
         let frame = NSScreen::frame(main_screen);
-        
+
         let width = frame.size.width as u32;
         let height = frame.size.height as u32;
-        
+
         SCREEN_WIDTH.store(width, Ordering::SeqCst);
         SCREEN_HEIGHT.store(height, Ordering::SeqCst);
         println!("📐 屏幕尺寸: {}x{}", width, height);
@@ -922,11 +925,11 @@ fn update_screen_size() {
 fn update_screen_size() {
     // Linux 实现（使用 xrandr）
     use std::process::Command;
-    
+
     match Command::new("xrandr").arg("--current").output() {
         Ok(output) => {
             let output_str = String::from_utf8_lossy(&output.stdout);
-            
+
             // 解析 xrandr 输出获取主屏幕尺寸
             for line in output_str.lines() {
                 if line.contains(" connected") {
@@ -936,10 +939,9 @@ fn update_screen_size() {
                         if part.contains('x') {
                             if let Some((width_str, rest)) = part.split_once('x') {
                                 if let Some((height_str, _)) = rest.split_once('+') {
-                                    if let (Ok(width), Ok(height)) = (
-                                        width_str.parse::<u32>(),
-                                        height_str.parse::<u32>(),
-                                    ) {
+                                    if let (Ok(width), Ok(height)) =
+                                        (width_str.parse::<u32>(), height_str.parse::<u32>())
+                                    {
                                         SCREEN_WIDTH.store(width, Ordering::SeqCst);
                                         SCREEN_HEIGHT.store(height, Ordering::SeqCst);
                                         println!("📐 屏幕尺寸: {}x{}", width, height);
@@ -951,7 +953,7 @@ fn update_screen_size() {
                     }
                 }
             }
-            
+
             // 如果没有找到，使用默认值
             SCREEN_WIDTH.store(1920, Ordering::SeqCst);
             SCREEN_HEIGHT.store(1080, Ordering::SeqCst);
@@ -971,21 +973,21 @@ fn update_screen_size() {
 fn normalize_mouse_position(x: f64, y: f64) -> (f64, f64) {
     let width = SCREEN_WIDTH.load(Ordering::SeqCst) as f64;
     let height = SCREEN_HEIGHT.load(Ordering::SeqCst) as f64;
-    
+
     if width == 0.0 || height == 0.0 {
         // 如果没获取到屏幕尺寸，返回0.5, 0.5
         return (0.5, 0.5);
     }
-    
+
     // 归一化到 [0, 1]
     let normalized_x = x / width;
     // 翻转Y轴，使左下角为原点
     let normalized_y = 1.0 - (y / height);
-    
+
     // 确保在[0, 1]范围内
     let clamped_x = normalized_x.clamp(0.0, 1.0);
     let clamped_y = normalized_y.clamp(0.0, 1.0);
-    
+
     (clamped_x, clamped_y)
 }
 
@@ -1001,25 +1003,30 @@ fn handle_mouse_event(app: &AppHandle, event: &rdev::Event) {
                     Button::Middle => "middle",
                     Button::Unknown(code) => {
                         // 处理未知按钮（通常是鼠标侧键）
-                        if *code == 4 { "back" }
-                        else if *code == 5 { "forward" }
-                        else if *code == 6 { "task" }
-                        else { "unknown" }
+                        if *code == 4 {
+                            "back"
+                        } else if *code == 5 {
+                            "forward"
+                        } else if *code == 6 {
+                            "task"
+                        } else {
+                            "unknown"
+                        }
                     }
                     _ => "other",
                 };
-                
+
                 let payload = json!({
                     "button": button_str,
                     "type": "down"
                 });
-                
+
                 if let Err(e) = app.emit("mouse-button-event", payload) {
                     eprintln!("❌ 发送鼠标按钮事件失败: {}", e);
                 }
             }
         }
-        
+
         // 鼠标按钮松开
         EventType::ButtonRelease(button) => {
             if IS_MOUSE_BUTTON_MONITORING.load(Ordering::SeqCst) {
@@ -1028,30 +1035,35 @@ fn handle_mouse_event(app: &AppHandle, event: &rdev::Event) {
                     Button::Right => "right",
                     Button::Middle => "middle",
                     Button::Unknown(code) => {
-                        if *code == 4 { "back" }
-                        else if *code == 5 { "forward" }
-                        else if *code == 6 { "task" }
-                        else { "unknown" }
+                        if *code == 4 {
+                            "back"
+                        } else if *code == 5 {
+                            "forward"
+                        } else if *code == 6 {
+                            "task"
+                        } else {
+                            "unknown"
+                        }
                     }
                     _ => "other",
                 };
-                
+
                 let payload = json!({
                     "button": button_str,
                     "type": "up"
                 });
-                
+
                 if let Err(e) = app.emit("mouse-button-event", payload) {
                     eprintln!("❌ 发送鼠标按钮事件失败: {}", e);
                 }
             }
         }
-        
+
         // 鼠标移动
         EventType::MouseMove { x, y } => {
             if IS_MOUSE_MOVE_MONITORING.load(Ordering::SeqCst) {
                 let (normalized_x, normalized_y) = normalize_mouse_position(*x, *y);
-                
+
                 let payload = json!({
                     "x": normalized_x,
                     "y": normalized_y,
@@ -1059,16 +1071,16 @@ fn handle_mouse_event(app: &AppHandle, event: &rdev::Event) {
                     "raw_y": y,
                     "type": "move"
                 });
-                
+
                 if let Err(e) = app.emit("mouse-move-event", payload) {
                     eprintln!("❌ 发送鼠标移动事件失败: {}", e);
                 }
             }
         }
-        
+
         // 忽略滚轮事件
         EventType::Wheel { .. } => {}
-        
+
         // 忽略其他事件
         _ => {}
     }
@@ -1086,7 +1098,7 @@ pub fn get_utils_dir_path(_app: AppHandle) -> Result<String, String> {
             }
         }
     }
-    
+
     // 方法2: 使用当前可执行文件所在目录（适用于所有环境）
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(dir_path) = exe_path.parent() {
@@ -1095,25 +1107,24 @@ pub fn get_utils_dir_path(_app: AppHandle) -> Result<String, String> {
             return Ok(canonical_path.to_string_lossy().replace("\\", "/"));
         }
     }
-    
+
     // 方法3: 使用当前工作目录作为备选
     if let Ok(current_dir) = std::env::current_dir() {
         return Ok(current_dir.to_string_lossy().replace("\\", "/"));
     }
-    
+
     Err("无法获取当前目录路径".to_string())
 }
 
-/**
- * 【新增命令】读取本地文件并返回 Base64 编码的字符串。
- * 用于将前端选择的本地图片文件转换为可上传的格式。
- * @param file_path: String - 文件的绝对路径。
- * @returns Base64 编码的字符串。
- */
+/// 读取本地文件并返回 Base64 编码的字符串，作为 Tauri command 暴露给前端调用。
+/// # Param
+/// file_path: String - 文件的绝对路径。
+/// # Returns
+/// Result<String, String> - 成功返回 Base64 编码的字符串，失败返回错误信息。
 #[tauri::command]
 pub async fn read_file_base64(file_path: String) -> Result<String, String> {
     use std::fs;
-    
+
     // 文件 I/O 是阻塞操作，因此使用 spawn_blocking 避免阻塞 Tauri 运行时
     tauri::async_runtime::spawn_blocking(move || {
         let path = Path::new(&file_path);
@@ -1124,41 +1135,247 @@ pub async fn read_file_base64(file_path: String) -> Result<String, String> {
 
         let mut file = fs::File::open(path).map_err(|e| format!("无法打开文件: {}", e))?;
         let mut buffer = Vec::new();
-        
+
         // 读取文件内容到缓冲区
-        file.read_to_end(&mut buffer).map_err(|e| format!("读取文件内容失败: {}", e))?;
-        
+        file.read_to_end(&mut buffer)
+            .map_err(|e| format!("读取文件内容失败: {}", e))?;
+
         // Base64 编码
         let base64_content = general_purpose::STANDARD.encode(buffer);
-        
+
         Ok(base64_content)
     })
     .await
     .map_err(|e| format!("异步任务执行失败: {}", e))?
 }
 
-/**
- * 【新增命令】将配置内容字符串写入本地配置文件。
- * 用于实现登录成功后从云端同步配置到本地。
- * @param content: String - 配置文件的内容 (JSON 字符串)。
- */
+/// 读取本地 smartpaste.db 文件并返回 Base64 编码的字符串，作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// Result<String, String> - 成功返回 Base64 编码的字符串，失败返回错误信息。
 #[tauri::command]
-pub async fn update_local_config_file(content: String) -> Result<(), String> {
+pub async fn read_db_file_base64() -> Result<String, String> {
+    use base64::{engine::general_purpose, Engine as _};
     use std::fs;
-    
-    // 文件 I/O 是阻塞操作
-    tauri::async_runtime::spawn_blocking(move || {
-        let config_path = crate::config::get_config_path(); // 假设 crate::config 模块提供了 get_config_path
-        
-        fs::write(&config_path, content)
-            .map_err(|e| format!("写入本地配置文件失败: {}", e))?;
-        
-        // 【关键】写入新配置后，需要重新加载配置到内存中，以便立即生效
-        let reload_msg = crate::config::reload_config(); 
-        println!("同步配置写入后，配置刷新结果: {}", reload_msg);
+    use std::io::Read;
 
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let db_path = root_path.join("smartpaste.db");
+
+        if !db_path.exists() {
+            return Err("本地数据库文件不存在".to_string());
+        }
+
+        let mut file = fs::File::open(db_path).map_err(|e| format!("无法打开数据库文件: {}", e))?;
+        let mut buffer = Vec::new();
+
+        file.read_to_end(&mut buffer)
+            .map_err(|e| format!("读取数据库文件失败: {}", e))?;
+
+        let base64_content = general_purpose::STANDARD.encode(buffer);
+
+        Ok(base64_content)
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+// -----------------------------------------------------
+// 文件同步相关辅助结构体
+// -----------------------------------------------------
+
+/// 用于前端接收本地文件列表，包含相对路径和绝对路径
+#[derive(Debug, Serialize)]
+pub struct LocalFileInfo {
+    relative_path: String,
+    file_path: String,
+}
+
+/// 获取本地剪贴板文件目录中的所有文件列表，作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// Result<Vec<LocalFileInfo>, String> - 成功返回文件信息列表，失败返回错误信息。
+#[tauri::command]
+pub async fn get_local_files_to_upload() -> Result<Vec<LocalFileInfo>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let files_dir = root_path.join("files");
+        let mut file_list: Vec<LocalFileInfo> = Vec::new();
+
+        if !files_dir.exists() {
+            return Ok(file_list); // 目录不存在，返回空列表
+        }
+
+        // 遍历 files 目录
+        for entry in walkdir::WalkDir::new(&files_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+
+            // 忽略目录本身
+            if path.is_dir() {
+                continue;
+            }
+
+            // 计算相对于 files_dir 的相对路径
+            let relative_path_os = path
+                .strip_prefix(&files_dir)
+                .map_err(|e| format!("计算相对路径失败: {}", e))?;
+
+            let relative_path = relative_path_os
+                .to_string_lossy()
+                .to_string()
+                .replace("\\", "/");
+            let absolute_path = path.to_string_lossy().to_string().replace("\\", "/");
+
+            file_list.push(LocalFileInfo {
+                relative_path,
+                file_path: absolute_path,
+            });
+        }
+
+        Ok(file_list)
+    })
+    .await
+    .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/// 将 Base64 内容解码并保存到本地剪贴板文件目录，作为 Tauri command 暴露给前端调用。
+/// # Param
+/// relative_path: String - 相对于 files/ 目录的路径。
+/// base64_content: String - 文件的 Base64 内容。
+/// # Returns
+/// Result<(), String> - 成功返回 Ok(())，失败返回错误信息。
+#[tauri::command]
+pub async fn save_clipboard_file(
+    relative_path: String,
+    base64_content: String,
+) -> Result<(), String> {
+    // use base64::{engine::general_purpose, Engine as _};
+    // use std::fs;
+    // use std::io::Write;
+    // use std::path::Path;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let root_path = crate::config::get_current_storage_path();
+        let files_dir = root_path.join("files");
+
+        // 目标绝对路径: {ROOT}/files/{RELATIVE_PATH}
+        let file_path = files_dir.join(&relative_path);
+
+        // 安全检查：防止相对路径包含 '..' 试图跳出目录 (Zip Slip 风险)
+        if file_path
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+        {
+            return Err("相对路径包含非法字符 '..'".to_string());
+        }
+
+        // 1. 确保父目录存在
+        if let Some(parent_dir) = file_path.parent() {
+            fs::create_dir_all(parent_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+        }
+
+        // 2. Base64 解码
+        let decoded_bytes = general_purpose::STANDARD
+            .decode(base64_content)
+            .map_err(|e| format!("Base64 解码失败: {}", e))?;
+
+        // 3. 写入文件
+        fs::write(&file_path, decoded_bytes).map_err(|e| format!("写入文件失败: {}", e))?;
+
+        println!("💾 文件保存成功: {}", relative_path);
         Ok(())
     })
     .await
     .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/// 前端文件结构体，包含文件名、Base64 数据和 MIME 类型。
+/// 用于将本地文件信息传递给前端。
+#[derive(serde::Serialize)]
+pub struct FrontendFile {
+    /// 文件名
+    name: String,
+    /// Base64 编码的数据
+    data: String,
+    /// MIME 类型
+    mime: String,
+}
+
+/// 读取本地文件并返回给前端（Base64 编码），包括文件名和 MIME 类型。
+/// 作为 Tauri command 暴露给前端调用。
+/// # Param
+/// file_path: String - 文件的绝对路径。
+/// # Returns
+/// Result<FrontendFile, String> - 成功返回包含文件信息的结构体，失败返回错误信息。
+/// # Example
+/// 前端使用示例：
+/// ```javascript
+/// import { invoke } from '@tauri-apps/api/tauri';
+/// ...
+/// async function getFileFromPath(filePath) {
+///     const { name, data, mime } = await invoke('read_file_to_frontend', { filePath });
+///     const res = await fetch(`data:${mime};base64,${data}`);
+///     const blob = await res.blob();
+///     return new File([blob], name, { type: mime });
+/// }
+/// ```
+#[tauri::command]
+pub async fn read_file_to_frontend(file_path: String) -> Result<FrontendFile, String> {
+    let path_buf = std::path::PathBuf::from(&file_path);
+    let path = path_buf.as_path();
+
+    if !path.exists() {
+        return Err(format!("文件不存在: {}", file_path));
+    }
+
+    let name = path
+        .file_name()
+        .ok_or("无法获取文件名")?
+        .to_string_lossy()
+        .to_string();
+
+    // 简单的 MIME 推断
+    let mime = match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("txt") => "text/plain",
+        Some("pdf") => "application/pdf",
+        Some("json") => "application/json",
+        Some("html") => "text/html",
+        Some("css") => "text/css",
+        Some("js") => "application/javascript",
+        Some("zip") => "application/zip",
+        _ => "application/octet-stream",
+    }
+    .to_string();
+
+    // 异步读取文件
+    let path_clone = path_buf.clone();
+    let content = tauri::async_runtime::spawn_blocking(move || {
+        let mut file = fs::File::open(path_clone).map_err(|e| e.to_string())?;
+        let mut buffer = Vec::new();
+        use std::io::Read;
+        file.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+        Ok::<Vec<u8>, String>(buffer)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let base64_data = general_purpose::STANDARD.encode(content);
+
+    Ok(FrontendFile {
+        name,
+        data: base64_data,
+        mime,
+    })
 }

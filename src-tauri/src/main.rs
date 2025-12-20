@@ -59,6 +59,7 @@ fn main() {
             utils::start_mouse_move_listener,
             utils::stop_mouse_listener,
             utils::get_utils_dir_path,
+            utils::read_file_to_frontend,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
@@ -73,7 +74,6 @@ fn main() {
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
             db::get_favorite_data_count,
-            // db::search_data,
             db::add_notes_by_id,
             db::filter_data_by_type,
             db::comprehensive_search,
@@ -89,19 +89,34 @@ fn main() {
             db::search_data_by_ocr_text,
             db::get_icon_data_by_item_id,
             db::mark_passwords_as_private,
+            db::prepare_encrypted_db_upload,
+            db::restore_from_encrypted_db,
             db::mark_bank_cards_as_private,
             db::mark_identity_numbers_as_private,
             db::mark_phone_numbers_as_private,
             db::clear_all_private_data,
             db::auto_mark_private_data,
             db::trigger_cleanup,
+            db::sync_cloud_data,
+            db::sync_encrypted_cloud_data,
+            db::encrypt_file,
+            db::decrypt_file,
+            db::generate_salt,
+            db::generate_dek,
+            db::derive_mk,
+            db::wrap_dek,
+            db::unwrap_dek,
+            db::top_data_by_id,
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
             config::set_config_item,
             config::get_config_item,
+            config::sync_and_apply_config,
             utils::read_file_base64,
-            utils::update_local_config_file,
+            utils::get_local_files_to_upload,
+            utils::read_db_file_base64,
+            utils::save_clipboard_file,
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录
@@ -126,11 +141,11 @@ fn main() {
             };
             // 接着使用提取出来的字符串进行逻辑处理
             if let Some(ref path_str) = custom_storage_path {
-                let custom_path = PathBuf::from(path_str);
-
                 // 规范化路径逻辑
                 #[cfg(target_os = "windows")]
                 let custom_path = PathBuf::from(path_str.replace("/", "\\"));
+                #[cfg(not(target_os = "windows"))]
+                let custom_path = PathBuf::from(path_str);
 
                 if !path_str.trim().is_empty() {
                     println!("✅ 检测到配置的存储路径: {}", custom_path.display());
@@ -231,6 +246,30 @@ fn main() {
                 }
             }
 
+            // 9. 获取OCR配置并初始化OCR引擎
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("👁️ 正在初始化 OCR 引擎...");
+
+                let provider = cfg.ocr_provider.clone();
+                let languages = cfg.ocr_languages.clone();
+
+                // 转换 Vec<String> 为 Vec<&str> 以匹配 configure_ocr 签名
+                let languages_ref: Option<Vec<&str>> = if let Some(ref langs) = languages {
+                    Some(langs.iter().map(|s| s.as_str()).collect())
+                } else {
+                    None
+                };
+
+                let confidence = cfg.ocr_confidence_threshold;
+                let timeout = cfg.ocr_timeout_secs;
+
+                match ocr::configure_ocr(provider, languages_ref, confidence, timeout) {
+                    Ok(msg) => println!("✅ OCR引擎初始化成功: {}", msg),
+                    Err(e) => eprintln!("❌ OCR引擎初始化失败: {}", e),
+                }
+            }
+
             // 打印当前配置的存储路径用于验证
             if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
@@ -281,27 +320,5 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("❌ 启动 Tauri 应用失败: {:?}", e);
-    }
-}
-
-// 辅助函数：切换窗口显示/隐藏
-fn toggle_window_visibility(window: &tauri::WebviewWindow) {
-    match window.is_visible() {
-        Ok(visible) => {
-            if visible {
-                if let Err(e) = window.hide() {
-                    eprintln!("❌ 隐藏窗口失败: {:?}", e);
-                } else {
-                    println!("👻 隐藏桌宠窗口");
-                }
-            } else {
-                if let Err(e) = window.show() {
-                    eprintln!("❌ 显示窗口失败: {:?}", e);
-                } else {
-                    println!("👀 显示桌宠窗口");
-                }
-            }
-        }
-        Err(e) => eprintln!("❌ 获取窗口可见性失败: {:?}", e),
     }
 }

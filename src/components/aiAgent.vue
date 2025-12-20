@@ -10,10 +10,31 @@
   >
     <!-- 对话框区域 -->
     <div 
-      v-if = "hasResponse || loading"
+      v-if = "hasResponse || loading || showQuestionInput"
       class="ai-response"
       :style="{ maxHeight: maxResponseHeight + 'px' }"
     >
+      <!-- 提问输入框区域 -->
+      <div v-if="showQuestionInput && !loading" class="question-input-area">
+        <input
+          ref="questionInputRef"
+          v-model="questionInput"
+          type="text"
+          placeholder="请输入您的问题..."
+          class="question-input"
+          @keyup.enter="submitQuestion"
+          @keyup.esc="cancelQuestion"
+        />
+        <div class="question-actions">
+          <button class="icon-btn-small" @click="submitQuestion" title="发送">
+            <PaperAirplaneIcon class="icon-default" />
+          </button>
+          <button class="icon-btn-small" @click="cancelQuestion" title="取消">
+            <XMarkIcon class="icon-default" />
+          </button>
+        </div>
+      </div>
+      
       <div class="response-content">
         <div v-if="loading" class="loading-indicator">
           <div class="loading-dots">
@@ -23,17 +44,24 @@
           </div>
           <span class="loading-text">AI正在思考...</span>
         </div>
-        <div v-else class="response-text">
-          {{ responseText }}
-        </div>
+        <!-- 修改这里：使用v-html渲染Markdown -->
+        <div 
+          v-else-if="hasResponse" 
+          class="response-text markdown-body"
+          v-html="formattedResponse"
+        ></div>
       </div>
-      <!-- 复制按钮 -->
-      <div v-if="hasResponse && !loading" class="response-actions">
+      
+      <!-- 响应操作按钮 -->
+      <div v-if="hasResponse && !loading && !showQuestionInput" class="response-actions">
         <button class="icon-btn-small" @click="copyResponse" title="复制回答">
           <Square2StackIcon class="icon-default" />
         </button>
         <button class="icon-btn-small" @click="clearResponse" title="清空">
           <XMarkIcon class="icon-default" />
+        </button>
+        <button v-if="hasResponse" class="icon-btn-small" @click="askFollowUp" title="继续提问">
+          <ChatBubbleLeftRightIcon class="icon-default" />
         </button>
       </div>
     </div>
@@ -57,19 +85,22 @@
     </div>
 
     <!-- 关闭按钮 -->
-    <button v-if = "!hasResponse && !loading" class="ai-close-btn" @click="closeAI">
+    <button v-if = "!hasResponse && !loading && !showQuestionInput" class="ai-close-btn" @click="closeAI">
       <XMarkIcon class="icon-default" />
     </button>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { Square2StackIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { Square2StackIcon, XMarkIcon, PaperAirplaneIcon, ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { marked } from 'marked' // 添加marked库用于Markdown解析
+import DOMPurify from 'dompurify' // 添加DOMPurify用于HTML净化
 import { updateAiWindowHeight } from '../utils/actions.js'
+import { apiService } from '../services/api'
 
 // Props
 const props = defineProps({
@@ -108,6 +139,16 @@ const mouseInTimer = ref(null) // 鼠标进入计时器
 const isMouseInside = ref(false) // 鼠标是否在区域内
 const aiAssistantRef = ref(null)
 
+// 提问相关状态
+const showQuestionInput = ref(false) // 是否显示提问输入框
+const questionInput = ref('') // 用户输入的问题
+const questionInputRef = ref(null) // 输入框引用
+const conversationHistory = ref([]) // 对话历史
+
+// 流式响应相关状态
+const isStreaming = ref(false) // 是否正在流式输出
+const streamingBuffer = ref('') // 流式缓冲区
+
 // 配置
 const maxResponseHeight = 400 // 最大响应高度
 const autoCloseDelay = 5000 // 自动关闭延迟(5秒)
@@ -121,13 +162,53 @@ const aiActions = ref([
   { id: 'translate', label: '翻译' },
   { id: 'search', label: '搜索' }
 ])
-/*
-// 监听内容变化，更新窗口高度
-watch([responseText, hasResponse], async () => {
-  console.log('内容发生变化')
-  updateWindowHeight()
+
+// 计算属性：将Markdown转换为安全的HTML
+const formattedResponse = computed(() => {
+  if (!responseText.value) return ''
+  
+  try {
+    // 配置marked选项
+    marked.setOptions({
+      breaks: true, // 启用换行符转换
+      gfm: true, // 启用GitHub风格的Markdown
+      highlight: (code, lang) => {
+        // 这里可以添加代码高亮功能
+        return `<pre><code class="language-${lang}">${escapeHtml(code)}</code></pre>`
+      }
+    })
+    
+    // 将Markdown转换为HTML
+    const rawHtml = marked(responseText.value)
+    
+    // 净化HTML，防止XSS攻击
+    return DOMPurify.sanitize(rawHtml, {
+      ALLOWED_TAGS: [
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'p', 'br', 'hr',
+        'strong', 'b', 'em', 'i', 'u', 's', 'del',
+        'code', 'pre', 'blockquote',
+        'ul', 'ol', 'li',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'a', 'img',
+        'div', 'span'
+      ],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'class', 'id']
+    })
+  } catch (error) {
+    console.error('Markdown解析失败:', error)
+    // 如果解析失败，返回原始文本
+    return escapeHtml(responseText.value)
+  }
 })
-*/
+
+// 辅助函数：HTML转义
+const escapeHtml = (text) => {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
 // 更新窗口高度
 const updateWindowHeight = async () => {  
   // 获取组件的实际高度
@@ -224,57 +305,217 @@ const handleMouseEnter = () => {
 // 执行AI操作
 const executeAI = async (action) => {
   if (loading.value) return
-  console.log('执行AI操作:', action)
-  loading.value = true
+
   currentAction.value = action
+
+  // 对于提问按钮，显示输入框而不是直接调用API
+  if (action === 'question') {
+    showQuestionInput.value = true
+    hasResponse.value = true
+    isTransparent.value = false
+    
+    // 设置输入框默认值（可选）
+    questionInput.value = ''
+    
+    // 延迟聚焦输入框
+    nextTick(() => {
+      if (questionInputRef.value) {
+        questionInputRef.value.focus()
+        // 选中所有文本
+        questionInputRef.value.select()
+      }
+    })
+    
+    return
+  }
+
+  await useAi()
+}
+
+// 提交用户提问
+const submitQuestion = async () => {
+  if (!questionInput.value.trim() || loading.value) return
+  
+  console.log('提交问题:', questionInput.value)
+  showQuestionInput.value = false
+  
+  try {
+    let aiChatSuccess = await useAi()
+
+    if (aiChatSuccess) {
+      // 这里可以添加对话历史的处理
+    }
+    
+  } catch (error) {
+    console.error('AI调用失败:', error)
+  } finally {
+    loading.value = false
+    questionInput.value = '' // 清空输入框
+  }
+}
+
+// 调用ai的api
+const useAi = async () => {
+  console.log('执行AI操作:', currentAction.value)
+  loading.value = true
+  isStreaming.value = true
   hasResponse.value = true
   isTransparent.value = false
   
+  // 清空之前的响应
+  responseText.value = ''
+  streamingBuffer.value = ''
+
   try {
-    // 准备请求数据
-    const requestData = {
-      action: action,
-      content: props.clipboardContent.substring(0, maxContentLength),
-      content_type: props.clipboardType
+    var formdata = new FormData();
+    let type = ''
+    let content = clipboardContent.value
+    let userQuest = ''
+    
+    // 根据action类型设置不同的参数
+    switch(currentAction.value) {
+      case 'question':
+        userQuest = '请用Markdown格式回答以下问题：' + questionInput.value
+        break
+        
+      case 'summarize':
+        userQuest = '请用Markdown格式总结以下内容：'
+        break
+        
+      case 'translate':
+        userQuest = '请将以下内容翻译成中文，使用Markdown格式：'
+        break
+        
+      case 'search':
+        userQuest = `请给出以下与内容相关的网址，使用Markdown格式：`
+        break       
     }
     
-    // 调用后端API
-    //const response = await invoke('call_ai_api', requestData)
-    
-    /*
-    // 处理响应
-    if (response && response.success) {
-      responseText.value = response.result || 'AI未返回有效内容'
+    if (clipboardType.value === 'text') {
+      formdata.append("type", 'text')
+      formdata.append("content", content)
+      formdata.append("user_quest", userQuest)
+    }
+    else if (clipboardType.value === 'file') {
+      formdata.append("type", 'file')
+      formdata.append("content", '')
+      formdata.append("user_quest", userQuest)
+
+      // 读取文件内容为 Base64 编码字符串
+      const osPath = await invoke('get_config_item', { key: 'storage_path'})
+      let filePath = osPath.replace(/\//g, '\\') + '\\' + clipboardContent.value
+      console.log('获取的文件路径：', filePath)
+      let base64Content = null;
+      try {
+          base64Content = await invoke('read_file_base64', { filePath });
+      } catch (e) {
+          console.error('读取本地文件失败:', e);
+          showMessage('读取本地文件失败，请确保 Rust 命令已实现', 'error');
+          return;
+      }
+      const fileName = filePath.substring(filePath.lastIndexOf('\\') + 1)
       
-      // 如果是流式响应，这里可以处理实时更新
-      if (response.streaming) {
-        // 模拟实时更新（实际使用时需要根据后端API调整）
-        simulateStreamingResponse(response.result)
+      // 将 Base64 转换为 File 对象
+      const base64Data = base64Content.split(',').pop();
+      const binaryString = atob(base64Data);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      // 创建 File 对象，供 fetch API 上传
+      const fileObject = new File([bytes], fileName);
+      console.log('文件：', fileObject)
+      formdata.append('file', fileObject, fileObject.name); 
+    }
+    
+    // ai的其他参数
+    const aiProvider = await invoke('get_config_item', { key: 'ai_provider'})
+    const aiApiKey = await invoke('get_config_item', { key: 'ai_api_key'})
+    const aiModel = await invoke('get_config_item', { key: 'ai_model'})
+    const aiBaseUrl = await invoke('get_config_item', { key: 'ai_base_url'})
+    const aiTemperature = await invoke('get_config_item', { key: 'ai_temperature'})
+
+    let aiConfig = null
+    if (aiProvider === 'default') {
+      aiConfig = {
+        model: aiModel,
+        ai_temperature: aiTemperature
       }
     } else {
-      responseText.value = response?.error || 'AI处理失败'
-    }*/
-    responseText.value = '这是一条模拟ai回复，用于展示AI助手的功能。实际使用时，请根据后端API返回的内容进行显示。'
+      aiConfig = {
+        api_key: aiApiKey,
+        base_url: aiBaseUrl,
+        model: aiModel,
+        ai_temperature: aiTemperature
+      }
+    }
+
+    formdata.append('provider', aiProvider)
+    formdata.append('ai_config', JSON.stringify(aiConfig))
+
+    // 修改请求，告诉API我们需要Markdown格式的回复
+    formdata.append('response_format', 'markdown')
+
+    const response = await apiService.aiChat(formdata, (chunk, fullText) => {
+      loading.value = false
+      // 流式输出回调
+      streamingBuffer.value += chunk
+      responseText.value = streamingBuffer.value
+      
+      // 如果内容很多，自动滚动到底部
+      nextTick(() => {
+        const responseEl = aiAssistantRef.value?.querySelector('.ai-response')
+        if (responseEl) {
+          responseEl.scrollTop = responseEl.scrollHeight
+        }
+      })
+    })
+
+    if (response.success) {
+      // 如果流式输出过程中没有设置响应文本，使用最终结果
+      if (!responseText.value && response.data?.reply) {
+        responseText.value = response.data.reply
+      }
+      return true
+    } else {
+      responseText.value = response.data || 'AI处理失败'
+    }
   } catch (error) {
     console.error('AI调用失败:', error)
     responseText.value = `AI服务错误: ${error.message || '未知错误'}`
   } finally {
     loading.value = false
   }
+
+  return false
 }
 
-// 模拟流式响应（实际使用时根据后端API实现）
-const simulateStreamingResponse = (text) => {
-  responseText.value = ''
-  let index = 0
-  const interval = setInterval(() => {
-    if (index < text.length) {
-      responseText.value += text.charAt(index)
-      index++
-    } else {
-      clearInterval(interval)
+// 取消提问
+const cancelQuestion = () => {
+  showQuestionInput.value = false
+  questionInput.value = ''
+  
+  // 如果没有响应文本，可以关闭响应区域
+  if (!responseText.value) {
+    hasResponse.value = false
+    if (!isMouseInside.value) {
+      startAutoCloseTimer()
     }
-  }, 20)
+  }
+}
+
+// 继续提问（跟进问题）
+const askFollowUp = () => {
+  showQuestionInput.value = true
+  hasResponse.value = true
+  
+  // 延迟聚焦输入框
+  nextTick(() => {
+    if (questionInputRef.value) {
+      questionInputRef.value.focus()
+    }
+  })
 }
 
 // 复制AI回复
@@ -292,6 +533,10 @@ const copyResponse = async () => {
 const clearResponse = () => {
   responseText.value = ''
   hasResponse.value = false
+  showQuestionInput.value = false
+  questionInput.value = ''
+  conversationHistory.value = []
+  
   if (!isMouseInside.value) {
     startAutoCloseTimer()
   }
@@ -304,6 +549,9 @@ const resetAI = () => {
   loading.value = false
   currentAction.value = ''
   isTransparent.value = true
+  showQuestionInput.value = false
+  questionInput.value = ''
+  conversationHistory.value = []
 }
 
 // 关闭AI界面
@@ -328,6 +576,7 @@ onMounted( async () => {
   const latestData = JSON.parse(jsonString)
   clipboardContent.value = latestData.content
   clipboardType.value = latestData.item_type
+  console.log('接收到的信息：', clipboardType.value, clipboardContent.value)
 
   // 创建 ResizeObserver 监听元素尺寸变化
   resizeObserver = new ResizeObserver( async (entries) => {
@@ -380,6 +629,40 @@ defineExpose({
 
 .ai-assistant.transparent:hover {
   opacity: 1;
+}
+
+/* 提问输入框区域 */
+.question-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e1e8ed;
+  background: white;
+}
+
+.question-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.question-input:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.question-input::placeholder {
+  color: #999;
+}
+
+.question-actions {
+  display: flex;
+  gap: 4px;
 }
 
 /* 响应区域 */
@@ -440,13 +723,180 @@ defineExpose({
   font-size: 14px;
 }
 
-/* 响应文本 */
-.response-text {
+/* 响应文本 - 修改为Markdown样式 */
+.response-text.markdown-body {
   font-size: 14px;
   line-height: 1.6;
   color: #333;
-  white-space: pre-wrap;
-  word-break: break-word;
+}
+
+/* Markdown样式 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-body h1 {
+  font-size: 1.5em;
+  color: #24292e;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h2 {
+  font-size: 1.25em;
+  color: #24292e;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h3 {
+  font-size: 1.1em;
+  color: #24292e;
+}
+
+.markdown-body h4 {
+  font-size: 1em;
+  color: #24292e;
+}
+
+.markdown-body h5 {
+  font-size: 0.875em;
+  color: #6a737d;
+}
+
+.markdown-body h6 {
+  font-size: 0.85em;
+  color: #6a737d;
+}
+
+.markdown-body p {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.markdown-body blockquote {
+  margin: 0;
+  padding: 0 1em;
+  color: #6a737d;
+  border-left: 0.25em solid #dfe2e5;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin-top: 0;
+  margin-bottom: 16px;
+  padding-left: 2em;
+  color: #333;
+}
+
+.markdown-body li {
+  margin-bottom: 0.25em;
+}
+
+.markdown-body li > p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.markdown-body code {
+  padding: 0.2em 0.4em;
+  margin: 0;
+  font-size: 85%;
+  background-color: rgba(27, 31, 35, 0.05);
+  border-radius: 3px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  color: #e83e8c;
+}
+
+.markdown-body pre {
+  padding: 12px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  background-color: #f6f8fa;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.markdown-body pre code {
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  border: 0;
+  font-size: 100%;
+  color: #333;
+}
+
+.markdown-body a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+  color: #0056b3;
+}
+
+.markdown-body strong,
+.markdown-body b {
+  font-weight: 600;
+  color: #24292e;
+}
+
+.markdown-body em,
+.markdown-body i {
+  font-style: italic;
+  color: #24292e;
+}
+
+.markdown-body hr {
+  height: 0.25em;
+  padding: 0;
+  margin: 24px 0;
+  background-color: #e1e4e8;
+  border: 0;
+  border-radius: 2px;
+}
+
+.markdown-body table {
+  display: block;
+  width: 100%;
+  overflow: auto;
+  margin-top: 0;
+  margin-bottom: 16px;
+  border-spacing: 0;
+  border-collapse: collapse;
+}
+
+.markdown-body th {
+  font-weight: 600;
+  background-color: #f6f8fa;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 6px 13px;
+  border: 1px solid #dfe2e5;
+}
+
+.markdown-body tr {
+  background-color: #fff;
+  border-top: 1px solid #c6cbd1;
+}
+
+.markdown-body tr:nth-child(2n) {
+  background-color: #f6f8fa;
 }
 
 /* 响应操作按钮 */

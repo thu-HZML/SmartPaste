@@ -16,6 +16,54 @@ import {
 } from '@heroicons/vue/24/outline'
 import { togglePrivateWindow } from '../utils/actions.js'
 
+const base64ToBlob = (base64Content, mimeType) => {
+  const byteString = atob(base64Content);
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([ab], { type: mimeType });
+}
+
+// 导出 executeCloudPush 函数 (核心同步逻辑，不包含 UI 交互)
+export const executeCloudPush = async () => {
+  // 权限检查
+  if (!localStorage.getItem('token')) {
+    throw new Error('未登录');
+  }
+
+  try {
+    // 1. 同步配置
+    const configTxt = await invoke('get_config_json'); 
+    const configRes = await apiService.uploadConfig(configTxt);
+    if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
+
+    // 2. 同步数据库
+    const dbBase64 = await invoke('read_db_file_base64');
+    const dbBlob = base64ToBlob(dbBase64, 'application/x-sqlite3');
+    const dbRes = await apiService.pushSqliteDatabase(dbBlob);
+    if (!dbRes.success) throw new Error(`数据库推送失败: ${dbRes.message}`);
+
+    // 3. 同步文件
+    const localFiles = await invoke('get_local_files_to_upload');
+    for (const fileInfo of localFiles) {
+      const content = await invoke('read_file_base64', { filePath: fileInfo.file_path });
+      const blob = base64ToBlob(content, 'application/octet-stream');
+      
+      const fileRes = await apiService.uploadClipboardFile(blob, fileInfo.relative_path);
+      if (!fileRes.success) {
+        console.warn(`文件上传失败 (${fileInfo.relative_path}):`, fileRes.message);
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('后台同步执行出错:', error);
+    throw error;
+  }
+};
+
 export function usePreferences() {
   const router = useRouter()
   const currentWindow = getCurrentWindow();
@@ -43,6 +91,7 @@ export function usePreferences() {
 
   // 窗口关闭监听器
   let firstCloseWindow = true
+  let unlistenCloseRequested = null
   
   // 注册表单数据
   const registerData = reactive({
@@ -54,7 +103,7 @@ export function usePreferences() {
   
   // 登录表单数据
   const loginData = reactive({
-    email: '',
+    username: '',
     password: ''
   })
 
@@ -253,19 +302,31 @@ export function usePreferences() {
         showMessage('注册成功！', 'success')
         console.log('登录成功返回信息:', response.data)
         
-        // 保存用户信息到本地存储
-        if (response.data) {
-          localStorage.setItem('user', JSON.stringify(response.data))
-          userLoggedIn.value = true
-          userEmail.value = response.data.user.email || registerData.email
-          userInfo.username = response.data.user.username || registerData.username
-          userInfo.email = response.data.user.email || registerData.email
-          userInfo.bio = response.data.user.bio 
-        }
-        
         // 关闭注册对话框
         showRegisterDialog.value = false
-        
+
+        const responselogin = await apiService.login({
+        username: registerData.username,
+        password: registerData.password
+        })
+
+        if (responselogin.success) {
+          // 登录成功
+          showMessage('登录成功！', 'success')
+          console.log('登录成功返回信息:', responselogin.data)
+          // 保存用户信息到本地存储
+          if (responselogin.data) {
+            localStorage.setItem('user', JSON.stringify(responselogin.data))
+            userLoggedIn.value = true
+            userEmail.value = responselogin.data.user.email || loginData.email
+            userInfo.username = responselogin.data.user.username || '当前用户'
+            userInfo.email = responselogin.data.user.email || loginData.email
+            userInfo.bio = responselogin.data.user.bio
+            userInfo.avatar = responselogin.data.user.avatar || ''
+          }
+          loadUsername()
+        }
+
         // 清空表单数据
         Object.assign(registerData, {
           username: '',
@@ -340,7 +401,6 @@ export function usePreferences() {
         // 保存用户信息到本地存储
         if (response.data) {
           localStorage.setItem('user', JSON.stringify(response.data))
-          localStorage.setItem('token', response.data.token || '')
           userLoggedIn.value = true
           userEmail.value = response.data.user.email || loginData.email
           userInfo.username = response.data.user.username || '当前用户'
@@ -351,10 +411,11 @@ export function usePreferences() {
         loadUsername()
         // 关闭登录对话框
         showLoginDialog.value = false
+        await handleCloudPull(true);
         
         // 清空表单数据
         Object.assign(loginData, {
-          email: '',
+          username: '',
           password: ''
         })
       } else {
@@ -978,6 +1039,7 @@ const updateRetentionDays = async () => {
       
       // 获取文件信息
       const filePath = Array.isArray(selectedPath) ? selectedPath[0] : selectedPath
+      console.log('获取的头像路径：', filePath)
       const fileName = filePath.substring(filePath.lastIndexOf('\\') + 1)
       const fileExtension = fileName.split('.').pop().toLowerCase()
       const mimeType = {
@@ -1094,6 +1156,93 @@ const updateRetentionDays = async () => {
     }
   }
 
+  /**
+   * 云端推送/上传主函数 (直接对接后端接口)
+   */
+  const handleCloudPush = async () => {
+    if (isSyncing.value) return;
+    
+    // 权限预检查
+    if (!localStorage.getItem('token')) {
+      showMessage('请先登录后进行同步', 'error');
+      return;
+    }
+
+    isSyncing.value = true;
+    
+    try {
+      showMessage('正在推送数据至云端...', 'info');
+      await executeCloudPush();
+
+      // 成功处理
+      showMessage('云端数据推送成功！', 'success');
+      lastSyncTime.value = Date.now();
+      localStorage.setItem('lastSyncTime', lastSyncTime.value);
+
+    } catch (error) {
+      // 错误处理逻辑：打印日志并反馈给用户
+      console.error('云端推送错误:', error);
+      showMessage(error.message || '网络同步出错，请检查连接', 'error');
+    } finally {
+      isSyncing.value = false;
+    }
+  };
+
+  const handleCloudPull = async (isSilent = false) => {
+    if (isSyncing.value) return;
+    isSyncing.value = true;
+    try {
+      if (!isSilent) showMessage('正在同步云端数据...', 'info');
+
+      // 1. 下载配置
+      const configRes = await apiService.downloadConfig();
+      if (configRes.success && configRes.data) {
+        await invoke('sync_and_apply_config', { content: configRes.data });
+      }
+
+      // 2. 下载数据库 (Blob 转 Base64 传给 Rust 写入)
+      const dbRes = await apiService.getSqliteDatabaseAsJson();
+      if (dbRes.success && dbRes.data && dbRes.data.data) {
+        console.log("正在同步数据库 JSON 数据...", dbRes.data);
+        // 将整个数据对象转为 JSON 字符串传给 Rust
+        const jsonString = JSON.stringify(dbRes.data);
+        await invoke('sync_cloud_data', { jsonData: jsonString });
+      }
+
+      // 3. 下载剪贴板媒体文件 (镜像同步)
+      const listRes = await apiService.getCloudFileList();
+      if (listRes.success) {
+        const serverPaths = listRes.data.map(item => item.relative_path);
+        for (const item of listRes.data) {
+          // 直接通过 Web URL 下载 Blob
+          const fileUrl = ensureAbsoluteAvatarUrl(item.file);
+          const fileBlob = await fetch(fileUrl, {
+            headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
+          }).then(r => r.blob());
+          
+          // 转 Base64 传给 Rust 保存
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result.split(',')[1];
+            await invoke('save_clipboard_file', { relativePath: item.relative_path, base64Content: base64 });
+          };
+          reader.readAsDataURL(fileBlob);
+        }
+        // 清理本地不在云端的文件 (镜像清理)
+        //await invoke('clean_local_files', { serverPaths });
+      }
+
+      lastSyncTime.value = Date.now();
+      localStorage.setItem('lastSyncTime', lastSyncTime.value);
+      if (!isSilent) showMessage('云端数据拉取成功', 'success');
+    } catch (error) {
+      console.error('拉取失败:', error);
+      if (!isSilent) showMessage('同步拉取失败', 'error');
+    } finally {
+      isSyncing.value = false;
+    }
+  };
+
   // 辅助方法
   const getAIServiceName = (service) => {
     const serviceMap = {
@@ -1162,6 +1311,16 @@ const updateRetentionDays = async () => {
     }
   }
 
+  const base64ToBlob = (base64Content, mimeType) => {
+      const byteString = atob(base64Content);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeType });
+  }
+
   // 生命周期
   onMounted(async () => {
     // 检查本地存储中是否有用户信息
@@ -1180,6 +1339,17 @@ const updateRetentionDays = async () => {
     } catch (error) {
       console.error('加载用户信息失败:', error)
     }
+
+    // 从URL参数设置初始导航项
+    const urlParams = new URLSearchParams(window.location.search);
+    const navFromUrl = urlParams.get('nav');
+    if (navFromUrl) {
+      activeNav.value = navFromUrl;
+    }
+
+    onUnmounted(() => {
+      if (unlisten) unlisten();
+    });
 
     // 设置窗口关闭监听器
     unlistenCloseRequested = await setupWindowCloseListener()
@@ -1272,6 +1442,7 @@ const updateRetentionDays = async () => {
     manualSync,
     syncNow,
     checkSyncStatus,
+    handleCloudPush,
 
     // 用户管理方法
     changeAvatar,

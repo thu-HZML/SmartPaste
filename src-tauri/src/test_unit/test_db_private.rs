@@ -3,22 +3,19 @@ use crate::clipboard::ClipboardItem;
 use rusqlite::Connection;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 
 // --- 测试辅助函数 ---
 
-static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
 }
+
+use uuid::Uuid;
 
 fn set_test_db_path() {
     let mut p = std::env::temp_dir();
-    p.push("smartpaste_test_private.db"); // 使用独立的文件名
+    let filename = format!("smartpaste_test_private_{}.db", Uuid::new_v4());
+    p.push(filename); // 使用独立的文件名
     set_db_path(p);
     let _ = crate::clipboard::take_last_inserted();
 }
@@ -26,7 +23,14 @@ fn set_test_db_path() {
 fn clear_db_file() {
     let p: PathBuf = get_db_path();
     if p.exists() {
-        let _ = fs::remove_file(p);
+        for _ in 0..5 {
+            if fs::remove_file(&p).is_ok() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // Try one last time and panic if fails
+        fs::remove_file(&p).expect("failed to remove test db file");
     }
 }
 
@@ -305,3 +309,66 @@ fn test_clear_all_private_data() {
     let json = get_data_by_id(&item1.id).unwrap();
     assert_ne!(json, "null", "Actual data item should still exist");
 }
+
+#[test]
+fn test_encrypted_db_upload_and_restore() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据
+    let item1 = make_item("enc-1", "Secret Content 1", "Note 1");
+    let item2 = make_item("enc-2", "Public Content 2", "Note 2");
+    
+    insert_received_db_data(item1.clone()).unwrap();
+    insert_received_db_data(item2.clone()).unwrap();
+
+    // 2. 准备密钥 (32 bytes hex)
+    // "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+    let dek_hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f".to_string();
+
+    // 3. 生成加密 DB
+    let encrypted_b64 = prepare_encrypted_db_upload(dek_hex.clone())
+        .expect("Failed to prepare encrypted db");
+    
+    assert!(!encrypted_b64.is_empty());
+
+    // 4. 模拟数据丢失 (清空当前 DB)
+    clear_db_file();
+    // 重新初始化空 DB 以便验证它确实是空的
+    let db_path = get_db_path();
+    init_db(&db_path).unwrap();
+    {
+        let conn = Connection::open(&db_path).unwrap();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM data", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0, "DB should be empty before restore");
+    }
+
+    // 5. 恢复 DB
+    restore_from_encrypted_db(dek_hex, encrypted_b64)
+        .expect("Failed to restore from encrypted db");
+
+    // 6. 验证数据
+    let conn = Connection::open(&db_path).unwrap();
+    
+    // 验证 item1
+    let (content1, notes1): (String, String) = conn.query_row(
+        "SELECT content, notes FROM data WHERE id = ?1",
+        [&item1.id],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).expect("Item 1 not found after restore");
+    
+    assert_eq!(content1, item1.content);
+    assert_eq!(notes1, item1.notes);
+
+    // 验证 item2
+    let (content2, notes2): (String, String) = conn.query_row(
+        "SELECT content, notes FROM data WHERE id = ?1",
+        [&item2.id],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).expect("Item 2 not found after restore");
+    
+    assert_eq!(content2, item2.content);
+    assert_eq!(notes2, item2.notes);
+}
+

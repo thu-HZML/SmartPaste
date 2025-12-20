@@ -138,12 +138,10 @@ export function useClipboardApp() {
           endTimestamp: endTimestamp
         })
       } else {
-        console.log('开始新搜索:', searchQuery.value, activeCategory.value)
         result = await invoke('comprehensive_search', { 
           query: searchQuery.value,
           itemType: currentCategory
         })
-        console.log('搜索结果为：', result)
       }
       
       filteredHistory.value = JSON.parse(result)
@@ -203,9 +201,52 @@ export function useClipboardApp() {
         await invoke('write_file_to_clipboard', { filePath: filePath })
         showMessage(`已复制文件: ${getFileName(item.content)}`)
       }
+
+      // 将复制的项目置顶并选中
+      const autoSort = await invoke('get_config_item', {
+        key: 'auto_sort'
+      })
+      if (autoSort) {
+        await moveItemToTopAndSelect(item.id)
+      }     
     } catch (error) {
       console.error('复制失败:', error)
       showMessage(`复制失败: ${error}`)
+    }
+  }
+
+  // 将项目置顶并选中
+  const moveItemToTopAndSelect = async (itemId) => {
+    try {
+      // 找到项目在当前列表中的索引
+      const index = filteredHistory.value.findIndex(item => item.id === itemId)
+      if (index !== -1) {
+        // 从原位置移除项目
+        const [item] = filteredHistory.value.splice(index, 1)
+        
+        // 更新项目的时间戳为当前时间（使其在排序时最新）
+        item.timestamp = new Date().getTime()
+        
+        // 将项目添加到数组开头（顶部显示）
+        filteredHistory.value.push(item)
+        
+        // 在数据库中置顶该项目
+        await invoke('top_data_by_id', {
+          id: itemId
+        })
+        console.log('已置顶：', itemId)
+
+        // 等待 DOM 更新后聚焦
+        await nextTick()
+
+        // 使用 DOM 选择器找到元素并聚焦
+        const element = document.querySelector(`#history-item-${itemId}`)
+        if (element) {
+          element.focus()
+        }
+      }
+    } catch (error) {
+      console.error('置顶选中操作失败:', error)
     }
   }
 
@@ -289,13 +330,23 @@ export function useClipboardApp() {
   // 删除所有历史记录
   const deleteAllHistory = async () => {
     try {
-      if (settings.keep_favorites_on_delete) {
-        await invoke('delete_unfavorited_data')
-        showMessage('已清除所有未收藏记录')
-      } else {
-        await invoke('delete_all_data')
-        showMessage('已清除所有历史记录')
+      let currentCategory = activeCategory.value
+      if (currentCategory === 'all') {
+        currentCategory = null
       }
+      else if (currentCategory === 'favorite'){
+        return
+      }
+      else if (currentCategory === 'folder') {
+        currentCategory = currentFolder.value.id
+      }
+
+      await invoke('delete_all_data', {
+        itemType: currentCategory,
+        keepFavorites: settings.keep_favorites_on_delete
+      })
+
+      showMessage('已清除记录')
       handleSearch()
     } catch(err) {
       console.error('清除历史记录失败:', err)
