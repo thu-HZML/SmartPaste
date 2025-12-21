@@ -538,20 +538,36 @@
 
             <div class="setting-item">
               <div class="setting-info">
-                <h3>同步内容类型</h3>
-                <p>同步(仅文本 / 包含图片 / 包含文件)</p>
+                <h3>加密同步数据</h3>
+                <p>使用端到端加密 (E2EE) 保护您的数据，服务器无法查看内容</p>
               </div>
               <div class="setting-control">
-                <select 
-                  v-model="settings.sync_content_type" 
-                  @change="updateSetting('sync_content_type', $event.target.value)" 
-                  class="select-input"
-                >
-                  <option value="onlytxt">仅文本</option>
-                  <option value="containphoto">包含图片</option>
-                  <option value="containfile">包含文件</option>
-                </select>
+                <label class="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.encrypt_cloud_data" 
+                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
+                  >
+                  <span class="slider"></span>
+                </label>
               </div>
+            </div>
+
+            <div v-if="settings.encrypt_cloud_data" class="encryption-status-panel">   
+              <div v-if="securityStore.hasDek()" class="status-ok">
+                <span class="icon">🔒</span> 
+                <span>密钥已激活，数据传输安全</span>
+              </div>
+            
+              <div v-else class="status-warning">
+                <div class="warning-text">
+                  <span class="icon">⚠️</span>
+                  <span>密钥未加载，无法同步数据</span>
+                </div>
+                <button class="btn btn-small btn-secondary" @click="restoreKeysManually">
+                  验证密码以恢复
+                </button>
+              </div>            
             </div>
             
             <div class="account-status" v-if="!userLoggedIn">
@@ -837,6 +853,7 @@
 
 <script setup>
 import { usePreferences } from '../composables/Preferences'
+import { useSecurityStore } from '../stores/security'
 
 const {
   // 状态
@@ -925,6 +942,9 @@ const {
   syncNow,
   checkSyncStatus,
   handleCloudPush,
+  restoreKeysManually,
+  handleCloudPull,
+  securityStore,
 
   // 用户管理方法
   changeAvatar,
@@ -1850,6 +1870,41 @@ input:checked + .slider:before {
   text-align: center;
   font-size: 14px;
   color: #2c3e50;
+}
+
+.encryption-status-panel {
+  margin-top: -10px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+  font-size: 13px;
+}
+
+.status-ok {
+  color: #27ae60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.status-warning {
+  color: #e67e22;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.warning-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  font-size: 16px;
 }
 
 </style>
