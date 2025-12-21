@@ -479,13 +479,7 @@
           <h2>云端同步</h2>
           
           <!-- 同步状态显示 -->
-          <div class="sync-status" v-if="userLoggedIn">
-            <div class="status-item">
-              <span class="status-label">同步状态:</span>
-              <span class="status-value" :class="{'success': lastSyncStatus === 'success', 'error': lastSyncStatus === 'error'}">
-                {{ lastSyncStatus === 'success' ? '同步成功' : lastSyncStatus === 'error' ? '同步失败' : '未同步' }}
-              </span>
-            </div>
+          <div class="sync-status" v-if="userLoggedIn && settings.cloud_sync_enabled">           
             <div class="status-item">
               <span class="status-label">上次同步时间:</span>
               <span class="status-value">
@@ -499,7 +493,7 @@
             </div>
           </div>
 
-          <div class="setting-item">
+          <div class="setting-item" :class="{ 'no-border': settings.cloud_sync_enabled }">
             <div class="setting-info">
               <h3>启用云端同步</h3>
               <p>将剪贴板历史同步到云端，跨设备访问</p>
@@ -509,7 +503,7 @@
                 <input 
                   type="checkbox" 
                   :checked="settings.cloud_sync_enabled" 
-                  @change="updateSetting('cloud_sync_enabled', $event.target.checked)"
+                  @change="handleCloudSyncToggle"
                 >
                 <span class="slider"></span>
               </label>
@@ -570,19 +564,6 @@
               </div>            
             </div>
             
-            <div class="account-status" v-if="!userLoggedIn">
-              <p>您尚未登录，请登录以启用云端同步功能</p>  
-              <div class="account-buttons">
-                <button class="btn btn-secondary" @click="activeNav = 'user'">前往用户信息</button>
-              </div>            
-            </div>
-            
-            <div class="account-status" v-else>
-              <p>已登录为: {{ userEmail }}</p>
-              <div class="account-buttons">
-                <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -854,6 +835,7 @@
 <script setup>
 import { usePreferences } from '../composables/Preferences'
 import { useSecurityStore } from '../stores/security'
+import { watch } from 'vue'
 
 const {
   // 状态
@@ -894,6 +876,9 @@ const {
   changePasswordData,
   changePasswordErrors,
   changePasswordLoading,
+
+  // 安全相关状态
+  securityStore,
 
   // 基础方法
   setActiveNav,
@@ -937,6 +922,7 @@ const {
   showPrivate,
   
   // 云端同步方法
+  handleCloudSyncToggle,
   formatTime,
   manualSync,
   syncNow,
@@ -944,7 +930,6 @@ const {
   handleCloudPush,
   restoreKeysManually,
   handleCloudPull,
-  securityStore,
 
   // 用户管理方法
   changeAvatar,
@@ -1357,8 +1342,8 @@ input:checked + .slider:before {
 
 /* 云端设置样式 */
 .cloud-settings {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 0px;
+  padding-top: 0px;
   border-top: 1px solid #f0f0f0;
 }
 
@@ -1424,6 +1409,10 @@ input:checked + .slider:before {
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.setting-item.no-border {
+  border-bottom: none;
 }
 
 /* 用户信息样式 */

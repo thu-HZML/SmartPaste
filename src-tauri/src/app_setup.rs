@@ -20,6 +20,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{
     GlobalShortcutExt, Shortcut, ShortcutState as PluginShortcutState,
 };
+use tauri::image::Image;
 use uuid::Uuid;
 
 // 全局静态变量存储托盘图标的句柄
@@ -270,7 +271,8 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     menu.append(&show_hide)?;
     menu.append(&quit)?;
     let tray_handle = TrayIconBuilder::new()
-        .icon(app.default_window_icon().unwrap().clone())
+        //.icon(app.default_window_icon().unwrap().clone())
+        .icon(Image::from_bytes(include_bytes!("../icons/tray.png")).expect("无法加载托盘图标"))
         .menu(&menu)
         .tooltip("SmartPaste")
         .on_menu_event(move |app, event| {
