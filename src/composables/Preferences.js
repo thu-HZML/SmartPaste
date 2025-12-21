@@ -1,4 +1,4 @@
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch} from 'vue'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -1036,6 +1036,33 @@ const updateRetentionDays = async () => {
   }
 
   // 云端同步方法
+  // 处理云端同步开关切换
+  const handleCloudSyncToggle = (event) => {
+    const isChecked = event.target.checked
+    
+    // 如果尝试开启，但未登录
+    if (isChecked && !userLoggedIn.value) {
+      // 1. 视觉上恢复为未选中状态
+      event.target.checked = false
+      
+      // 2. 确保 Store 中的状态为关闭 (防止状态不一致)
+      //updateSetting('cloud_sync_enabled', false)
+      
+      // 3. 提示用户并跳转
+      showMessage('请先登录账户以启用云端同步功能', 'warning')
+      activeNav.value = 'user' // 跳转到用户信息页方便登录
+    } else {
+      // 正常更新设置
+      updateSetting('cloud_sync_enabled', isChecked)
+    }
+  }
+  watch(userLoggedIn, (isLoggedIn) => {
+    if (!isLoggedIn && settings.cloud_sync_enabled) {
+      updateSetting('cloud_sync_enabled', false)
+      showMessage('已退出登录，云端同步已自动关闭', 'info')
+    }
+  })
+
   const formatTime = (timestamp) => {
     if (!timestamp) return ''
     const date = new Date(timestamp)
@@ -1745,6 +1772,8 @@ const updateRetentionDays = async () => {
     changePasswordErrors,
     changePasswordLoading,
 
+    // 安全相关状态
+    securityStore,
 
     // 基础方法
     setActiveNav,
@@ -1788,6 +1817,7 @@ const updateRetentionDays = async () => {
     showPrivate,
 
     // 云端同步方法
+    handleCloudSyncToggle,
     formatTime,
     manualSync,
     syncNow,
@@ -1795,7 +1825,7 @@ const updateRetentionDays = async () => {
     handleCloudPush,
     restoreKeysManually,
     handleCloudPull,
-    securityStore,
+    
 
     // 用户管理方法
     changeAvatar,
