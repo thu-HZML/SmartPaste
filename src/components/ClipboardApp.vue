@@ -167,7 +167,7 @@
                 </div>
                 
                 <!-- 显示图片 -->
-                <div v-else-if="item.item_type === 'image'" class="image-container">
+                <div v-else-if="item.item_type === 'image'" class="image-container" @click="openImageWithSystem(item)">
                   <img 
                     v-if="item.content"
                     :src="convertFileSrc(normalizedPath + item.content)" 
@@ -474,7 +474,6 @@ const {
   showDeleteSingle,
   deleteAllHistory,
   cancelDeleteAll,
-  deleteSingle,
   cancelDeleteSingle,
   handleItemClick,
   copySelectedItems,
@@ -487,7 +486,8 @@ const {
   handleImageError,
   startDragging,
   setupWindowListeners,
-  removeWindowListeners
+  removeWindowListeners,
+  openImageWithSystem
 } = useClipboardApp()
 </script>
 

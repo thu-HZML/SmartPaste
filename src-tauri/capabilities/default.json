@@ -50,6 +50,15 @@
           "require": ["read"]
         }
       ]
+    },
+    "opener:allow-open-path",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
     }
   ]
 }
