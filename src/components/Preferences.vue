@@ -479,13 +479,7 @@
           <h2>云端同步</h2>
           
           <!-- 同步状态显示 -->
-          <div class="sync-status" v-if="userLoggedIn">
-            <div class="status-item">
-              <span class="status-label">同步状态:</span>
-              <span class="status-value" :class="{'success': lastSyncStatus === 'success', 'error': lastSyncStatus === 'error'}">
-                {{ lastSyncStatus === 'success' ? '同步成功' : lastSyncStatus === 'error' ? '同步失败' : '未同步' }}
-              </span>
-            </div>
+          <div class="sync-status" v-if="userLoggedIn && settings.cloud_sync_enabled">           
             <div class="status-item">
               <span class="status-label">上次同步时间:</span>
               <span class="status-value">
@@ -499,7 +493,7 @@
             </div>
           </div>
 
-          <div class="setting-item">
+          <div class="setting-item" :class="{ 'no-border': settings.cloud_sync_enabled }">
             <div class="setting-info">
               <h3>启用云端同步</h3>
               <p>将剪贴板历史同步到云端，跨设备访问</p>
@@ -509,7 +503,7 @@
                 <input 
                   type="checkbox" 
                   :checked="settings.cloud_sync_enabled" 
-                  @change="updateSetting('cloud_sync_enabled', $event.target.checked)"
+                  @change="handleCloudSyncToggle"
                 >
                 <span class="slider"></span>
               </label>
@@ -538,35 +532,38 @@
 
             <div class="setting-item">
               <div class="setting-info">
-                <h3>同步内容类型</h3>
-                <p>同步(仅文本 / 包含图片 / 包含文件)</p>
+                <h3>加密同步数据</h3>
+                <p>使用端到端加密 (E2EE) 保护您的数据，服务器无法查看内容</p>
               </div>
               <div class="setting-control">
-                <select 
-                  v-model="settings.sync_content_type" 
-                  @change="updateSetting('sync_content_type', $event.target.value)" 
-                  class="select-input"
-                >
-                  <option value="onlytxt">仅文本</option>
-                  <option value="containphoto">包含图片</option>
-                  <option value="containfile">包含文件</option>
-                </select>
+                <label class="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.encrypt_cloud_data" 
+                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
+                  >
+                  <span class="slider"></span>
+                </label>
               </div>
             </div>
+
+            <div v-if="settings.encrypt_cloud_data" class="encryption-status-panel">   
+              <div v-if="securityStore.hasDek()" class="status-ok">
+                <span class="icon">🔒</span> 
+                <span>密钥已激活，数据传输安全</span>
+              </div>
             
-            <div class="account-status" v-if="!userLoggedIn">
-              <p>您尚未登录，请登录以启用云端同步功能</p>  
-              <div class="account-buttons">
-                <button class="btn btn-secondary" @click="activeNav = 'user'">前往用户信息</button>
+              <div v-else class="status-warning">
+                <div class="warning-text">
+                  <span class="icon">⚠️</span>
+                  <span>密钥未加载，无法同步数据</span>
+                </div>
+                <button class="btn btn-small btn-secondary" @click="restoreKeysManually">
+                  验证密码以恢复
+                </button>
               </div>            
             </div>
             
-            <div class="account-status" v-else>
-              <p>已登录为: {{ userEmail }}</p>
-              <div class="account-buttons">
-                <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -837,6 +834,8 @@
 
 <script setup>
 import { usePreferences } from '../composables/Preferences'
+import { useSecurityStore } from '../stores/security'
+import { watch } from 'vue'
 
 const {
   // 状态
@@ -877,6 +876,9 @@ const {
   changePasswordData,
   changePasswordErrors,
   changePasswordLoading,
+
+  // 安全相关状态
+  securityStore,
 
   // 基础方法
   setActiveNav,
@@ -920,11 +922,14 @@ const {
   showPrivate,
   
   // 云端同步方法
+  handleCloudSyncToggle,
   formatTime,
   manualSync,
   syncNow,
   checkSyncStatus,
   handleCloudPush,
+  restoreKeysManually,
+  handleCloudPull,
 
   // 用户管理方法
   changeAvatar,
@@ -1337,8 +1342,8 @@ input:checked + .slider:before {
 
 /* 云端设置样式 */
 .cloud-settings {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 0px;
+  padding-top: 0px;
   border-top: 1px solid #f0f0f0;
 }
 
@@ -1404,6 +1409,10 @@ input:checked + .slider:before {
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.setting-item.no-border {
+  border-bottom: none;
 }
 
 /* 用户信息样式 */
@@ -1850,6 +1859,41 @@ input:checked + .slider:before {
   text-align: center;
   font-size: 14px;
   color: #2c3e50;
+}
+
+.encryption-status-panel {
+  margin-top: -10px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+  font-size: 13px;
+}
+
+.status-ok {
+  color: #27ae60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.status-warning {
+  color: #e67e22;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.warning-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  font-size: 16px;
 }
 
 </style>

@@ -32,7 +32,7 @@
         </div>
         <span class="menu-text">收藏夹</span>
       </div>
-      <div class="menu-item" @click="openCloud">
+      <div class="menu-item" @click="openSettings('cloud')">
         <div class="menu-icon">
           <CloudIcon class="icon-default" />
         </div>
