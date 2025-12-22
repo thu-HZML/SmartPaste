@@ -48,7 +48,7 @@ argon2 = "0.5.3"
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-fs = "2.0.0"
-
+dunce = "1.0.4" 
 [dependencies.windows]
 version = "0.58" 
 features = [

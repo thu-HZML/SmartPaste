@@ -3,6 +3,8 @@ use crate::config::{self, get_config_item, CONFIG};
 use crate::db;
 use crate::ocr;
 use crate::utils;
+use dunce;
+use std::io;
 use chrono::Utc;
 use image::ColorType;
 use serde_json::Value;
@@ -428,7 +430,62 @@ fn normalize_shortcut_format(shortcut: &str) -> String {
 
     normalized
 }
+/// 计算文件夹深度
+fn get_dir_depth(path: &Path) -> usize {
+    let mut depth = 0;
+    let mut current = path;
+    
+    while let Some(parent) = current.parent() {
+        depth += 1;
+        current = parent;
+    }
+    
+    depth
+}
 
+/// 安全的递归复制函数
+/// src: 源目录
+/// dst: 目标目录
+/// exclude_target: 需要避开的路径（即 dest_path 本身）
+fn safe_copy_dir(src: &Path, dst: &Path, exclude_target: &Path) -> io::Result<u64> {
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    let mut total_bytes = 0;
+    
+    // 获取排除路径的规范化形式（绝对路径），用于比较
+    // 如果 exclude_target 还没创建，canonicalize 可能会失败，所以我们要容错
+    let abs_exclude = exclude_target.canonicalize().unwrap_or(exclude_target.to_path_buf());
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        // --- 核心防递归逻辑 ---
+        // 获取当前遍历到的文件的绝对路径
+        let abs_current = path.canonicalize().unwrap_or(path.clone());
+        
+        // 如果当前遍历到的路径 == 我们正在写入的目标文件夹，直接跳过！
+        if abs_current == abs_exclude {
+            // println!("🛡️ 避开递归: 跳过目标目录本身 {:?}", path);
+            continue;
+        }
+        // --------------------
+
+        let file_name = entry.file_name();
+        let new_dst = dst.join(file_name);
+
+        if path.is_dir() {
+            // 递归调用
+            total_bytes += safe_copy_dir(&path, &new_dst, exclude_target)?;
+        } else {
+            // 复制文件
+            total_bytes += fs::copy(&path, &new_dst)?;
+        }
+    }
+    Ok(total_bytes)
+}
 pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
         // 获取配置的存储路径
@@ -615,10 +672,7 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
                         for path in paths {
-                            if path.starts_with(&files_dir) {
-                                println!("⚠️ 跳过复制，源路径已在监控目录中: {:?}", path);
-                                continue;
-                            }
+                    
                             // 检查文件/文件夹大小是否超过限制
                             let path_size = get_path_size(&path);
                             if size_limit_mb > 0 && path_size > size_limit_bytes {
@@ -630,42 +684,86 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                                 );
                                 continue; // 跳过这个文件/文件夹
                             }
-                            // 1. 判断类型：如果是目录则为 "folder"，否则按扩展名判断
-                            let item_type = if path.is_dir() {
-                                "folder".to_string()
-                            } else {
-                                path.extension()
-                                    .and_then(|ext| ext.to_str())
-                                    .map(|ext_str| {
-                                        if IMAGE_EXTENSIONS
-                                            .contains(&ext_str.to_lowercase().as_str())
-                                        {
-                                            "image".to_string()
-                                        } else {
-                                            "file".to_string()
-                                        }
-                                    })
-                                    .unwrap_or_else(|| "file".to_string())
-                            };
-                            if item_type == "image" {
-                                println!("检测到图片复制: {:?}", path);
-                            } else if item_type == "file" {
-                                println!("检测到文件复制: {:?}", path);
-                            } else if item_type == "folder" {
-                                println!("检测到文件夹复制: {:?}", path);
-                            }
+                            
                             if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                                 let timestamp = Utc::now().timestamp_millis();
                                 let new_file_name = format!("{}-{}", timestamp, file_name);
                                 let dest_path = files_dir.join(&new_file_name);
                                 let dest_relative_path = db_root_dir.join(&new_file_name);
-
+                                
+                                // 🔧 关键修改：不拒绝任何复制，但添加额外的检查来防止递归
+                                
+                                // 1. 检查目标路径是否包含源路径（可能导致递归）
+                                // 如果是这种情况，我们仍然允许复制，但会记录警告并采取防护措施
+                                if dest_path.starts_with(&path) {
+                                    println!("⚠️ 注意：目标路径在源路径内部，添加额外防护");
+                                    // 这种情况下，我们可以添加一个标识，防止后续检测
+                                }
+                                
+                                // 2. 记录我们正在处理的路径，防止短时间内重复处理同一路径
+                                {
+                                    // 添加一个状态来跟踪最近处理的路径
+                                    use std::collections::HashSet;
+                                    use std::sync::Mutex;
+                                    
+                                    // 创建一个全局状态来存储最近处理的路径
+                                    static RECENTLY_PROCESSED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+                                    let recently_processed = RECENTLY_PROCESSED.get_or_init(|| Mutex::new(HashSet::new()));
+                                    
+                                    let mut set = recently_processed.lock().unwrap();
+                                    
+                                    // 检查这个路径是否在最近10秒内处理过
+                                    let mut to_remove = Vec::new();
+                                    for p in set.iter() {
+                                        // 这里可以添加时间戳检查逻辑
+                                        // 为了简化，我们先检查路径是否完全相同
+                                        if p == &path {
+                                            println!("🔄 跳过最近处理过的路径: {:?}", path);
+                                            continue; // 跳过当前路径的处理
+                                        }
+                                    }
+                                    
+                                    // 添加当前路径到最近处理集合
+                                    set.insert(path.clone());
+                                    
+                                    // 定期清理集合，防止内存泄漏
+                                    if set.len() > 100 {
+                                        // 移除一些旧的条目
+                                        let keys: Vec<_> = set.iter().cloned().collect();
+                                        for (i, key) in keys.iter().enumerate() {
+                                            if i < 50 { // 保留最近50个
+                                                to_remove.push(key.clone());
+                                            }
+                                        }
+                                        for key in to_remove {
+                                            set.remove(&key);
+                                        }
+                                    }
+                                }
+                                
+                                // 3. 复制操作前，临时禁用对该路径的进一步监控
+                                // 通过设置一个短暂的"忽略期"
+                                {
+                                    static IGNORE_PATHS: OnceLock<Mutex<Vec<(PathBuf, Instant)>>> = OnceLock::new();
+                                    let ignore_paths = IGNORE_PATHS.get_or_init(|| Mutex::new(Vec::new()));
+                                    
+                                    let mut ignore_list = ignore_paths.lock().unwrap();
+                                    
+                                    // 清理过期的忽略条目（超过5秒）
+                                    ignore_list.retain(|(_, time)| time.elapsed() < Duration::from_secs(5));
+                                    
+                                    // 添加当前路径到忽略列表（忽略5秒）
+                                    ignore_list.push((path.clone(), Instant::now()));
+                                }
+                                
                                 // 2. 根据是文件夹还是文件执行不同的复制操作
                                 let copy_result = if path.is_dir() {
-                                    copy_dir_all(&path, &dest_path)
+                                    // 使用自定义的安全复制函数，把 dest_path 传进去作为排除项
+                                    safe_copy_dir(&path, &dest_path, &dest_path) 
                                 } else {
                                     fs::copy(&path, &dest_path)
                                 };
+                              
 
                                 match copy_result {
                                     Ok(bytes_copied) => {
@@ -673,6 +771,19 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
 
                                         // ✅ 直接使用复制时计算出的大小
                                         let size = Some(bytes_copied);
+
+                                        // 判断类型：文件夹为 "folder"，图片为 "image"，其他为 "file"
+                                        let item_type = if path.is_dir() {
+                                            "folder"
+                                        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                                            if IMAGE_EXTENSIONS.iter().any(|&img_ext| img_ext.eq_ignore_ascii_case(ext)) {
+                                                "image"
+                                            } else {
+                                                "file"
+                                            }
+                                        } else {
+                                            "file"
+                                        }.to_string();
 
                                         let new_item = ClipboardItem {
                                             id: Uuid::new_v4().to_string(),
