@@ -150,10 +150,9 @@ const isStreaming = ref(false) // 是否正在流式输出
 const streamingBuffer = ref('') // 流式缓冲区
 
 // 配置
-const maxResponseHeight = 400 // 最大响应高度
+const maxResponseHeight = 700 // 最大响应高度
 const autoCloseDelay = 5000 // 自动关闭延迟(5秒)
 const fadeInDelay = 300 // 淡入延迟
-const maxContentLength = 5000 // 最大处理内容长度
 
 // AI操作列表
 const aiActions = ref([
@@ -274,23 +273,7 @@ const updateWindowSize = async (height) => {
           resolve()
         }
       })
-    })/*
-    await currentWindow.setPosition(new LogicalPosition(newX, newY))
-    console.log('设置新位置')
-    // 设置新高度
-    await currentWindow.setSize({
-      type: 'Logical',
-      width: currentSize.width / scaleFactor,
-      height: height
     })
-    console.log('设置新高度')
-
-    const windowHeight = {
-      height: height,
-    }
-
-    localStorage.setItem('aiWindowHeight', JSON.stringify(windowHeight))
-    */
   } catch (error) {
     console.error('更新窗口大小失败:', error)
   }
@@ -638,13 +621,13 @@ defineExpose({
 </script>
 
 <style scoped>
-/* AI助手容器 */
+/* AI助手容器 - 确保不超出 */
 .ai-assistant {
   background: white;
   border: 1px solid white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  overflow: hidden; /* 确保内容不会溢出容器 */
   transition: all 0.3s ease;
   animation: slideInRight 0.3s ease;
 }
@@ -699,9 +682,11 @@ defineExpose({
 .ai-response {
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden; /* 禁止水平滚动 */
   border-bottom: 1px solid #e1e8ed;
   background: #f8f9fa;
   transition: max-height 0.3s ease;
+  width: 100%; /* 确保宽度100% */
 }
 
 .response-content {
@@ -753,17 +738,24 @@ defineExpose({
   font-size: 14px;
 }
 
-/* 响应文本 - 修改为Markdown样式，添加溢出处理 */
+/* Markdown容器 - 确保内容不溢出 */
 .response-text.markdown-body {
   font-size: 14px;
   line-height: 1.6;
   color: #333;
   
-  /* 确保内容不超出容器 */
-  overflow-wrap: break-word; /* 长单词换行 */
-  word-wrap: break-word; /* 旧版浏览器兼容 */
-  word-break: break-word; /* 更激进的断词策略 */
-  max-width: 100%; /* 确保不超出父容器 */
+  /* 关键修复：确保内容宽度不超过容器 */
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  
+  /* 确保内容换行 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  
+  /* 防止代码块和表格溢出 */
+  overflow: hidden;
 }
 
 /* Markdown样式 - 添加溢出处理 */
@@ -782,6 +774,18 @@ defineExpose({
   overflow-wrap: break-word;
   word-wrap: break-word;
   max-width: 100%;
+}
+
+/* 改进Markdown样式，确保所有元素都遵守容器宽度 */
+
+/* 1. 代码块 - 关键修复 */
+.markdown-body pre {
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto; /* 代码块内部可以水平滚动 */
+  white-space: pre-wrap; /* 允许代码换行 */
+  word-break: break-all; /* 强制长代码换行 */
 }
 
 .markdown-body h1 {
@@ -900,111 +904,85 @@ defineExpose({
 }
 
 .markdown-body pre code {
-  padding: 0;
-  margin: 0;
-  background-color: transparent;
-  border: 0;
-  font-size: 100%;
-  color: #333;
-  
-  /* 代码块内容 */
-  white-space: pre-wrap; /* 保留格式但允许换行 */
-  word-break: break-word; /* 强制长内容换行 */
-  overflow-wrap: break-word;
   display: block;
   max-width: 100%;
-}
-
-.markdown-body a {
-  color: #0366d6;
-  text-decoration: none;
-  
-  /* 链接溢出处理 */
+  white-space: pre-wrap; /* 代码可以换行 */
+  word-break: break-all; /* 强制换行 */
   overflow-wrap: break-word;
-  word-wrap: break-word;
-  max-width: 100%;
-  display: inline-block; /* 确保长URL可以正确换行 */
 }
 
-.markdown-body a:hover {
-  text-decoration: underline;
-  color: #0056b3;
+.markdown-body code:not(pre code) {
+  /* 行内代码 */
+  white-space: normal;
+  word-break: break-word;
 }
 
-.markdown-body strong,
-.markdown-body b {
-  font-weight: 600;
-  color: #24292e;
-}
-
-.markdown-body em,
-.markdown-body i {
-  font-style: italic;
-  color: #24292e;
-}
-
-.markdown-body hr {
-  height: 0.25em;
-  padding: 0;
-  margin: 24px 0;
-  background-color: #e1e4e8;
-  border: 0;
-  border-radius: 2px;
-}
-
-/* 表格溢出处理 - 重点修复 */
+/* 2. 表格 - 关键修复 */
 .markdown-body table {
   display: block;
-  width: 100%;
-  overflow-x: auto; /* 允许水平滚动 */
-  margin-top: 0;
-  margin-bottom: 16px;
-  border-spacing: 0;
-  border-collapse: collapse;
-  
-  /* 确保表格不会超出容器 */
   max-width: 100%;
-}
-
-.markdown-body th {
-  font-weight: 600;
-  background-color: #f6f8fa;
+  width: 100%;
+  overflow-x: auto; /* 表格内部可以水平滚动 */
+  border-collapse: collapse;
+  margin-bottom: 16px;
 }
 
 .markdown-body th,
 .markdown-body td {
-  padding: 6px 13px;
-  border: 1px solid #dfe2e5;
-  
-  /* 表格单元格溢出处理 */
-  overflow-wrap: break-word;
-  word-wrap: break-word;
   max-width: 200px; /* 限制单元格最大宽度 */
-  min-width: 80px; /* 确保单元格有最小宽度 */
+  min-width: 60px; /* 保持最小宽度 */
+  word-break: break-word;
+  white-space: normal; /* 允许换行 */
 }
 
-.markdown-body tr {
-  background-color: #fff;
-  border-top: 1px solid #c6cbd1;
+/* 3. 图片 - 确保不超出 */
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
-.markdown-body tr:nth-child(2n) {
-  background-color: #f6f8fa;
-}
-
-/* 对于特别长的单词或URL，添加通用断词规则 */
-.markdown-body {
-  /* 处理长单词和URL */
+/* 4. 长链接和URL - 确保换行 */
+.markdown-body a {
+  word-break: break-all;
   overflow-wrap: anywhere;
-  hyphens: auto; /* 自动断字（如果浏览器支持） */
 }
 
-/* 确保所有元素都有最大宽度限制 */
+/* 5. 列表和段落 */
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body p,
+.markdown-body blockquote {
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 6. 标题 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 7. 通用修复：确保所有子元素都继承宽度限制 */
 .markdown-body > * {
   max-width: 100%;
   box-sizing: border-box;
 }
 
+/* 响应内容区域 - 确保宽度100% */
+.response-content {
+  padding: 16px;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+}
 
 /* 响应操作按钮 */
 .response-actions {
@@ -1162,7 +1140,7 @@ defineExpose({
   }
 }
 
-/* 滚动条美化 */
+/* 修改滚动条样式，只显示垂直滚动条 */
 .ai-response::-webkit-scrollbar {
   width: 6px;
 }
@@ -1179,5 +1157,11 @@ defineExpose({
 
 .ai-response::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* 隐藏水平滚动条（如果有的话） */
+.ai-response::-webkit-scrollbar:horizontal {
+  display: none;
+  height: 0;
 }
 </style>

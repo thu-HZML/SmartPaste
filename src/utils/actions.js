@@ -32,6 +32,7 @@ export function updateMainWindowPosition(position) {
  */
 export async function updateScreenWorkArea() {
   try {
+    /*
     const allWindows = await WebviewWindow.getAll()
     const mainWindow = allWindows.find(win => win.label === 'main')
     
@@ -47,6 +48,7 @@ export async function updateScreenWorkArea() {
         console.log('更新屏幕工作区:', screenWorkArea)
       }
     }
+      */
   } catch (error) {
     console.error('获取屏幕工作区失败:', error)
   }
