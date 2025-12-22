@@ -1684,6 +1684,10 @@ const updateRetentionDays = async () => {
     try {
       const savedUser = localStorage.getItem('user')
       const savedToken = localStorage.getItem('token')
+      const savedSyncTime = localStorage.getItem('lastSyncTime');
+      if (savedSyncTime) {
+        lastSyncTime.value = parseInt(savedSyncTime);
+      }
       if (savedUser) {
         const userData = JSON.parse(savedUser)
         userLoggedIn.value = true
