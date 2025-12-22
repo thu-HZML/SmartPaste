@@ -112,13 +112,14 @@
             <div class="setting-info">
               <h3>最大历史记录数量</h3>
               <p>限制保存的剪贴板历史记录数量</p>
+              <p>（为0时不限数量）</p>
             </div>
             <div class="setting-control">
               <input 
                 type="number" 
                 v-model="settings.max_history_items" 
-                min="10" 
-                max="1000" 
+                min="0" 
+                max="100000000" 
                 class="number-input"
                 @change="updateSetting('max_history_items', Number($event.target.value))" 
               >
@@ -147,13 +148,14 @@
             <div class="setting-info">
               <h3>忽略大文件</h3>
               <p>不保存字符数大于指定值的文件</p>
+              <p>（为0时不限大小）</p>
             </div>
             <div class="setting-control">
               <input 
                 type="number" 
                 v-model="settings.ignore_big_file_mb" 
-                min="5" 
-                max="100" 
+                min="0" 
+                max="1000000" 
                 class="number-input"
                 @change="updateSetting('ignore_big_file_mb', Number($event.target.value))"
               >
@@ -220,7 +222,8 @@
           <div class="setting-item">
             <div class="setting-info">
               <h3>启用AI助手</h3>
-              <p>启用AI智能助手功能</p>
+              <p>启用AI智能助手功能（可对最新复制内容提问）</p>
+              <p>（可对最新复制内容提问）</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">

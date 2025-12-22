@@ -254,7 +254,7 @@ export function useClipboardApp() {
   // 切换收藏状态
   const toggleFavorite = async (item) => {
     // 清除之前的单击定时器
-    if (clickTimeout || activeCategory.value === 'folder') {
+    if (clickTimeout || activeCategory.value === 'folder' || item.is_favorite) {
       clearTimeout(clickTimeout)
       // 如果已经有定时器存在，说明是双击
       executeDoubleClick(item)

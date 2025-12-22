@@ -18,11 +18,13 @@
             type="datetime-local" 
             v-model="startTime"
             class="time-input"
+            title="起始时间"
           >
           <input 
             type="datetime-local" 
             v-model="endTime"
             class="time-input"
+            title="终止时间"
           >
         </div>
       </div>
@@ -124,7 +126,7 @@
                 <button 
                   class="icon-btn-small" 
                   @click="toggleFavorite(item)"
-                  :title="item.is_favorite ? '取消收藏' : '收藏'"
+                  :title="item.is_favorite ? '取消收藏' : '收藏（双击选择收藏夹）'"
                 >
                   <StarIconSolid v-if="item.is_favorite" class="icon-star-solid" />
                   <StarIcon v-else class="icon-default" />
