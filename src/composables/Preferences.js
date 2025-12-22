@@ -588,6 +588,7 @@ export function usePreferences() {
     if (confirmed) {
       localStorage.removeItem('user')
       localStorage.removeItem('token')
+      securityStore.clearDek()
       userLoggedIn.value = false
       userEmail.value = ''
       Object.assign(userInfo, {
@@ -1695,12 +1696,18 @@ const updateRetentionDays = async () => {
     } catch (error) {
       console.error('加载用户信息失败:', error)
     }
+    // 初始化安全 Store (加载 DEK)
+    await securityStore.initFromBackend()
 
     // 从URL参数设置初始导航项
     const urlParams = new URLSearchParams(window.location.search);
     const navFromUrl = urlParams.get('nav');
     if (navFromUrl) {
       activeNav.value = navFromUrl;
+    }
+
+    if (securityStore.hasDek() && settings.encrypt_cloud_data) {
+      console.log("检测到 SessionStorage 存有密钥，已自动恢复加密环境");
     }
 
     onUnmounted(() => {

@@ -24,6 +24,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_notification;
+use utils::EncryptionState;
 
 fn main() {
     let result = tauri::Builder::default()
@@ -40,6 +41,9 @@ fn main() {
         .manage(AppShortcutManager::new())
         .manage(ClipboardSourceState {
             is_frontend_copy: Mutex::new(false),
+        })
+        .manage(EncryptionState {
+            dek: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             utils::test_function,
@@ -119,6 +123,9 @@ fn main() {
             utils::read_db_file_base64,
             utils::save_clipboard_file,
             utils::download_cloud_file,
+            utils::set_dek_state,   
+            utils::get_dek_state,   
+            utils::clear_dek_state
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录
