@@ -8,7 +8,8 @@ import {
   updateMenuWindowPosition,
   toggleAiWindow,
   updateAiWindowPosition,
-  hasMenuWindow as checkMenuWindowExists
+  hasMenuWindow as checkMenuWindowExists,
+  updateScreenWorkArea
 } from '../utils/actions.js'
 import { 
   AnimationManager, 
@@ -503,6 +504,8 @@ export function useDesktopPet() {
 
       // 初始化 Live2D
       await initLive2D()
+      
+      await updateScreenWorkArea()
     } catch (error) {
       console.error('设置窗口大小失败:', error)
     }

@@ -1,6 +1,6 @@
 // src/utils/actions.js
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { LogicalPosition } from '@tauri-apps/api/window'
+import { LogicalPosition, LogicalSize } from '@tauri-apps/api/window'
 import { emit } from '@tauri-apps/api/event';
 import { useSettingsStore } from '../stores/settings'; 
 import { deleteAllData, deleteUnfavoritedData } from '../services/api';
@@ -14,6 +14,9 @@ let mainWindowPosition = { x: 100, y: 100 }
 
 let aiAgentWindowHeight = 70
 
+// 添加：获取屏幕工作区尺寸
+let screenWorkArea = { x: 0, y: 0, width: 1920, height: 1080 }
+
 /**
  * 更新主窗口位置
  */
@@ -22,6 +25,113 @@ export function updateMainWindowPosition(position) {
     x: position.x,
     y: position.y,
   }
+}
+
+/**
+ * 更新屏幕工作区尺寸
+ */
+export async function updateScreenWorkArea() {
+  try {
+    const allWindows = await WebviewWindow.getAll()
+    const mainWindow = allWindows.find(win => win.label === 'main')
+    
+    if (mainWindow) {
+      const monitor = await mainWindow.currentMonitor()
+      if (monitor && monitor.workArea) {
+        screenWorkArea = {
+          x: monitor.workArea.x,
+          y: monitor.workArea.y,
+          width: monitor.workArea.width,
+          height: monitor.workArea.height
+        }
+        console.log('更新屏幕工作区:', screenWorkArea)
+      }
+    }
+  } catch (error) {
+    console.error('获取屏幕工作区失败:', error)
+  }
+}
+
+/**
+ * 检查位置是否在屏幕工作区内
+ * @param {Object} position 位置 {x, y}
+ * @param {Object} size 窗口大小 {width, height}
+ * @returns {boolean} 是否在屏幕内
+ */
+function isPositionInScreen(position, size) {
+  const { x, y } = position
+  const { width, height } = size
+  
+  // 检查窗口是否完全在屏幕工作区内
+  return (
+    x >= screenWorkArea.x &&
+    y >= screenWorkArea.y &&
+    x + width <= screenWorkArea.x + screenWorkArea.width &&
+    y + height <= screenWorkArea.y + screenWorkArea.height
+  )
+}
+
+/**
+ * 计算Menu窗口的最佳位置
+ * @param {number} menuWidth 菜单窗口宽度
+ * @param {number} menuHeight 菜单窗口高度
+ * @returns {Object} 最佳位置 {x, y}
+ */
+function calculateMenuWindowPosition(menuWidth, menuHeight) {
+  // 尝试右下角位置（原方案）
+  const rightBottomPosition = {
+    x: mainWindowPosition.x + 150,
+    y: mainWindowPosition.y
+  }
+  
+  // 检查右下角位置是否有效
+  if (isPositionInScreen(rightBottomPosition, { width: menuWidth, height: menuHeight })) {
+    console.log('Menu窗口使用右下角位置')
+    return rightBottomPosition
+  }
+  
+  // 如果右下角位置无效，尝试左上角位置
+  const leftTopPosition = {
+    x: mainWindowPosition.x - menuWidth - 10, // 左上角，留10px间隙
+    y: mainWindowPosition.y - menuHeight - 10
+  }
+  
+  // 检查左上角位置是否有效
+  if (isPositionInScreen(leftTopPosition, { width: menuWidth, height: menuHeight })) {
+    console.log('Menu窗口使用左上角位置')
+    return leftTopPosition
+  }
+  
+  // 如果两个位置都无效，强制调整到屏幕内
+  console.log('Menu窗口强制调整到屏幕内')
+  return adjustPositionToScreen(leftTopPosition, { width: menuWidth, height: menuHeight })
+}
+
+/**
+ * 调整位置确保在屏幕内
+ * @param {Object} position 原始位置 {x, y}
+ * @param {Object} size 窗口大小 {width, height}
+ * @returns {Object} 调整后的位置 {x, y}
+ */
+function adjustPositionToScreen(position, size) {
+  let { x, y } = position
+  const { width, height } = size
+  
+  // 检查X轴
+  if (x < screenWorkArea.x) {
+    x = screenWorkArea.x
+  } else if (x + width > screenWorkArea.x + screenWorkArea.width) {
+    x = screenWorkArea.x + screenWorkArea.width - width
+  }
+  
+  // 检查Y轴
+  if (y < screenWorkArea.y) {
+    y = screenWorkArea.y
+  } else if (y + height > screenWorkArea.y + screenWorkArea.height) {
+    y = screenWorkArea.y + screenWorkArea.height - height
+  }
+  
+  return { x, y }
 }
 
 /**
@@ -37,7 +147,6 @@ export function updateAiWindowHeight(height) {
  * @param {Object} options 窗口配置
  */
 export async function createMenuWindow(options = {}) {
-  //const windowId = `menu_${Date.now()}`
   const windowId = 'menu'
   
   try {
@@ -85,6 +194,9 @@ export async function createMenuWindow(options = {}) {
  * 获取或切换菜单窗口
  */
 export async function toggleMenuWindow() {
+  // 首先更新屏幕工作区信息
+  await updateScreenWorkArea()
+  
   // 查找已存在的菜单窗口
   const menuWindow = Array.from(windowInstances.entries())
     .find(([key]) => key === 'menu')
@@ -102,26 +214,25 @@ export async function toggleMenuWindow() {
   } else {
     // 如果不存在，创建新窗口
     try {
-      // 使用全局存储的主窗口位置
-      const { x, y } = mainWindowPosition
+      // 计算最佳位置
+      const menuWidth = 300
+      const menuHeight = 350
+      const bestPosition = calculateMenuWindowPosition(menuWidth, menuHeight)
       
-      // 计算新窗口位置（在桌宠右侧）
-      const newX = x + 150
-      const newY = y
-      
-      console.log('使用主窗口位置创建菜单窗口:', { 
-        mainWindow: { x, y },
-        menuWindow: { newX, newY }
+      console.log('Menu窗口位置计算:', {
+        主窗口位置: mainWindowPosition,
+        屏幕工作区: screenWorkArea,
+        计算出的最佳位置: bestPosition
       })
       
       return await createMenuWindow({
-        x: newX,
-        y: newY,
-        width: 300, // 菜单窗口宽度
-        height: 350 // 菜单窗口高度
+        x: bestPosition.x,
+        y: bestPosition.y,
+        width: menuWidth,
+        height: menuHeight
       })
     } catch (error) {
-      console.error('使用主窗口位置创建菜单窗口错误:', error)
+      console.error('创建菜单窗口错误:', error)
       return await createMenuWindow() // 创建默认位置的窗口
     }
   }
@@ -133,13 +244,17 @@ export async function updateMenuWindowPosition() {
     .find(([key]) => key === 'menu')
   
   if (menuWindow) {
-    const { x, y } = mainWindowPosition
-    const newX = x + 150
-    const newY = y
-
+    // 更新屏幕工作区信息
+    await updateScreenWorkArea()
+    
+    const menuWidth = 300
+    const menuHeight = 350
+    const bestPosition = calculateMenuWindowPosition(menuWidth, menuHeight)
+    
     const [windowId, window] = menuWindow
     try {
-      await window.setPosition(new LogicalPosition(newX, newY))
+      await window.setPosition(new LogicalPosition(bestPosition.x, bestPosition.y))
+      console.log('更新Menu窗口位置:', bestPosition)
     } catch (error) {
       console.error('更新菜单窗口位置失败:', error)
     }
@@ -806,4 +921,5 @@ if (typeof window !== 'undefined') {
   window.hasMenuWindow = hasMenuWindow;
   window.clearClipboardHistory = clearClipboardHistory;
   window.mainWindowPosition = mainWindowPosition;
+  window.updateScreenWorkArea = updateScreenWorkArea; // 添加这个函数
 }
