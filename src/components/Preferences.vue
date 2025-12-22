@@ -223,7 +223,6 @@
             <div class="setting-info">
               <h3>启用AI助手</h3>
               <p>启用AI智能助手功能（可对最新复制内容提问）</p>
-              <p>（可对最新复制内容提问）</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
