@@ -111,8 +111,8 @@ export const executeCloudPush = async (dek = null) => {
            // 读取加密后的内容
            contentBase64 = await invoke('read_file_base64', { filePath: tempEncPath });
            
-           // (可选) 清理临时文件 (建议开启，防止垃圾文件堆积)
-           // await invoke('delete_file', { path: tempEncPath });
+           // 清理临时文件 (建议开启，防止垃圾文件堆积)
+           await invoke('delete_temp_encrypted_file', { path: tempEncPath });
         } else {
            // === 普通模式 ===
            contentBase64 = await invoke('read_file_base64', { filePath: fileInfo.file_path });
@@ -1577,8 +1577,8 @@ const updateRetentionDays = async () => {
                     dekHex: securityStore.dek
                 });
 
-                // (可选) 删除 .enc 临时文件
-                // await invoke('delete_file', { path: inputPath });
+                // 删除 .enc 临时文件
+                await invoke('delete_temp_encrypted_file', { path: inputPath });
             }
 
           } catch (e) {
@@ -1684,6 +1684,10 @@ const updateRetentionDays = async () => {
     try {
       const savedUser = localStorage.getItem('user')
       const savedToken = localStorage.getItem('token')
+      const savedSyncTime = localStorage.getItem('lastSyncTime');
+      if (savedSyncTime) {
+        lastSyncTime.value = parseInt(savedSyncTime);
+      }
       if (savedUser) {
         const userData = JSON.parse(savedUser)
         userLoggedIn.value = true

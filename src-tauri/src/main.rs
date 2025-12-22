@@ -111,6 +111,7 @@ fn main() {
             db::derive_mk,
             db::wrap_dek,
             db::unwrap_dek,
+            db::delete_temp_encrypted_file,
             db::top_data_by_id,
             ocr::configure_ocr,
             ocr::ocr_image,
@@ -123,8 +124,8 @@ fn main() {
             utils::read_db_file_base64,
             utils::save_clipboard_file,
             utils::download_cloud_file,
-            utils::set_dek_state,   
-            utils::get_dek_state,   
+            utils::set_dek_state,
+            utils::get_dek_state,
             utils::clear_dek_state
         ])
         .setup(move |app| {

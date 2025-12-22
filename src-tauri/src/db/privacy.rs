@@ -926,3 +926,43 @@ pub fn unwrap_dek(encrypted_dek_hex: &str, mk_hex: &str) -> Result<String, Strin
 
     Ok(hex::encode(plaintext))
 }
+
+/// 删除临时加密文件的辅助函数
+/// # Param
+/// path: String - 待删除文件的路径
+/// # Returns
+/// Result<(), String> - 成功返回 Ok(())
+#[tauri::command]
+pub fn delete_temp_encrypted_file(path: String) -> Result<(), String> {
+    use std::path::Path;
+
+    let p = Path::new(&path);
+
+    if !p.exists() {
+        return Err(format!("File does not exist: {}", path));
+    }
+
+    let metadata = fs::metadata(p).map_err(|e| format!("Failed to stat file: {}", e))?;
+    let file_size = metadata.len();
+
+    // 最小检测：AES-GCM nonce 需要 12 字节，因此小于 12 的文件不视为加密文件
+    if file_size < 12 {
+        return Err("File too small to be an encrypted file".to_string());
+    }
+
+    // 读取前 16 字节以判断是否为 SQLite 数据库（明文 DB）
+    let mut header = [0u8; 16];
+    let n = std::fs::File::open(p)
+        .and_then(|mut f| std::io::Read::read(&mut f, &mut header))
+        .map_err(|e| format!("Failed to read file header: {}", e))?;
+
+    let sqlite_header = b"SQLite format 3\0";
+    if n as usize >= sqlite_header.len() && &header[..sqlite_header.len()] == sqlite_header {
+        return Err("File appears to be a SQLite database (not encrypted)".to_string());
+    }
+
+    // 通过以上启发式判断，认为这是一个临时加密文件，尝试删除
+    fs::remove_file(p).map_err(|e| format!("Failed to delete file: {}", e))?;
+
+    Ok(())
+}
