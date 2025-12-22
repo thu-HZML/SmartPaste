@@ -613,6 +613,10 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
                         for path in paths {
+                            if path.starts_with(&files_dir) {
+                                println!("⚠️ 跳过复制，源路径已在监控目录中: {:?}", path);
+                                continue;
+                            }
                             // 检查文件/文件夹大小是否超过限制
                             let path_size = get_path_size(&path);
                             if size_limit_mb > 0 && path_size > size_limit_bytes {
