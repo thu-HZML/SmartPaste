@@ -753,14 +753,20 @@ defineExpose({
   font-size: 14px;
 }
 
-/* 响应文本 - 修改为Markdown样式 */
+/* 响应文本 - 修改为Markdown样式，添加溢出处理 */
 .response-text.markdown-body {
   font-size: 14px;
   line-height: 1.6;
   color: #333;
+  
+  /* 确保内容不超出容器 */
+  overflow-wrap: break-word; /* 长单词换行 */
+  word-wrap: break-word; /* 旧版浏览器兼容 */
+  word-break: break-word; /* 更激进的断词策略 */
+  max-width: 100%; /* 确保不超出父容器 */
 }
 
-/* Markdown样式 */
+/* Markdown样式 - 添加溢出处理 */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
@@ -771,6 +777,11 @@ defineExpose({
   margin-bottom: 16px;
   font-weight: 600;
   line-height: 1.25;
+  
+  /* 标题溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body h1 {
@@ -811,6 +822,11 @@ defineExpose({
   margin-top: 0;
   margin-bottom: 16px;
   color: #333;
+  
+  /* 段落溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body blockquote {
@@ -820,6 +836,11 @@ defineExpose({
   border-left: 0.25em solid #dfe2e5;
   background: #f8f9fa;
   border-radius: 4px;
+  
+  /* 引用块溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body ul,
@@ -828,10 +849,20 @@ defineExpose({
   margin-bottom: 16px;
   padding-left: 2em;
   color: #333;
+  
+  /* 列表溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body li {
   margin-bottom: 0.25em;
+  
+  /* 列表项溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body li > p {
@@ -839,6 +870,7 @@ defineExpose({
   margin-bottom: 0;
 }
 
+/* 代码块溢出处理 - 重点修复 */
 .markdown-body code {
   padding: 0.2em 0.4em;
   margin: 0;
@@ -847,6 +879,11 @@ defineExpose({
   border-radius: 3px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
   color: #e83e8c;
+  
+  /* 行内代码溢出处理 */
+  white-space: pre-wrap; /* 保留空格但允许换行 */
+  word-break: break-all; /* 强制长代码换行 */
+  max-width: 100%;
 }
 
 .markdown-body pre {
@@ -857,6 +894,9 @@ defineExpose({
   background-color: #f6f8fa;
   border-radius: 6px;
   margin-bottom: 16px;
+  
+  /* 代码块容器 */
+  max-width: 100%;
 }
 
 .markdown-body pre code {
@@ -866,11 +906,24 @@ defineExpose({
   border: 0;
   font-size: 100%;
   color: #333;
+  
+  /* 代码块内容 */
+  white-space: pre-wrap; /* 保留格式但允许换行 */
+  word-break: break-word; /* 强制长内容换行 */
+  overflow-wrap: break-word;
+  display: block;
+  max-width: 100%;
 }
 
 .markdown-body a {
   color: #0366d6;
   text-decoration: none;
+  
+  /* 链接溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
+  display: inline-block; /* 确保长URL可以正确换行 */
 }
 
 .markdown-body a:hover {
@@ -899,14 +952,18 @@ defineExpose({
   border-radius: 2px;
 }
 
+/* 表格溢出处理 - 重点修复 */
 .markdown-body table {
   display: block;
   width: 100%;
-  overflow: auto;
+  overflow-x: auto; /* 允许水平滚动 */
   margin-top: 0;
   margin-bottom: 16px;
   border-spacing: 0;
   border-collapse: collapse;
+  
+  /* 确保表格不会超出容器 */
+  max-width: 100%;
 }
 
 .markdown-body th {
@@ -918,6 +975,12 @@ defineExpose({
 .markdown-body td {
   padding: 6px 13px;
   border: 1px solid #dfe2e5;
+  
+  /* 表格单元格溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 200px; /* 限制单元格最大宽度 */
+  min-width: 80px; /* 确保单元格有最小宽度 */
 }
 
 .markdown-body tr {
@@ -928,6 +991,20 @@ defineExpose({
 .markdown-body tr:nth-child(2n) {
   background-color: #f6f8fa;
 }
+
+/* 对于特别长的单词或URL，添加通用断词规则 */
+.markdown-body {
+  /* 处理长单词和URL */
+  overflow-wrap: anywhere;
+  hyphens: auto; /* 自动断字（如果浏览器支持） */
+}
+
+/* 确保所有元素都有最大宽度限制 */
+.markdown-body > * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 
 /* 响应操作按钮 */
 .response-actions {
