@@ -246,6 +246,35 @@ const updateWindowSize = async (height) => {
     const newX = mainWindowPosition.x - currentSize.width / scaleFactor + 140
     const newY = mainWindowPosition.y - height
 
+    // 使用 requestAnimationFrame 确保在同一帧中执行位置和大小更新
+    await new Promise(resolve => {
+      requestAnimationFrame(async () => {
+        try {
+          // 同时更新位置和大小
+          await Promise.all([
+            currentWindow.setPosition(new LogicalPosition(newX, newY)),
+            currentWindow.setSize({
+              type: 'Logical',
+              width: currentSize.width / scaleFactor,
+              height: height
+            })
+          ])
+          
+          console.log('窗口位置和大小已更新')
+          
+          // 存储窗口高度
+          const windowHeight = {
+            height: height,
+          }
+          localStorage.setItem('aiWindowHeight', JSON.stringify(windowHeight))
+          
+        } catch (error) {
+          console.error('更新窗口失败:', error)
+        } finally {
+          resolve()
+        }
+      })
+    })/*
     await currentWindow.setPosition(new LogicalPosition(newX, newY))
     console.log('设置新位置')
     // 设置新高度
@@ -261,6 +290,7 @@ const updateWindowSize = async (height) => {
     }
 
     localStorage.setItem('aiWindowHeight', JSON.stringify(windowHeight))
+    */
   } catch (error) {
     console.error('更新窗口大小失败:', error)
   }
