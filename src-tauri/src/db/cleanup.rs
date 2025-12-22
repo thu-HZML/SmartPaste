@@ -34,6 +34,11 @@ pub fn clear_data_expired(days: u32) -> Result<usize, String> {
 /// # Returns
 /// Result<usize, String> - 被删除的记录数量，若失败则返回错误信息
 pub fn enforce_max_history_items(max_items: u32) -> Result<usize, String> {
+    // 如果配置为 0，表示不启用自动清理（保留默认行为）
+    if max_items == 0 {
+        return Ok(0);
+    }
+
     let db_path = get_db_path();
     init_db(db_path.as_path()).map_err(|e| e.to_string())?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
