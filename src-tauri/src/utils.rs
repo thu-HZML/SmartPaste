@@ -37,6 +37,29 @@ use std::thread;
 use walkdir::WalkDir;
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 use reqwest::header::AUTHORIZATION;
+use std::sync::Mutex;
+
+// 定义一个全局状态来存储数据加密密钥（DEK）
+pub struct EncryptionState {
+    pub dek: Mutex<Option<String>>,
+}
+
+#[tauri::command]
+pub fn set_dek_state(state: State<'_, EncryptionState>, key: String) {
+    let mut dek = state.dek.lock().unwrap();
+    *dek = Some(key);
+}
+
+#[tauri::command]
+pub fn get_dek_state(state: State<'_, EncryptionState>) -> Option<String> {
+    state.dek.lock().unwrap().clone()
+}
+
+#[tauri::command]
+pub fn clear_dek_state(state: State<'_, EncryptionState>) {
+    let mut dek = state.dek.lock().unwrap();
+    *dek = None;
+}
 
 #[tauri::command]
 pub fn test_function() -> String {

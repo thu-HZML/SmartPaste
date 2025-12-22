@@ -1,17 +1,34 @@
 // src/stores/security.js
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 
 export const useSecurityStore = defineStore('security', () => {
-  // DEK 仅保存在内存中，刷新页面即丢失，保证安全
   const dek = ref(null)
 
-  const setDek = (key) => {
-    dek.value = key
+  // 核心：从后端拉取状态
+  const initFromBackend = async () => {
+    try {
+      const savedDek = await invoke('get_dek_state')
+      if (savedDek) {
+        dek.value = savedDek
+        console.log("已从 Rust 后端恢复密钥")
+      }
+    } catch (e) {
+      console.error("初始化密钥失败:", e)
+    }
   }
 
-  const clearDek = () => {
+  const setDek = async (key) => {
+    dek.value = key
+    // 同步到 Rust 后端内存
+    await invoke('set_dek_state', { key })
+  }
+
+  const clearDek = async () => {
     dek.value = null
+    // 通知后端清空
+    await invoke('clear_dek_state')
   }
 
   const hasDek = () => {
@@ -22,6 +39,7 @@ export const useSecurityStore = defineStore('security', () => {
     dek,
     setDek,
     clearDek,
-    hasDek
+    hasDek,
+    initFromBackend
   }
 })
