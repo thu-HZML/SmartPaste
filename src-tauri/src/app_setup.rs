@@ -3,6 +3,7 @@ use crate::config::{self, get_config_item, CONFIG};
 use crate::db;
 use crate::ocr;
 use crate::utils;
+use dunce;
 use chrono::Utc;
 use image::ColorType;
 use serde_json::Value;
@@ -613,8 +614,21 @@ pub fn start_clipboard_monitor(app_handle: tauri::AppHandle) {
                             &["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
 
                         for path in paths {
-                            if path.starts_with(&files_dir) {
-                                println!("⚠️ 跳过复制，源路径已在监控目录中: {:?}", path);
+                            let canonical_path = match dunce::canonicalize(&path) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    eprintln!("无法获取规范路径 {:?}: {}", path, e);
+                                    continue;
+                                }
+                            };
+                            
+                            // 🔧 检查是否在程序自己的数据目录中（防止循环复制）
+                            let is_in_app_data = canonical_path.starts_with(&files_dir) || 
+                                canonical_path.starts_with(&current_storage_path) ||
+                                canonical_path.ancestors().any(|ancestor| ancestor == files_dir);
+                            
+                            if is_in_app_data {
+                                println!("⚠️ 跳过复制，源路径在程序数据目录中: {:?}", canonical_path);
                                 continue;
                             }
                             // 检查文件/文件夹大小是否超过限制
