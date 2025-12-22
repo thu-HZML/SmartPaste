@@ -1524,87 +1524,66 @@ const updateRetentionDays = async () => {
       const listRes = await apiService.getCloudFileList();
       if (listRes.success) {
         // 获取本地存储根路径，用于构造绝对路径传给 decrypt_file
-        // 注意：这里假设 settings.storage_path 与 Rust 端实际使用的路径一致
-        // 去除末尾斜杠以防重复
+        // (保持原有的路径清理逻辑)
         const storageRoot = settings.storage_path.replace(/[\\/]$/, '');
+        const token = localStorage.getItem('token'); // 获取 Token
 
         for (const item of listRes.data) {
-          // 3.1 下载文件流 (Blob)
-          const fileUrl = ensureAbsoluteAvatarUrl(item.file);
-          const fileBlob = await fetch(fileUrl, {
-            headers: { 'Authorization': `Token ${localStorage.getItem('token')}` }
-          }).then(r => r.blob());
-          
-          // 3.2 转换为 Base64 以便通过 Tauri Command 写入
-          const reader = new FileReader();
-          reader.readAsDataURL(fileBlob);
-          
-          await new Promise((resolve, reject) => {
-            reader.onload = async () => {
-              try {
-                const base64 = reader.result.split(',')[1];
-                const relativePath = item.relative_path;
+          try {
+            const fileUrl = ensureAbsoluteAvatarUrl(item.file);
+            const relativePath = item.relative_path;
+            
+            // 判断是否需要作为加密临时文件下载
+            // 如果开启了加密且有密钥，我们将文件下载为 .enc 后缀，之后再解密
+            let downloadPath = relativePath;
+            if (settings.encrypt_cloud_data && securityStore.dek) {
+                downloadPath = relativePath + ".enc";
+            }
 
-                if (settings.encrypt_cloud_data && securityStore.dek) {
-                    // === E2EE 解密流程 ===
-                    
-                    // A. 定义临时加密文件路径 (例如 images/123.png.enc)
-                    const tempRelativePath = relativePath + ".enc";
-                    
-                    // B. 先将加密内容写入磁盘 (复用现有的保存文件命令)
-                    await invoke('save_clipboard_file', { 
-                        relativePath: tempRelativePath, 
-                        base64Content: base64 
-                    });
+            // 【核心修改】调用 Rust 命令下载文件，避开 CORS
+            await invoke('download_cloud_file', { 
+                url: fileUrl, 
+                authToken: token, 
+                relativePath: downloadPath 
+            });
 
-                    const isWin = storageRoot.includes('\\');
-                    const sep = isWin ? '\\' : '/';
+            // 如果是加密模式，下载完成后进行解密
+            if (settings.encrypt_cloud_data && securityStore.dek) {
+                // === E2EE 解密流程 ===
+                const isWin = storageRoot.includes('\\');
+                const sep = isWin ? '\\' : '/';
 
-                    const cleanJoin = (...parts) => {
-                        return parts.map((part, index) => {
-                            if (!part) return '';
-                            // 移除首尾的斜杠和反斜杠（除了第一个路径的开头）
-                            let s = part;
-                            if (index > 0) s = s.replace(/^[\\\/]+/, '');
-                            if (index < parts.length - 1) s = s.replace(/[\\\/]+$/, '');
-                            return s;
-                        }).join(sep);
-                    };
-                  
-                    // 2. 构造绝对路径
-                    const inputPath = cleanJoin(storageRoot, 'files', tempRelativePath);
-                    const outputPath = cleanJoin(storageRoot, 'files', relativePath);
-                  
-                    // 3. 打印路径以供检查 (如果报错，请检查控制台打印的这个路径是否真实存在)
-                    console.log(`[E2EE] Decrypting: \n In:  ${inputPath} \n Out: ${outputPath}`);
+                const cleanJoin = (...parts) => {
+                    return parts.map((part, index) => {
+                        if (!part) return '';
+                        let s = part;
+                        if (index > 0) s = s.replace(/^[\\\/]+/, '');
+                        if (index < parts.length - 1) s = s.replace(/[\\\/]+$/, '');
+                        return s;
+                    }).join(sep);
+                };
+              
+                // 构造绝对路径
+                const inputPath = cleanJoin(storageRoot, 'files', downloadPath); // .enc 文件
+                const outputPath = cleanJoin(storageRoot, 'files', relativePath); // 最终文件
+              
+                console.log(`[E2EE] Decrypting: \n In:  ${inputPath} \n Out: ${outputPath}`);
 
-                    // D. 调用 Rust 进行解密 (文档 3.5 节)
-                    await invoke('decrypt_file', {
-                        inputPath: inputPath,
-                        outputPath: outputPath,
-                        dekHex: securityStore.dek
-                    });
+                // 调用 Rust 进行解密
+                await invoke('decrypt_file', {
+                    inputPath: inputPath,
+                    outputPath: outputPath,
+                    dekHex: securityStore.dek
+                });
 
-                    // (可选) E. 可以在此处调用 Rust 删除 .enc 临时文件
-                    // await invoke('delete_file', { path: inputPath });
+                // (可选) 删除 .enc 临时文件
+                // await invoke('delete_file', { path: inputPath });
+            }
 
-                } else {
-                    // === 普通流程 ===
-                    // 直接保存原始内容
-                    await invoke('save_clipboard_file', { 
-                        relativePath: relativePath, 
-                        base64Content: base64 
-                    });
-                }
-                resolve();
-              } catch (e) {
-                console.error(`处理文件 ${item.relative_path} 失败:`, e);
-                // 单个文件失败不中断整个循环，但打印错误
-                resolve(); 
-              }
-            };
-            reader.onerror = reject;
-          });
+          } catch (e) {
+            console.error(`同步文件 ${item.relative_path} 失败:`, e);
+            // 单个文件失败不中断整个循环
+          }
         }
       }
 

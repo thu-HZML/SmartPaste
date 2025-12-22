@@ -118,6 +118,7 @@ fn main() {
             utils::get_local_files_to_upload,
             utils::read_db_file_base64,
             utils::save_clipboard_file,
+            utils::download_cloud_file,
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录

@@ -36,6 +36,7 @@ use std::sync::OnceLock;
 use std::thread;
 use walkdir::WalkDir;
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
+use reqwest::header::AUTHORIZATION;
 
 #[tauri::command]
 pub fn test_function() -> String {
@@ -1289,6 +1290,51 @@ pub async fn save_clipboard_file(
     })
     .await
     .map_err(|e| format!("异步任务执行失败: {}", e))?
+}
+
+/// 从云端下载文件并保存到 files 目录
+#[tauri::command]
+pub async fn download_cloud_file(
+    url: String,
+    auth_token: Option<String>,
+    relative_path: String,
+) -> Result<(), String> {
+    // 1. 获取存储路径
+    let root_path = crate::config::get_current_storage_path();
+    let files_dir = root_path.join("files");
+    let dest_path = files_dir.join(&relative_path);
+
+    // 2. 确保父目录存在
+    if let Some(parent) = dest_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+        }
+    }
+
+    // 3. 构建请求客户端
+    let client = reqwest::Client::new();
+    let mut request = client.get(&url);
+
+    // 添加鉴权头 (使用 Bearer Token)
+    if let Some(token) = auth_token {
+        request = request.header(AUTHORIZATION, format!("Bearer {}", token));
+    }
+
+    // 4. 发送请求
+    let response = request.send().await.map_err(|e| format!("网络请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("下载失败，状态码: {}", response.status()));
+    }
+
+    // 5. 获取二进制内容并写入文件
+    let content = response.bytes().await.map_err(|e| format!("读取响应流失败: {}", e))?;
+    
+    // 使用 std::fs::write 或者 File::create 写入
+    std::fs::write(&dest_path, content).map_err(|e| format!("写入文件失败: {}", e))?;
+
+    println!("⬇️ 云端文件已下载: {} -> {}", url, dest_path.display());
+    Ok(())
 }
 
 /// 前端文件结构体，包含文件名、Base64 数据和 MIME 类型。
