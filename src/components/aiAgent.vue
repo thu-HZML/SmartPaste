@@ -150,10 +150,9 @@ const isStreaming = ref(false) // 是否正在流式输出
 const streamingBuffer = ref('') // 流式缓冲区
 
 // 配置
-const maxResponseHeight = 400 // 最大响应高度
+const maxResponseHeight = 700 // 最大响应高度
 const autoCloseDelay = 5000 // 自动关闭延迟(5秒)
 const fadeInDelay = 300 // 淡入延迟
-const maxContentLength = 5000 // 最大处理内容长度
 
 // AI操作列表
 const aiActions = ref([
@@ -246,21 +245,35 @@ const updateWindowSize = async (height) => {
     const newX = mainWindowPosition.x - currentSize.width / scaleFactor + 140
     const newY = mainWindowPosition.y - height
 
-    await currentWindow.setPosition(new LogicalPosition(newX, newY))
-    console.log('设置新位置')
-    // 设置新高度
-    await currentWindow.setSize({
-      type: 'Logical',
-      width: currentSize.width / scaleFactor,
-      height: height
+    // 使用 requestAnimationFrame 确保在同一帧中执行位置和大小更新
+    await new Promise(resolve => {
+      requestAnimationFrame(async () => {
+        try {
+          // 同时更新位置和大小
+          await Promise.all([
+            currentWindow.setPosition(new LogicalPosition(newX, newY)),
+            currentWindow.setSize({
+              type: 'Logical',
+              width: currentSize.width / scaleFactor,
+              height: height
+            })
+          ])
+          
+          console.log('窗口位置和大小已更新')
+          
+          // 存储窗口高度
+          const windowHeight = {
+            height: height,
+          }
+          localStorage.setItem('aiWindowHeight', JSON.stringify(windowHeight))
+          
+        } catch (error) {
+          console.error('更新窗口失败:', error)
+        } finally {
+          resolve()
+        }
+      })
     })
-    console.log('设置新高度')
-
-    const windowHeight = {
-      height: height,
-    }
-
-    localStorage.setItem('aiWindowHeight', JSON.stringify(windowHeight))
   } catch (error) {
     console.error('更新窗口大小失败:', error)
   }
@@ -608,13 +621,13 @@ defineExpose({
 </script>
 
 <style scoped>
-/* AI助手容器 */
+/* AI助手容器 - 确保不超出 */
 .ai-assistant {
   background: white;
   border: 1px solid white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  overflow: hidden; /* 确保内容不会溢出容器 */
   transition: all 0.3s ease;
   animation: slideInRight 0.3s ease;
 }
@@ -669,9 +682,11 @@ defineExpose({
 .ai-response {
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden; /* 禁止水平滚动 */
   border-bottom: 1px solid #e1e8ed;
   background: #f8f9fa;
   transition: max-height 0.3s ease;
+  width: 100%; /* 确保宽度100% */
 }
 
 .response-content {
@@ -723,14 +738,27 @@ defineExpose({
   font-size: 14px;
 }
 
-/* 响应文本 - 修改为Markdown样式 */
+/* Markdown容器 - 确保内容不溢出 */
 .response-text.markdown-body {
   font-size: 14px;
   line-height: 1.6;
   color: #333;
+  
+  /* 关键修复：确保内容宽度不超过容器 */
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  
+  /* 确保内容换行 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  
+  /* 防止代码块和表格溢出 */
+  overflow: hidden;
 }
 
-/* Markdown样式 */
+/* Markdown样式 - 添加溢出处理 */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
@@ -741,6 +769,23 @@ defineExpose({
   margin-bottom: 16px;
   font-weight: 600;
   line-height: 1.25;
+  
+  /* 标题溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
+}
+
+/* 改进Markdown样式，确保所有元素都遵守容器宽度 */
+
+/* 1. 代码块 - 关键修复 */
+.markdown-body pre {
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto; /* 代码块内部可以水平滚动 */
+  white-space: pre-wrap; /* 允许代码换行 */
+  word-break: break-all; /* 强制长代码换行 */
 }
 
 .markdown-body h1 {
@@ -781,6 +826,11 @@ defineExpose({
   margin-top: 0;
   margin-bottom: 16px;
   color: #333;
+  
+  /* 段落溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body blockquote {
@@ -790,6 +840,11 @@ defineExpose({
   border-left: 0.25em solid #dfe2e5;
   background: #f8f9fa;
   border-radius: 4px;
+  
+  /* 引用块溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body ul,
@@ -798,10 +853,20 @@ defineExpose({
   margin-bottom: 16px;
   padding-left: 2em;
   color: #333;
+  
+  /* 列表溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body li {
   margin-bottom: 0.25em;
+  
+  /* 列表项溢出处理 */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-body li > p {
@@ -809,6 +874,7 @@ defineExpose({
   margin-bottom: 0;
 }
 
+/* 代码块溢出处理 - 重点修复 */
 .markdown-body code {
   padding: 0.2em 0.4em;
   margin: 0;
@@ -817,6 +883,11 @@ defineExpose({
   border-radius: 3px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
   color: #e83e8c;
+  
+  /* 行内代码溢出处理 */
+  white-space: pre-wrap; /* 保留空格但允许换行 */
+  word-break: break-all; /* 强制长代码换行 */
+  max-width: 100%;
 }
 
 .markdown-body pre {
@@ -827,76 +898,90 @@ defineExpose({
   background-color: #f6f8fa;
   border-radius: 6px;
   margin-bottom: 16px;
+  
+  /* 代码块容器 */
+  max-width: 100%;
 }
 
 .markdown-body pre code {
-  padding: 0;
-  margin: 0;
-  background-color: transparent;
-  border: 0;
-  font-size: 100%;
-  color: #333;
+  display: block;
+  max-width: 100%;
+  white-space: pre-wrap; /* 代码可以换行 */
+  word-break: break-all; /* 强制换行 */
+  overflow-wrap: break-word;
 }
 
-.markdown-body a {
-  color: #0366d6;
-  text-decoration: none;
+.markdown-body code:not(pre code) {
+  /* 行内代码 */
+  white-space: normal;
+  word-break: break-word;
 }
 
-.markdown-body a:hover {
-  text-decoration: underline;
-  color: #0056b3;
-}
-
-.markdown-body strong,
-.markdown-body b {
-  font-weight: 600;
-  color: #24292e;
-}
-
-.markdown-body em,
-.markdown-body i {
-  font-style: italic;
-  color: #24292e;
-}
-
-.markdown-body hr {
-  height: 0.25em;
-  padding: 0;
-  margin: 24px 0;
-  background-color: #e1e4e8;
-  border: 0;
-  border-radius: 2px;
-}
-
+/* 2. 表格 - 关键修复 */
 .markdown-body table {
   display: block;
+  max-width: 100%;
   width: 100%;
-  overflow: auto;
-  margin-top: 0;
-  margin-bottom: 16px;
-  border-spacing: 0;
+  overflow-x: auto; /* 表格内部可以水平滚动 */
   border-collapse: collapse;
-}
-
-.markdown-body th {
-  font-weight: 600;
-  background-color: #f6f8fa;
+  margin-bottom: 16px;
 }
 
 .markdown-body th,
 .markdown-body td {
-  padding: 6px 13px;
-  border: 1px solid #dfe2e5;
+  max-width: 200px; /* 限制单元格最大宽度 */
+  min-width: 60px; /* 保持最小宽度 */
+  word-break: break-word;
+  white-space: normal; /* 允许换行 */
 }
 
-.markdown-body tr {
-  background-color: #fff;
-  border-top: 1px solid #c6cbd1;
+/* 3. 图片 - 确保不超出 */
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
-.markdown-body tr:nth-child(2n) {
-  background-color: #f6f8fa;
+/* 4. 长链接和URL - 确保换行 */
+.markdown-body a {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* 5. 列表和段落 */
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body p,
+.markdown-body blockquote {
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 6. 标题 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 7. 通用修复：确保所有子元素都继承宽度限制 */
+.markdown-body > * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* 响应内容区域 - 确保宽度100% */
+.response-content {
+  padding: 16px;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 响应操作按钮 */
@@ -1055,7 +1140,7 @@ defineExpose({
   }
 }
 
-/* 滚动条美化 */
+/* 修改滚动条样式，只显示垂直滚动条 */
 .ai-response::-webkit-scrollbar {
   width: 6px;
 }
@@ -1072,5 +1157,11 @@ defineExpose({
 
 .ai-response::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* 隐藏水平滚动条（如果有的话） */
+.ai-response::-webkit-scrollbar:horizontal {
+  display: none;
+  height: 0;
 }
 </style>

@@ -389,15 +389,15 @@ impl Default for Config {
             global_shortcut_4: default_shortcut_4(), // 新增
             global_shortcut_5: default_shortcut_5(), // 新增
             // 剪贴板
-            max_history_items: 500,         // 最大历史记录数：500条
-            ignore_short_text_len: 0,       // 忽略短文本长度：不忽略(0表示不忽略)
-            ignore_big_file_mb: 5,          // 忽略大文件大小：5MB
-            ignored_apps: Vec::new(),       // 忽略的应用列表：空
-            auto_classify: true,            // 自动分类：是
-            ocr_auto_recognition: false,    // OCR 自动识别：否
-            delete_confirmation: true,      // 删除确认对话框：是
+            max_history_items: 500,      // 最大历史记录数：500条(0表示不限制)
+            ignore_short_text_len: 0,    // 忽略短文本长度：不忽略(0表示不忽略)
+            ignore_big_file_mb: 5,       // 忽略大文件大小：5MB
+            ignored_apps: Vec::new(),    // 忽略的应用列表：空
+            auto_classify: true,         // 自动分类：是
+            ocr_auto_recognition: false, // OCR 自动识别：否
+            delete_confirmation: true,   // 删除确认对话框：是
             keep_favorites_on_delete: true, // 删除时保留收藏：是
-            auto_sort: false,               // 自动排序：否
+            auto_sort: false,            // 自动排序：否
 
             // AI
             ai_enabled: false, // AI 助手：关
@@ -1200,10 +1200,13 @@ pub fn reload_config() -> String {
 
 /// 全量同步并应用配置。作为 Tauri Command 暴露给前端调用。
 #[tauri::command]
-pub async fn sync_and_apply_config(app: tauri::AppHandle, content: String) -> Result<String, String> {
+pub async fn sync_and_apply_config(
+    app: tauri::AppHandle,
+    content: String,
+) -> Result<String, String> {
     // 1. 解析 JSON 确保数据格式正确
-    let new_config: Config = serde_json::from_str(&content)
-        .map_err(|e| format!("解析配置失败: {}", e))?;
+    let new_config: Config =
+        serde_json::from_str(&content).map_err(|e| format!("解析配置失败: {}", e))?;
 
     // 2. 调用你提到的 save_config 将配置写入磁盘
     save_config(new_config)?;

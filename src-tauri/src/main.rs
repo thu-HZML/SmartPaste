@@ -24,6 +24,7 @@ use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_notification;
+use utils::EncryptionState;
 
 fn main() {
     let result = tauri::Builder::default()
@@ -40,6 +41,9 @@ fn main() {
         .manage(AppShortcutManager::new())
         .manage(ClipboardSourceState {
             is_frontend_copy: Mutex::new(false),
+        })
+        .manage(EncryptionState {
+            dek: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             utils::test_function,
@@ -89,13 +93,25 @@ fn main() {
             db::search_data_by_ocr_text,
             db::get_icon_data_by_item_id,
             db::mark_passwords_as_private,
+            db::prepare_encrypted_db_upload,
+            db::restore_from_encrypted_db,
             db::mark_bank_cards_as_private,
             db::mark_identity_numbers_as_private,
             db::mark_phone_numbers_as_private,
             db::clear_all_private_data,
             db::auto_mark_private_data,
+            db::check_and_mark_private_item,
             db::trigger_cleanup,
             db::sync_cloud_data,
+            db::sync_encrypted_cloud_data,
+            db::encrypt_file,
+            db::decrypt_file,
+            db::generate_salt,
+            db::generate_dek,
+            db::derive_mk,
+            db::wrap_dek,
+            db::unwrap_dek,
+            db::delete_temp_encrypted_file,
             db::top_data_by_id,
             ocr::configure_ocr,
             ocr::ocr_image,
@@ -107,6 +123,10 @@ fn main() {
             utils::get_local_files_to_upload,
             utils::read_db_file_base64,
             utils::save_clipboard_file,
+            utils::download_cloud_file,
+            utils::set_dek_state,
+            utils::get_dek_state,
+            utils::clear_dek_state
         ])
         .setup(move |app| {
             // 1. 获取系统默认的应用数据目录

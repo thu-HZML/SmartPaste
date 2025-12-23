@@ -8,7 +8,8 @@ import {
   updateMenuWindowPosition,
   toggleAiWindow,
   updateAiWindowPosition,
-  hasMenuWindow as checkMenuWindowExists
+  hasMenuWindow as checkMenuWindowExists,
+  updateScreenWorkArea
 } from '../utils/actions.js'
 import { 
   AnimationManager, 
@@ -16,6 +17,7 @@ import {
 } from '../utils/animations.js'
 import live2d from '../utils/live2dManager.js'
 import { useSettingsStore } from '../stores/settings'
+import { executeCloudPush } from './Preferences'
 
 export function useDesktopPet() {
   const isHovering = ref(false)
@@ -86,13 +88,98 @@ export function useDesktopPet() {
     return true
   })
 
-  // 监听settings.ai_enabled的变化
+  //云端同步相关
+  const FREQUENCY_MAP = {
+    'realtime': 30 * 1000,     // 实时：30秒
+    '5min': 5 * 60 * 1000,     // 5分钟
+    '15min': 15 * 60 * 1000,   // 15分钟
+    '1hour': 60 * 60 * 1000    // 1小时
+  }
+
+  const IDLE_CHECK_INTERVAL = 30 * 1000;
+  let syncTimer = null
+
+  const executeSyncLoop = async () => {
+    console.log('🔄 [SyncLoop] 正在执行同步循环检查...')
+    let currentConfig = {}
+    let shouldSync = false
+    let nextDelay = IDLE_CHECK_INTERVAL
+
+    try {
+      // 尝试从后端读取 config.json
+      const configStr = await invoke('get_config_json')
+      if (configStr) {
+        currentConfig = JSON.parse(configStr)
+        // console.log('📂 [SyncLoop] 读取到后端配置:', currentConfig.sync_frequency, currentConfig.cloud_sync_enabled)
+      } else {
+        console.warn('⚠️ [SyncLoop] 后端返回配置为空')
+        currentConfig = settings // 降级使用内存配置
+      }
+
+      // 决定是否同步
+      if (currentConfig.cloud_sync_enabled) {
+        shouldSync = true
+        // 计算下一次正常同步的时间
+        const freq = currentConfig.sync_frequency || '5min'
+        nextDelay = FREQUENCY_MAP[freq] || FREQUENCY_MAP['5min']
+      } else {
+        console.log('⏸️ [SyncLoop] 同步功能已禁用 (将进入待机轮询模式)')
+        // 如果被禁用，不停止循环，而是用较慢的速度轮询配置，等待它变回 true
+        nextDelay = IDLE_CHECK_INTERVAL 
+      }
+
+    } catch (e) {
+      console.error('❌ [SyncLoop] 读取配置失败:', e)
+      nextDelay = 60 * 1000
+    }
+
+    // 同步
+    if (shouldSync) {
+      try {
+        console.log('🚀 [SyncLoop] 开始执行上传...')
+        await executeCloudPush()
+        console.log(`✅ [SyncLoop] 同步成功! 下次同步: ${nextDelay/1000}秒后`)
+      } catch (e) {
+        console.error('❌ [SyncLoop] 上传过程出错:', e)
+      }
+    } else {
+      console.log(`💤 [SyncLoop] 跳过本次上传. 下次检查: ${nextDelay/1000}秒后`)
+    }
+    // 重新设置定时器
+    if (syncTimer !== null) { // 确保没有被 unmount 清除
+        clearTimeout(syncTimer) 
+        syncTimer = setTimeout(executeSyncLoop, nextDelay)
+    }
+  }
+
+  // 启动入口
+  const startSyncTimer = () => {
+    // 防止重复启动
+    if (syncTimer) {
+      console.log('⚡ [SyncLoop] 定时器已存在，重置中...')
+      clearTimeout(syncTimer)
+    }
+    
+    // 初始化 timer 占位符，防止 executeSyncLoop 里的判断失效
+    syncTimer = 1 
+
+    setTimeout(executeSyncLoop, 1000)
+  }
+
   watch(
-    () => settings.ai_enabled,
-    (newValue, oldValue) => {
-      console.log(`AI功能设置变化: ${oldValue} -> ${newValue}`)
-      // 当ai_enabled变化时重新设置监听器
-      setupClipboardRelay()
+    () => [settings.ai_enabled, settings.cloud_sync_enabled, settings.sync_frequency],
+    ([newAi, newSync, newFreq], [oldAi, oldSync, oldFreq]) => {
+      // AI 监听逻辑
+      if (newAi !== oldAi) {
+        console.log(`AI功能设置变化: ${oldAi} -> ${newAi}`)
+        setupClipboardRelay()
+      }
+      
+      // 同步 监听逻辑
+      if (newSync !== oldSync || newFreq !== oldFreq) {
+        console.log('检测到同步设置变更，重启定时器...')
+        startSyncTimer()
+      }
     }
   )
 
@@ -339,7 +426,7 @@ export function useDesktopPet() {
       const utilsDirPath = await invoke('get_utils_dir_path');
 
       // 替换成live2d资源在的绝对路径
-      const modelPath = utilsDirPath.replace('//?/', '').replace('/src-tauri/src', '') + '/public/resources/live2d';
+      const modelPath = utilsDirPath.replace('//?/', '').replace('/src-tauri/src', '/src-tauri') + '/resources/live2d'
       console.log('使用路径:', modelPath)
       
       const result = await live2d.load(modelPath)
@@ -406,14 +493,19 @@ export function useDesktopPet() {
       // 初始化动画系统
       animationManager.setState(AnimationState.IDLE, true)
       setupAnimationCallbacks()    
-
+      
       // 设置全局事件监听
       await setupGlobalListeners()
+
+      // 组件挂载时启动同步定时器
+      startSyncTimer()
 
       updateMainWindowPosition(currentPosition.value)
 
       // 初始化 Live2D
       await initLive2D()
+      
+      await updateScreenWorkArea()
     } catch (error) {
       console.error('设置窗口大小失败:', error)
     }
@@ -422,6 +514,11 @@ export function useDesktopPet() {
   onUnmounted(async () => {
     cleanupEventListeners()
     animationManager.destroy()
+
+    if (syncTimer) {
+      clearTimeout(syncTimer)
+      syncTimer = null
+    }
 
     // 停止全局监听
     await invoke('stop_key_listener');

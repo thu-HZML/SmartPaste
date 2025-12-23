@@ -112,13 +112,14 @@
             <div class="setting-info">
               <h3>最大历史记录数量</h3>
               <p>限制保存的剪贴板历史记录数量</p>
+              <p>（为0时不限数量）</p>
             </div>
             <div class="setting-control">
               <input 
                 type="number" 
                 v-model="settings.max_history_items" 
-                min="10" 
-                max="1000" 
+                min="0" 
+                max="100000000" 
                 class="number-input"
                 @change="updateSetting('max_history_items', Number($event.target.value))" 
               >
@@ -147,13 +148,14 @@
             <div class="setting-info">
               <h3>忽略大文件</h3>
               <p>不保存字符数大于指定值的文件</p>
+              <p>（为0时不限大小）</p>
             </div>
             <div class="setting-control">
               <input 
                 type="number" 
                 v-model="settings.ignore_big_file_mb" 
-                min="5" 
-                max="100" 
+                min="0" 
+                max="1000000" 
                 class="number-input"
                 @change="updateSetting('ignore_big_file_mb', Number($event.target.value))"
               >
@@ -211,126 +213,6 @@
               </label>
             </div>
           </div>
-
-
-        </div>
-
-        <!-- OCR设置 -->
-        <div v-if="activeNav === 'ocr'" class="panel-section">
-          <h2>OCR设置</h2>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>OCR提供者</h3>
-              <p>选择OCR识别服务提供者</p>
-            </div>
-            <div class="setting-control">
-              <select 
-                v-model="settings.ocr_provider" 
-                @change="updateSetting('ocr_provider', $event.target.value)" 
-                class="select-input"
-              >
-                <option value="auto">默认</option>
-                <option value="tesseract">Tesseract</option>
-                <option value="windows">Windows OCR</option>
-                <option value="baidu">百度OCR</option>
-                <option value="google">Google Vision</option>
-                <option value="custom">自定义</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>识别语言</h3>
-              <p>选择OCR识别的语言，支持多语言同时识别</p>
-            </div>
-            <div class="setting-control">
-              <div class="checkbox-group">
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('chi_sim')" 
-                    @change="toggleOCRLanguage('chi_sim', $event.target.checked)"
-                  > 简体中文
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('eng')" 
-                    @change="toggleOCRLanguage('eng', $event.target.checked)"
-                  > 英语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('jpn')" 
-                    @change="toggleOCRLanguage('jpn', $event.target.checked)"
-                  > 日语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('kor')" 
-                    @change="toggleOCRLanguage('kor', $event.target.checked)"
-                  > 韩语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('fra')" 
-                    @change="toggleOCRLanguage('fra', $event.target.checked)"
-                  > 法语
-                </label>
-                <label class="checkbox-item">
-                  <input 
-                    type="checkbox" 
-                    :checked="settings.ocr_languages && settings.ocr_languages.includes('deu')" 
-                    @change="toggleOCRLanguage('deu', $event.target.checked)"
-                  > 德语
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>置信度阈值</h3>
-              <p>设置识别结果的置信度阈值，低于此值的结果将被忽略</p>
-            </div>
-            <div class="setting-control">
-              <div class="slider-container">
-                <input 
-                  type="range" 
-                  :value="settings.ocr_confidence_threshold" 
-                  min="0" 
-                  max="100" 
-                  step="1" 
-                  class="slider-input"
-                  @input="updateSetting('ocr_confidence_threshold', Number($event.target.value))"
-                >
-                <span class="slider-value">{{ settings.ocr_confidence_threshold }}%</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>超时时间</h3>
-              <p>设置OCR识别的最长等待时间（秒）</p>
-            </div>
-            <div class="setting-control">
-              <input 
-                type="number" 
-                v-model="settings.ocr_timeout_secs" 
-                min="5" 
-                max="120" 
-                class="number-input"
-                @change="updateSetting('ocr_timeout_secs', Number($event.target.value))"
-              >
-              <span class="unit">秒</span>
-            </div>
-          </div>
         </div>
 
         <!-- AI Agent 设置 -->
@@ -340,7 +222,7 @@
           <div class="setting-item">
             <div class="setting-info">
               <h3>启用AI助手</h3>
-              <p>启用AI智能助手功能</p>
+              <p>启用AI智能助手功能（可对最新复制内容提问）</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -462,45 +344,6 @@
                     @input="updateSetting('ai_temperature', Number($event.target.value))"
                   >
                   <span class="slider-value">{{ settings.ai_temperature }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>AI功能开关</h3>
-                <p>启用或禁用各项AI功能</p>
-              </div>
-              <div class="setting-control">
-                <div class="checkbox-group">
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_auto_tag" 
-                      @change="updateSetting('ai_auto_tag', $event.target.checked)"
-                    > 自动打Tag
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_auto_summary" 
-                      @change="updateSetting('ai_auto_summary', $event.target.checked)"
-                    > 自动总结
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_translation" 
-                      @change="updateSetting('ai_translation', $event.target.checked)"
-                    > 翻译
-                  </label>
-                  <label class="checkbox-item">
-                    <input 
-                      type="checkbox" 
-                      :checked="settings.ai_web_search" 
-                      @change="updateSetting('ai_web_search', $event.target.checked)"
-                    > 联网搜索
-                  </label>
                 </div>
               </div>
             </div>
@@ -638,13 +481,7 @@
           <h2>云端同步</h2>
           
           <!-- 同步状态显示 -->
-          <div class="sync-status" v-if="userLoggedIn">
-            <div class="status-item">
-              <span class="status-label">同步状态:</span>
-              <span class="status-value" :class="{'success': lastSyncStatus === 'success', 'error': lastSyncStatus === 'error'}">
-                {{ lastSyncStatus === 'success' ? '同步成功' : lastSyncStatus === 'error' ? '同步失败' : '未同步' }}
-              </span>
-            </div>
+          <div class="sync-status" v-if="userLoggedIn && settings.cloud_sync_enabled">           
             <div class="status-item">
               <span class="status-label">上次同步时间:</span>
               <span class="status-value">
@@ -658,7 +495,7 @@
             </div>
           </div>
 
-          <div class="setting-item">
+          <div class="setting-item" :class="{ 'no-border': settings.cloud_sync_enabled }">
             <div class="setting-info">
               <h3>启用云端同步</h3>
               <p>将剪贴板历史同步到云端，跨设备访问</p>
@@ -668,7 +505,7 @@
                 <input 
                   type="checkbox" 
                   :checked="settings.cloud_sync_enabled" 
-                  @change="updateSetting('cloud_sync_enabled', $event.target.checked)"
+                  @change="handleCloudSyncToggle"
                 >
                 <span class="slider"></span>
               </label>
@@ -697,35 +534,38 @@
 
             <div class="setting-item">
               <div class="setting-info">
-                <h3>同步内容类型</h3>
-                <p>同步(仅文本 / 包含图片 / 包含文件)</p>
+                <h3>加密同步数据</h3>
+                <p>使用端到端加密 (E2EE) 保护您的数据，服务器无法查看内容</p>
               </div>
               <div class="setting-control">
-                <select 
-                  v-model="settings.sync_content_type" 
-                  @change="updateSetting('sync_content_type', $event.target.value)" 
-                  class="select-input"
-                >
-                  <option value="onlytxt">仅文本</option>
-                  <option value="containphoto">包含图片</option>
-                  <option value="containfile">包含文件</option>
-                </select>
+                <label class="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.encrypt_cloud_data" 
+                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
+                  >
+                  <span class="slider"></span>
+                </label>
               </div>
             </div>
+
+            <div v-if="settings.encrypt_cloud_data" class="encryption-status-panel">   
+              <div v-if="securityStore.hasDek()" class="status-ok">
+                <span class="icon">🔒</span> 
+                <span>密钥已激活，数据传输安全</span>
+              </div>
             
-            <div class="account-status" v-if="!userLoggedIn">
-              <p>您尚未登录，请登录以启用云端同步功能</p>  
-              <div class="account-buttons">
-                <button class="btn btn-secondary" @click="activeNav = 'user'">前往用户信息</button>
+              <div v-else class="status-warning">
+                <div class="warning-text">
+                  <span class="icon">⚠️</span>
+                  <span>密钥未加载，无法同步数据</span>
+                </div>
+                <button class="btn btn-small btn-secondary" @click="restoreKeysManually">
+                  验证密码以恢复
+                </button>
               </div>            
             </div>
             
-            <div class="account-status" v-else>
-              <p>已登录为: {{ userEmail }}</p>
-              <div class="account-buttons">
-                <button class="btn btn-primary" @click="activeNav = 'user'">查看用户信息</button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -810,7 +650,7 @@
                 v-model="registerData.username"
                 type="text"
                 required
-                placeholder="请输入用户名（至少3个字符）"
+                placeholder="请输入用户名（不能为空）"
                 class="form-input"
                 :class="{ 'error': registerErrors.username }"
               />
@@ -838,7 +678,7 @@
                 v-model="registerData.password"
                 type="password"
                 required
-                placeholder="请输入密码（至少9位）"
+                placeholder="请输入密码（至少8位，不能为纯数字）"
                 class="form-input"
                 :class="{ 'error': registerErrors.password }"
               />
@@ -956,7 +796,7 @@
                 v-model="changePasswordData.new_password"
                 type="password"
                 required
-                placeholder="请输入新密码（至少6位）"
+                placeholder="请输入新密码（至少8位，不能为纯数字）"
                 class="form-input"
                 :class="{ 'error': changePasswordErrors.new_password }"
               />
@@ -996,6 +836,8 @@
 
 <script setup>
 import { usePreferences } from '../composables/Preferences'
+import { useSecurityStore } from '../stores/security'
+import { watch } from 'vue'
 
 const {
   // 状态
@@ -1036,6 +878,9 @@ const {
   changePasswordData,
   changePasswordErrors,
   changePasswordLoading,
+
+  // 安全相关状态
+  securityStore,
 
   // 基础方法
   setActiveNav,
@@ -1079,11 +924,14 @@ const {
   showPrivate,
   
   // 云端同步方法
+  handleCloudSyncToggle,
   formatTime,
   manualSync,
   syncNow,
   checkSyncStatus,
   handleCloudPush,
+  restoreKeysManually,
+  handleCloudPull,
 
   // 用户管理方法
   changeAvatar,
@@ -1496,8 +1344,8 @@ input:checked + .slider:before {
 
 /* 云端设置样式 */
 .cloud-settings {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 0px;
+  padding-top: 0px;
   border-top: 1px solid #f0f0f0;
 }
 
@@ -1563,6 +1411,10 @@ input:checked + .slider:before {
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.setting-item.no-border {
+  border-bottom: none;
 }
 
 /* 用户信息样式 */
@@ -2009,6 +1861,41 @@ input:checked + .slider:before {
   text-align: center;
   font-size: 14px;
   color: #2c3e50;
+}
+
+.encryption-status-panel {
+  margin-top: -10px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+  font-size: 13px;
+}
+
+.status-ok {
+  color: #27ae60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.status-warning {
+  color: #e67e22;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.warning-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  font-size: 16px;
 }
 
 </style>

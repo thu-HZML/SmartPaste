@@ -18,11 +18,13 @@
             type="datetime-local" 
             v-model="startTime"
             class="time-input"
+            title="起始时间"
           >
           <input 
             type="datetime-local" 
             v-model="endTime"
             class="time-input"
+            title="终止时间"
           >
         </div>
       </div>
@@ -88,7 +90,7 @@
           <p class="hint">复制的内容将显示在这里</p>
         </div>
         
-        <div v-else class="history-list-reverse">
+        <div v-else class="history-list">
           <div 
             v-for="(item, index) in filteredHistory" 
             :key="index" 
@@ -124,7 +126,7 @@
                 <button 
                   class="icon-btn-small" 
                   @click="toggleFavorite(item)"
-                  :title="item.is_favorite ? '取消收藏' : '收藏'"
+                  :title="item.is_favorite ? '取消收藏' : '收藏（双击选择收藏夹）'"
                 >
                   <StarIconSolid v-if="item.is_favorite" class="icon-star-solid" />
                   <StarIcon v-else class="icon-default" />
@@ -167,7 +169,7 @@
                 </div>
                 
                 <!-- 显示图片 -->
-                <div v-else-if="item.item_type === 'image'" class="image-container">
+                <div v-else-if="item.item_type === 'image'" class="image-container" @click="openImageWithSystem(item)">
                   <img 
                     v-if="item.content"
                     :src="convertFileSrc(normalizedPath + item.content)" 
@@ -474,7 +476,6 @@ const {
   showDeleteSingle,
   deleteAllHistory,
   cancelDeleteAll,
-  deleteSingle,
   cancelDeleteSingle,
   handleItemClick,
   copySelectedItems,
@@ -487,7 +488,8 @@ const {
   handleImageError,
   startDragging,
   setupWindowListeners,
-  removeWindowListeners
+  removeWindowListeners,
+  openImageWithSystem
 } = useClipboardApp()
 </script>
 
@@ -779,14 +781,6 @@ body {
 .hint {
   font-size: 14px;
   color: #bdc3c7;
-}
-
-/* 历史记录列表样式（倒序） */
-.history-list-reverse {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 12px;
-  max-width: 100%;
 }
 
 /* 历史记录列表样式（正序） */

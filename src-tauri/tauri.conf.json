@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Desktop Pet",
+  "productName": "SmartPaste",
   "version": "0.1.0",
-  "identifier": "com.tauri-app.desktop-pet",
+  "identifier": "com.tauri-app.smartpaste",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Desktop Pet",
+        "title": "SmartPaste",
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false,
@@ -25,7 +25,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost",
+      "csp": "default-src 'self'; connect-src 'self' http://asset.localhost asset: http://ipc.localhost http://101.42.152.3 ws://localhost:* wss://localhost:*; img-src 'self' http://asset.localhost asset: blob: data: http://101.42.152.3 https://101.42.152.3; script-src 'self' 'unsafe-eval' 'unsafe-inline';",
       "assetProtocol": {
         "enable": true,
         "scope": ["$APPDATA/*", "$LOCALDATA/*", "**/*.jpg", "**/*.png", "**/*.jpeg", "**/*.gif", "**/*.webp", 
@@ -47,7 +47,15 @@
     "category": "Utility",
     "icon": [
       "icons/logo.png",
-      "icons/tray.png"
+      "icons/tray.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/**/*"
     ]
   },
   "plugins": {

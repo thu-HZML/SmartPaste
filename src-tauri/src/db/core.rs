@@ -3,7 +3,7 @@ use uuid::Uuid;
 use std::path::{Path, PathBuf};
 use std::fs;
 use crate::clipboard::{ClipboardItem, clipboard_items_to_json, clipboard_item_to_json};
-use super::{get_db_path, init_db, notify_cleanup};
+use super::{get_db_path, init_db, notify_cleanup, check_and_mark_private_item};
 
 /// 将接收到的数据插入数据库。
 /// Param:
@@ -91,7 +91,7 @@ pub fn get_all_data() -> Result<String, String> {
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT id, item_type, content, size, is_favorite, notes, timestamp FROM data")
+        .prepare("SELECT id, item_type, content, size, is_favorite, notes, timestamp FROM data ORDER BY timestamp DESC") // 添加 ORDER BY
         .map_err(|e| e.to_string())?;
 
     let clipboard_iter = stmt
@@ -543,7 +543,8 @@ pub fn filter_data_by_favorite(is_favorite: bool) -> Result<String, String> {
         .prepare(
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
-             WHERE is_favorite = ?1",
+             WHERE is_favorite = ?1
+             ORDER BY timestamp DESC",
         )
         .map_err(|e| e.to_string())?;
 
@@ -612,6 +613,19 @@ pub fn add_notes_by_id(id: &str, notes: &str) -> Result<String, String> {
     if json == "null" {
         Err("Item not found after update".to_string())
     } else {
+        // 尝试根据当前配置重新检查并标记隐私属性（失败不影响主流程）
+        if let Ok(item) = serde_json::from_str::<crate::clipboard::ClipboardItem>(&json) {
+            // 获取当前配置（回退为默认值以确保行为可预测）
+            let cfg = crate::config::CONFIG.get().map(|c| c.read().unwrap().clone()).unwrap_or_default();
+            let _ = check_and_mark_private_item(
+                item,
+                cfg.filter_passwords,
+                cfg.filter_bank_cards,
+                cfg.filter_id_cards,
+                cfg.filter_phone_numbers,
+            );
+        }
+
         Ok(json)
     }
 }
@@ -633,7 +647,8 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
         (
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
-             WHERE item_type IN ('folder', 'file')",
+             WHERE item_type IN ('folder', 'file')
+             ORDER BY timestamp DESC",
             vec![],
         )
     } else {
@@ -641,7 +656,8 @@ pub fn filter_data_by_type(item_type: &str) -> Result<String, String> {
         (
             "SELECT id, item_type, content, size, is_favorite, notes, timestamp 
              FROM data 
-             WHERE item_type = ?1",
+             WHERE item_type = ?1
+             ORDER BY timestamp DESC",
             vec![item_type],
         )
     };
@@ -691,20 +707,6 @@ pub fn top_data_by_id(id: &str) -> Result<String, String> {
     conn.execute(
         "UPDATE data SET timestamp = ?1 WHERE id = ?2",
         params![current_timestamp, id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // 对数据库进行重排序，按 timestamp 降序排列
-    conn.execute(
-        "CREATE TEMPORARY TABLE temp_data AS 
-         SELECT * FROM data ORDER BY timestamp DESC;
-         
-         DELETE FROM data;
-         
-         INSERT INTO data SELECT * FROM temp_data;
-         
-         DROP TABLE temp_data;",
-        [],
     )
     .map_err(|e| e.to_string())?;
 

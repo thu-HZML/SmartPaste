@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
+import { openPath } from '@tauri-apps/plugin-opener'
 import { toggleSetWindow } from '../utils/actions.js'
 import { useSettingsStore } from '../stores/settings'
 
@@ -228,7 +229,7 @@ export function useClipboardApp() {
         item.timestamp = new Date().getTime()
         
         // 将项目添加到数组开头（顶部显示）
-        filteredHistory.value.push(item)
+        filteredHistory.value.unshift(item)
         
         // 在数据库中置顶该项目
         await invoke('top_data_by_id', {
@@ -253,7 +254,7 @@ export function useClipboardApp() {
   // 切换收藏状态
   const toggleFavorite = async (item) => {
     // 清除之前的单击定时器
-    if (clickTimeout || activeCategory.value === 'folder') {
+    if (clickTimeout || activeCategory.value === 'folder' || item.is_favorite) {
       clearTimeout(clickTimeout)
       // 如果已经有定时器存在，说明是双击
       executeDoubleClick(item)
@@ -949,7 +950,6 @@ export function useClipboardApp() {
   // 退出多选模式
   const exitMultiSelectMode = () => {
     multiSelectMode.value = false
-    console.log('多选复制内容为：',selectedItems)
     selectedItems.value.forEach(item => {
       item.is_selected = false    
       item.selectionOrder = 0
@@ -1045,16 +1045,24 @@ export function useClipboardApp() {
       console.error('保存窗口状态失败:', error)
     }
   }
+
+  const openImageWithSystem = async (item) => {
+    try {     
+      // 构建完整的图片路径
+      let imagePath = normalizedPath.value + item.content
+      console.log('图片路径为：', imagePath)
+      // 使用系统默认程序打开图片
+      //imagePath = imagePath.replace(/\\/g, '/').trim()    
+      
+      await openPath(imagePath)
+      showMessage('正在使用系统默认程序打开图片')
+    } catch (error) {
+      console.error('打开图片失败:', error)
+      showMessage(`打开图片失败: ${error}`)
+    }
+  }
   
   let unlistenShortcutEvent;
-  // 监听settings.ai_enabled的变化
-  watch(
-    () => settings.ai_enabled,
-    (newValue, oldValue) => {
-      console.log(`AI功能设置变化: ${oldValue} -> ${newValue}`)
-      // 当ai_enabled变化时重新设置监听器
-    }
-  )
   // 生命周期
   onMounted(async () => {
 
@@ -1222,6 +1230,7 @@ export function useClipboardApp() {
     handleImageError,
     startDragging,
     setupWindowListeners,
-    removeWindowListeners
+    removeWindowListeners,
+    openImageWithSystem
   }
 }

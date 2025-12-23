@@ -29,13 +29,37 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use zip::write::FileOptions;
 // main.rs 头部引入
 use rdev::{listen, Button, EventType, Key};
+use serde::Serialize;
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::OnceLock;
 use std::thread;
-use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
-use serde::Serialize; 
 use walkdir::WalkDir;
+use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
+use reqwest::header::AUTHORIZATION;
+use std::sync::Mutex;
+
+// 定义一个全局状态来存储数据加密密钥（DEK）
+pub struct EncryptionState {
+    pub dek: Mutex<Option<String>>,
+}
+
+#[tauri::command]
+pub fn set_dek_state(state: State<'_, EncryptionState>, key: String) {
+    let mut dek = state.dek.lock().unwrap();
+    *dek = Some(key);
+}
+
+#[tauri::command]
+pub fn get_dek_state(state: State<'_, EncryptionState>) -> Option<String> {
+    state.dek.lock().unwrap().clone()
+}
+
+#[tauri::command]
+pub fn clear_dek_state(state: State<'_, EncryptionState>) {
+    let mut dek = state.dek.lock().unwrap();
+    *dek = None;
+}
 
 #[tauri::command]
 pub fn test_function() -> String {
@@ -1116,12 +1140,11 @@ pub fn get_utils_dir_path(_app: AppHandle) -> Result<String, String> {
     Err("无法获取当前目录路径".to_string())
 }
 
-/**
- * 【新增命令】读取本地文件并返回 Base64 编码的字符串。
- * 用于将前端选择的本地图片文件转换为可上传的格式。
- * @param file_path: String - 文件的绝对路径。
- * @returns Base64 编码的字符串。
- */
+/// 读取本地文件并返回 Base64 编码的字符串，作为 Tauri command 暴露给前端调用。
+/// # Param
+/// file_path: String - 文件的绝对路径。
+/// # Returns
+/// Result<String, String> - 成功返回 Base64 编码的字符串，失败返回错误信息。
 #[tauri::command]
 pub async fn read_file_base64(file_path: String) -> Result<String, String> {
     use std::fs;
@@ -1150,10 +1173,9 @@ pub async fn read_file_base64(file_path: String) -> Result<String, String> {
     .map_err(|e| format!("异步任务执行失败: {}", e))?
 }
 
-/**
- * 【新增命令】读取本地 smartpaste.db 文件内容，返回 Base64 字符串。
- * 对应前端调用: readDbFileBase64
- */
+/// 读取本地 smartpaste.db 文件并返回 Base64 编码的字符串，作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// Result<String, String> - 成功返回 Base64 编码的字符串，失败返回错误信息。
 #[tauri::command]
 pub async fn read_db_file_base64() -> Result<String, String> {
     use base64::{engine::general_purpose, Engine as _};
@@ -1163,24 +1185,24 @@ pub async fn read_db_file_base64() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root_path = crate::config::get_current_storage_path();
         let db_path = root_path.join("smartpaste.db");
-        
+
         if !db_path.exists() {
             return Err("本地数据库文件不存在".to_string());
         }
 
         let mut file = fs::File::open(db_path).map_err(|e| format!("无法打开数据库文件: {}", e))?;
         let mut buffer = Vec::new();
-        
-        file.read_to_end(&mut buffer).map_err(|e| format!("读取数据库文件失败: {}", e))?;
-        
+
+        file.read_to_end(&mut buffer)
+            .map_err(|e| format!("读取数据库文件失败: {}", e))?;
+
         let base64_content = general_purpose::STANDARD.encode(buffer);
-        
+
         Ok(base64_content)
     })
     .await
     .map_err(|e| format!("异步任务执行失败: {}", e))?
 }
-
 
 // -----------------------------------------------------
 // 文件同步相关辅助结构体
@@ -1193,11 +1215,9 @@ pub struct LocalFileInfo {
     pub file_path: String,
 }
 
-/**
- * 【新增命令】获取本地剪贴板文件目录(files/)中的所有文件列表。
- * 返回一个包含相对路径和绝对路径的结构体列表。
- * 对应前端调用: getLocalFilesToUpload
- */
+/// 获取本地剪贴板文件目录中的所有文件列表，作为 Tauri command 暴露给前端调用。
+/// # Returns
+/// Result<Vec<LocalFileInfo>, String> - 成功返回文件信息列表，失败返回错误信息。
 #[tauri::command]
 pub async fn get_local_files_to_upload() -> Result<Vec<LocalFileInfo>, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1210,21 +1230,28 @@ pub async fn get_local_files_to_upload() -> Result<Vec<LocalFileInfo>, String> {
         }
 
         // 遍历 files 目录
-        for entry in walkdir::WalkDir::new(&files_dir).into_iter().filter_map(|e| e.ok()) {
+        for entry in walkdir::WalkDir::new(&files_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
-            
+
             // 忽略目录本身
             if path.is_dir() {
                 continue;
             }
 
             // 计算相对于 files_dir 的相对路径
-            let relative_path_os = path.strip_prefix(&files_dir)
+            let relative_path_os = path
+                .strip_prefix(&files_dir)
                 .map_err(|e| format!("计算相对路径失败: {}", e))?;
-            
-            let relative_path = relative_path_os.to_string_lossy().to_string().replace("\\", "/");
+
+            let relative_path = relative_path_os
+                .to_string_lossy()
+                .to_string()
+                .replace("\\", "/");
             let absolute_path = path.to_string_lossy().to_string().replace("\\", "/");
-            
+
             file_list.push(LocalFileInfo {
                 relative_path,
                 file_path: absolute_path,
@@ -1237,45 +1264,50 @@ pub async fn get_local_files_to_upload() -> Result<Vec<LocalFileInfo>, String> {
     .map_err(|e| format!("异步任务执行失败: {}", e))?
 }
 
-/**
- * 【新增命令】将 Base64 内容解码并保存到本地剪贴板文件目录。
- * @param relative_path: String - 相对于 files/ 目录的路径。
- * @param base64_content: String - 文件的 Base64 内容。
- * 对应前端调用: saveClipboardFile
- */
+/// 将 Base64 内容解码并保存到本地剪贴板文件目录，作为 Tauri command 暴露给前端调用。
+/// # Param
+/// relative_path: String - 相对于 files/ 目录的路径。
+/// base64_content: String - 文件的 Base64 内容。
+/// # Returns
+/// Result<(), String> - 成功返回 Ok(())，失败返回错误信息。
 #[tauri::command]
-pub async fn save_clipboard_file(relative_path: String, base64_content: String) -> Result<(), String> {
-    use base64::{engine::general_purpose, Engine as _};
-    use std::fs;
-    use std::io::Write;
-    use std::path::Path;
+pub async fn save_clipboard_file(
+    relative_path: String,
+    base64_content: String,
+) -> Result<(), String> {
+    // use base64::{engine::general_purpose, Engine as _};
+    // use std::fs;
+    // use std::io::Write;
+    // use std::path::Path;
 
     tauri::async_runtime::spawn_blocking(move || {
         let root_path = crate::config::get_current_storage_path();
         let files_dir = root_path.join("files");
-        
+
         // 目标绝对路径: {ROOT}/files/{RELATIVE_PATH}
         let file_path = files_dir.join(&relative_path);
-        
+
         // 安全检查：防止相对路径包含 '..' 试图跳出目录 (Zip Slip 风险)
-        if file_path.components().any(|c| c == std::path::Component::ParentDir) {
+        if file_path
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+        {
             return Err("相对路径包含非法字符 '..'".to_string());
         }
 
         // 1. 确保父目录存在
         if let Some(parent_dir) = file_path.parent() {
-            fs::create_dir_all(parent_dir)
-                .map_err(|e| format!("创建目录失败: {}", e))?;
+            fs::create_dir_all(parent_dir).map_err(|e| format!("创建目录失败: {}", e))?;
         }
 
         // 2. Base64 解码
-        let decoded_bytes = general_purpose::STANDARD.decode(base64_content)
+        let decoded_bytes = general_purpose::STANDARD
+            .decode(base64_content)
             .map_err(|e| format!("Base64 解码失败: {}", e))?;
-        
+
         // 3. 写入文件
-        fs::write(&file_path, decoded_bytes)
-            .map_err(|e| format!("写入文件失败: {}", e))?;
-        
+        fs::write(&file_path, decoded_bytes).map_err(|e| format!("写入文件失败: {}", e))?;
+
         println!("💾 文件保存成功: {}", relative_path);
         Ok(())
     })
@@ -1283,7 +1315,50 @@ pub async fn save_clipboard_file(relative_path: String, base64_content: String) 
     .map_err(|e| format!("异步任务执行失败: {}", e))?
 }
 
+/// 从云端下载文件并保存到 files 目录
+#[tauri::command]
+pub async fn download_cloud_file(
+    url: String,
+    auth_token: Option<String>,
+    relative_path: String,
+) -> Result<(), String> {
+    // 1. 获取存储路径
+    let root_path = crate::config::get_current_storage_path();
+    let files_dir = root_path.join("files");
+    let dest_path = files_dir.join(&relative_path);
 
+    // 2. 确保父目录存在
+    if let Some(parent) = dest_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+        }
+    }
+
+    // 3. 构建请求客户端
+    let client = reqwest::Client::new();
+    let mut request = client.get(&url);
+
+    // 添加鉴权头 (使用 Bearer Token)
+    if let Some(token) = auth_token {
+        request = request.header(AUTHORIZATION, format!("Bearer {}", token));
+    }
+
+    // 4. 发送请求
+    let response = request.send().await.map_err(|e| format!("网络请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("下载失败，状态码: {}", response.status()));
+    }
+
+    // 5. 获取二进制内容并写入文件
+    let content = response.bytes().await.map_err(|e| format!("读取响应流失败: {}", e))?;
+    
+    // 使用 std::fs::write 或者 File::create 写入
+    std::fs::write(&dest_path, content).map_err(|e| format!("写入文件失败: {}", e))?;
+
+    println!("⬇️ 云端文件已下载: {} -> {}", url, dest_path.display());
+    Ok(())
+}
 
 /// 前端文件结构体，包含文件名、Base64 数据和 MIME 类型。
 /// 用于将本地文件信息传递给前端。
