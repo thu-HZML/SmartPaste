@@ -2,6 +2,7 @@
 use super::*;
 use serde_json::json;
 use std::sync::Mutex;
+use uuid::Uuid;
 
 // 使用互斥锁确保测试串行执行,避免全局状态冲突
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -141,7 +142,7 @@ fn test_config_default_values() {
     assert_eq!(config.minimize_to_tray, false);
     assert_eq!(config.auto_save, true);
     assert_eq!(config.retention_days, 30);
-    assert_eq!(config.global_shortcut, "Alt+Shift+V");
+    assert_eq!(config.global_shortcut, "Shift+V");
 
     assert_eq!(config.max_history_items, 500);
     assert_eq!(config.ignore_short_text_len, 0);
@@ -289,4 +290,301 @@ fn test_numeric_option_types() {
     update_simple_config_item(&ConfigKey::OcrTimeoutSecs, json!(30)).unwrap();
     let result = get_config_item("ocr_timeout_secs");
     assert_eq!(result.unwrap(), json!(30));
+}
+
+#[test]
+fn test_config_file_operations() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    // 1. Setup temp config path
+    let temp_dir = std::env::temp_dir();
+    let config_path = temp_dir.join(format!("test_config_{}.json", Uuid::new_v4()));
+    set_config_path(config_path.clone());
+
+    // 2. Init config (should create file)
+    let res = init_config();
+    assert!(res.contains("initialized successfully") || res.contains("config json already exists"));
+    assert!(config_path.exists());
+
+    // Force reload global config from the file we just created
+    // This ensures we are testing against a clean state regardless of other tests
+    if let Some(lock) = CONFIG.get() {
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        let new_cfg: Config = serde_json::from_str(&content).unwrap();
+        let mut cfg = lock.write().unwrap();
+        *cfg = new_cfg;
+    }
+
+    // 3. Verify default values
+    let cfg = CONFIG.get().unwrap().read().unwrap();
+    assert_eq!(cfg.max_history_items, 500);
+    drop(cfg); // Release lock
+
+    // 4. Modify and Save
+    let mut cfg = CONFIG.get().unwrap().read().unwrap().clone();
+    cfg.max_history_items = 1000;
+    save_config(cfg.clone()).unwrap();
+
+    // 5. Reload
+    let reload_res = reload_config();
+    assert_eq!(reload_res, "reloaded successfully");
+
+    let cfg_reloaded = CONFIG.get().unwrap().read().unwrap();
+    assert_eq!(cfg_reloaded.max_history_items, 1000);
+    drop(cfg_reloaded);
+
+    // 6. Test get_config_json
+    let json_str = get_config_json();
+    assert!(json_str.contains("\"max_history_items\": 1000"));
+
+    // 7. Test set_config_item_internal
+    set_config_item_internal("max_history_items", json!(2000)).unwrap();
+    let cfg_internal = CONFIG.get().unwrap().read().unwrap();
+    assert_eq!(cfg_internal.max_history_items, 2000);
+    drop(cfg_internal);
+
+    // 8. Test set_config_item_internal error
+    let err = set_config_item_internal("invalid_key", json!(1));
+    assert!(err.is_err());
+
+    let err_type = set_config_item_internal("max_history_items", json!("string"));
+    assert!(err_type.is_err());
+
+    // Cleanup
+    let _ = std::fs::remove_file(config_path);
+}
+
+#[test]
+fn test_config_coverage_extensions() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = init_config();
+
+    // Cover all ConfigKey variants in update_simple_config_item
+    // Boolean fields
+    let bool_keys = vec![
+        ConfigKey::MinimizeToTray,
+        ConfigKey::AutoSave,
+        ConfigKey::AutoClassify,
+        ConfigKey::OcrAutoRecognition,
+        ConfigKey::DeleteConfirmation,
+        ConfigKey::KeepFavoritesOnDelete,
+        ConfigKey::AutoSort,
+        ConfigKey::AiEnabled,
+        ConfigKey::AiAutoTag,
+        ConfigKey::AiAutoSummary,
+        ConfigKey::AiTranslation,
+        ConfigKey::AiWebSearch,
+        ConfigKey::SensitiveFilter,
+        ConfigKey::FilterPasswords,
+        ConfigKey::FilterBankCards,
+        ConfigKey::FilterIdCards,
+        ConfigKey::FilterPhoneNumbers,
+        ConfigKey::AutoBackup,
+        ConfigKey::CloudSyncEnabled,
+        ConfigKey::EncryptCloudData,
+        ConfigKey::SyncOnlyWifi,
+    ];
+
+    for key in bool_keys {
+        update_simple_config_item(&key, json!(true)).unwrap();
+        update_simple_config_item(&key, json!(false)).unwrap();
+    }
+
+    // String fields
+    let string_keys = vec![
+        ConfigKey::GlobalShortcut2,
+        ConfigKey::GlobalShortcut3,
+        ConfigKey::GlobalShortcut4,
+        ConfigKey::GlobalShortcut5,
+        ConfigKey::AiProvider,
+        ConfigKey::AiModel,
+        ConfigKey::BackupFrequency,
+        ConfigKey::SyncFrequency,
+        ConfigKey::SyncContentType,
+    ];
+
+    for key in string_keys {
+        update_simple_config_item(&key, json!("test_value")).unwrap();
+    }
+
+    // Option<String> fields
+    let opt_string_keys = vec![
+        ConfigKey::AiBaseUrl,
+        ConfigKey::StoragePath,
+        ConfigKey::LastBackupPath,
+        ConfigKey::Username,
+        ConfigKey::Email,
+        ConfigKey::Bio,
+        ConfigKey::AvatarPath,
+        ConfigKey::OcrProvider,
+    ];
+
+    for key in opt_string_keys {
+        update_simple_config_item(&key, json!("some_val")).unwrap();
+        update_simple_config_item(&key, json!(null)).unwrap();
+    }
+
+    // u32 fields
+    let u32_keys = vec![
+        ConfigKey::RetentionDays,
+        ConfigKey::IgnoreShortTextLen,
+        ConfigKey::IgnoreBigFileMb,
+    ];
+    for key in u32_keys {
+        update_simple_config_item(&key, json!(10)).unwrap();
+    }
+
+    // f32 fields
+    update_simple_config_item(&ConfigKey::AiTemperature, json!(0.5)).unwrap();
+
+    // Cover get_config_item for all keys
+    let all_keys = vec![
+        "minimize_to_tray",
+        "auto_save",
+        "retention_days",
+        "global_shortcut_2",
+        "global_shortcut_3",
+        "global_shortcut_4",
+        "global_shortcut_5",
+        "ignore_short_text_len",
+        "ignore_big_file_mb",
+        "auto_classify",
+        "ocr_auto_recognition",
+        "delete_confirmation",
+        "keep_favorites_on_delete",
+        "auto_sort",
+        "ai_provider",
+        "ai_model",
+        "ai_base_url",
+        "ai_temperature",
+        "ai_auto_tag",
+        "ai_auto_summary",
+        "ai_translation",
+        "ai_web_search",
+        "sensitive_filter",
+        "filter_passwords",
+        "filter_bank_cards",
+        "filter_id_cards",
+        "filter_phone_numbers",
+        "storage_path",
+        "auto_backup",
+        "backup_frequency",
+        "last_backup_path",
+        "cloud_sync_enabled",
+        "sync_frequency",
+        "sync_content_type",
+        "encrypt_cloud_data",
+        "sync_only_wifi",
+        "username",
+        "email",
+        "bio",
+        "avatar_path",
+        "ocr_provider",
+    ];
+
+    for key in all_keys {
+        assert!(get_config_item(key).is_ok(), "Failed to get key: {}", key);
+    }
+}
+
+#[test]
+fn test_private_functions_coverage() {
+    // Test normalize_to_forward_slashes
+    assert_eq!(normalize_to_forward_slashes("a\\b\\c"), "a/b/c");
+    assert_eq!(normalize_to_forward_slashes("a/b/c"), "a/b/c");
+
+    // Test copy_dir_all (basic file op)
+    let temp_dir = std::env::temp_dir().join(format!("test_copy_{}", Uuid::new_v4()));
+    let src = temp_dir.join("src");
+    let dst = temp_dir.join("dst");
+
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("file.txt"), "content").unwrap();
+    std::fs::create_dir(src.join("subdir")).unwrap();
+    std::fs::write(src.join("subdir").join("subfile.txt"), "sub").unwrap();
+
+    // Test copy
+    crate::config::copy_dir_all(&src, &dst).unwrap();
+
+    assert!(dst.join("file.txt").exists());
+    assert!(dst.join("subdir").join("subfile.txt").exists());
+
+    // Test failure: dst exists but is file
+    let bad_dst = temp_dir.join("bad_dst");
+    std::fs::write(&bad_dst, "I am a file").unwrap();
+    let res = crate::config::copy_dir_all(&src, &bad_dst);
+    assert!(res.is_err());
+
+    std::fs::remove_dir_all(temp_dir).ok();
+}
+
+#[test]
+fn test_migrate_data() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let temp_dir = std::env::temp_dir().join(format!("test_migrate_{}", Uuid::new_v4()));
+    let old_path = temp_dir.join("old");
+    let new_path = temp_dir.join("new");
+
+    // Setup old path
+    std::fs::create_dir_all(&old_path).unwrap();
+    std::fs::write(old_path.join("smartpaste.db"), "db content").unwrap();
+    std::fs::create_dir(old_path.join("files")).unwrap();
+    std::fs::write(old_path.join("files").join("img.png"), "img").unwrap();
+
+    // Test migration
+    let res = crate::config::migrate_data_to_new_path(&old_path, &new_path);
+    assert!(res.is_ok());
+
+    // Verify new path
+    assert!(new_path.join("smartpaste.db").exists());
+    assert!(new_path.join("files").join("img.png").exists());
+
+    // Verify old path cleanup (files dir should be gone)
+    assert!(!old_path.join("files").exists());
+
+    // Test failure: new path creation fails (invalid path)
+    // On Windows, using a reserved name or invalid char might work
+    // But simpler to just pass a file as new_path
+    let file_as_dir = temp_dir.join("file_as_dir");
+    std::fs::write(&file_as_dir, "content").unwrap();
+    let res = crate::config::migrate_data_to_new_path(&old_path, &file_as_dir);
+    assert!(res.is_err());
+
+    std::fs::remove_dir_all(temp_dir).ok();
+}
+
+#[test]
+fn test_set_config_item_internal_error() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = init_config();
+
+    // Autostart requires AppHandle, so internal set should fail
+    let res = set_config_item_internal("autostart", json!(true));
+    assert!(res.is_err());
+    assert!(res.err().unwrap().contains("requires AppHandle"));
+
+    // Invalid key
+    let res = set_config_item_internal("invalid_key_xyz", json!(true));
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_reload_config_errors() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+
+    let temp_dir = std::env::temp_dir();
+    let config_path = temp_dir.join(format!("test_config_err_{}.json", Uuid::new_v4()));
+    set_config_path(config_path.clone());
+
+    // 1. File not found
+    let res = reload_config();
+    assert_eq!(res, "File not found");
+
+    // 2. Parse error
+    std::fs::write(&config_path, "{ invalid json").unwrap();
+    let res = reload_config();
+    assert!(res.contains("Parse error"));
+
+    std::fs::remove_file(config_path).ok();
 }

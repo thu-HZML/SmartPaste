@@ -104,7 +104,7 @@ pub fn mark_passwords_as_private(to_add: bool) -> Result<usize, String> {
 /// card_number: &str - 银行卡号字符串
 /// # Returns
 /// bool - 是否通过 Luhn 校验
-fn is_valid_luhn(card_number: &str) -> bool {
+pub fn is_valid_luhn(card_number: &str) -> bool {
     let card_number = card_number.replace(|c: char| c.is_whitespace() || c == '-', "");
 
     // Luhn 算法只适用于纯数字串

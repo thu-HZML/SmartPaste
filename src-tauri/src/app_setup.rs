@@ -67,7 +67,7 @@ pub struct ShortcutConfig {
 
 // 快捷键配置映射
 lazy_static::lazy_static! {
-    static ref SHORTCUT_CONFIGS: std::collections::HashMap<&'static str, ShortcutConfig> = {
+    pub static ref SHORTCUT_CONFIGS: std::collections::HashMap<&'static str, ShortcutConfig> = {
         let mut m = std::collections::HashMap::new();
         m.insert("toggleWindow", ShortcutConfig {
             storage_key: "global_shortcut",
@@ -142,7 +142,7 @@ lazy_static::lazy_static! {
         m
     };
     // 通过 Storage Key 查找 Handler Key 的反向映射
-    static ref STORAGE_KEY_TO_HANDLER_KEY: std::collections::HashMap<&'static str, &'static str> = {
+    pub static ref STORAGE_KEY_TO_HANDLER_KEY: std::collections::HashMap<&'static str, &'static str> = {
         let mut m = std::collections::HashMap::new();
         for (handler_key, config) in SHORTCUT_CONFIGS.iter() {
             m.insert(config.storage_key, *handler_key);
@@ -391,7 +391,7 @@ pub fn setup_global_shortcuts(handle: AppHandle) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-fn normalize_shortcut_format(shortcut: &str) -> String {
+pub(crate) fn normalize_shortcut_format(shortcut: &str) -> String {
     let mut normalized = shortcut.to_lowercase();
 
     // 替换常见的格式差异
@@ -982,7 +982,7 @@ fn toggle_window_visibility(window: &WebviewWindow) {
 }
 
 /// 递归复制文件夹，并返回复制的总字节数
-fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<u64> {
+pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<u64> {
     fs::create_dir_all(&dst)?;
     let mut total_size: u64 = 0;
 
@@ -1076,3 +1076,6 @@ pub fn start_cleanup_worker() {
         }
     });
 }
+#[cfg(test)]
+#[path = "test_unit/test_app_setup.rs"]
+mod test_app_setup;

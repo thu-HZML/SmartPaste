@@ -261,12 +261,12 @@ pub fn delete_data_by_id(id: &str) -> Result<usize, String> {
         // 处理相对路径：如果是以 ".\files\" 或 "./files/" 开头的相对路径
         let file_path = if content.starts_with(r".\files\") || content.starts_with("./files/") || content.starts_with("files/") {
             // 从相对路径中提取文件名部分
-            let file_name = if let Some(name) = content.split(r"\files\").last() {
-                name.to_string()
-            } else if let Some(name) = content.split(r"./files/").last() {
-                name.to_string()
-            } else if let Some(name) = content.split("files/").last() {
-                name.to_string()
+            let file_name = if content.contains(r"\files\") {
+                content.split(r"\files\").last().unwrap_or(&content).to_string()
+            } else if content.contains("./files/") {
+                content.split("./files/").last().unwrap_or(&content).to_string()
+            } else if content.contains("files/") {
+                content.split("files/").last().unwrap_or(&content).to_string()
             } else {
                 content.to_string()
             };

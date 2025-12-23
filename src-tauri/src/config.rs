@@ -606,7 +606,7 @@ pub fn save_config(config: Config) -> Result<(), String> {
 /// 返回 Ok(true) 表示已处理并更新内存
 /// 返回 Ok(false) 表示该 key (如 Autostart) 需要特殊处理，未更新
 /// 返回 Err 表示类型错误或其他错误
-fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Result<bool, String> {
+pub fn update_simple_config_item(key: &ConfigKey, value: serde_json::Value) -> Result<bool, String> {
     macro_rules! update_cfg {
         ($field:ident, $type:ty) => {{
             match serde_json::from_value::<$type>(value) {
@@ -697,7 +697,7 @@ pub fn set_config_item_internal(key: &str, value: serde_json::Value) -> Result<(
     }
 }
 /// 迁移数据到新的存储路径
-fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
+pub(crate) fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<(), String> {
     println!(
         "🚚 开始迁移数据文件从 {} 到 {}",
         old_path.display(),
@@ -783,7 +783,7 @@ fn migrate_data_to_new_path(old_path: &PathBuf, new_path: &PathBuf) -> Result<()
 }
 /// 递归复制目录
 /// 递归复制目录
-fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+pub(crate) fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     // 确保目标目录存在
     if !dst.exists() {
         fs::create_dir_all(dst)?;

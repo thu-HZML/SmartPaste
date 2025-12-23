@@ -7,7 +7,9 @@ use uuid::Uuid;
 
 // 获取测试锁，防止并发测试导致数据库路径冲突
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    crate::db::TEST_RUN_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
 }
 
 // 设置测试数据库路径
@@ -30,7 +32,7 @@ fn clear_db_file(p: &PathBuf) {
 fn test_sync_cloud_data_basic() {
     let _guard = test_lock();
     let db_path = set_test_db_path();
-    
+
     // 确保数据库初始化
     let _ = init_db(&db_path);
 
@@ -86,22 +88,44 @@ fn test_sync_cloud_data_basic() {
     let conn = Connection::open(&db_path).unwrap();
 
     // 验证 data 表
-    let count: i64 = conn.query_row("SELECT count(*) FROM data", [], |row| row.get(0)).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT count(*) FROM data", [], |row| row.get(0))
+        .unwrap();
     assert_eq!(count, 2, "Should have 2 items in data table");
 
-    let content: String = conn.query_row("SELECT content FROM data WHERE id = 'item1'", [], |row| row.get(0)).unwrap();
+    let content: String = conn
+        .query_row("SELECT content FROM data WHERE id = 'item1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
     assert_eq!(content, "content1");
 
     // 验证 folders 表
-    let folder_name: String = conn.query_row("SELECT name FROM folders WHERE id = 'folder1'", [], |row| row.get(0)).unwrap();
+    let folder_name: String = conn
+        .query_row("SELECT name FROM folders WHERE id = 'folder1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
     assert_eq!(folder_name, "Folder 1");
 
     // 验证 folder_items 表
-    let count_fi: i64 = conn.query_row("SELECT count(*) FROM folder_items WHERE folder_id = 'folder1' AND item_id = 'item2'", [], |row| row.get(0)).unwrap();
+    let count_fi: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM folder_items WHERE folder_id = 'folder1' AND item_id = 'item2'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
     assert_eq!(count_fi, 1, "Relation should exist");
 
     // 验证 extended_data 表
-    let ocr_text: String = conn.query_row("SELECT ocr_text FROM extended_data WHERE item_id = 'item2'", [], |row| row.get(0)).unwrap();
+    let ocr_text: String = conn
+        .query_row(
+            "SELECT ocr_text FROM extended_data WHERE item_id = 'item2'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
     assert_eq!(ocr_text, "ocr result");
 
     clear_db_file(&db_path);
@@ -152,12 +176,191 @@ fn test_sync_cloud_data_ignore_existing() {
     assert!(result.is_ok());
 
     // 验证 item1 应该保持原样 (INSERT OR IGNORE)
-    let content: String = conn.query_row("SELECT content FROM data WHERE id = 'item1'", [], |row| row.get(0)).unwrap();
-    assert_eq!(content, "original content", "Existing item should not be overwritten");
+    let content: String = conn
+        .query_row("SELECT content FROM data WHERE id = 'item1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        content, "original content",
+        "Existing item should not be overwritten"
+    );
 
     // 验证 item3 应该被插入
-    let content3: String = conn.query_row("SELECT content FROM data WHERE id = 'item3'", [], |row| row.get(0)).unwrap();
+    let content3: String = conn
+        .query_row("SELECT content FROM data WHERE id = 'item3'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
     assert_eq!(content3, "content3", "New item should be inserted");
+
+    clear_db_file(&db_path);
+}
+
+#[test]
+fn test_sync_data_structs_coverage() {
+    use crate::clipboard::{ClipboardItem, FolderItem};
+    use crate::db::sync::{ExtendedData, FolderItemRelation, SyncData};
+
+    let sync_data = SyncData {
+        data: vec![ClipboardItem {
+            id: "id".to_string(),
+            item_type: "text".to_string(),
+            content: "content".to_string(),
+            size: Some(10),
+            is_favorite: false,
+            notes: "notes".to_string(),
+            timestamp: 123,
+        }],
+        folders: vec![FolderItem {
+            id: "fid".to_string(),
+            name: "fname".to_string(),
+            num_items: 0,
+        }],
+        folder_items: vec![FolderItemRelation {
+            folder_id: "fid".to_string(),
+            item_id: "id".to_string(),
+        }],
+        extended_data: vec![ExtendedData {
+            item_id: "id".to_string(),
+            ocr_text: Some("ocr".to_string()),
+            icon_data: None,
+        }],
+    };
+
+    // Test Debug
+    let debug_str = format!("{:?}", sync_data);
+    assert!(debug_str.contains("SyncData"));
+
+    // Test Serialize
+    let json = serde_json::to_string(&sync_data).unwrap();
+    assert!(json.contains("id"));
+}
+
+#[test]
+fn test_sync_conflict_handling() {
+    let _guard = test_lock();
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+
+    // 1. Insert local data
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute(
+        "INSERT INTO data (id, item_type, content, size, is_favorite, notes, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params!["conflict-id", "text", "local content", 10, 0, "", 1000],
+    ).unwrap();
+
+    // 2. Sync data with same ID but different content
+    let json_data = r#"{
+        "data": [
+            {
+                "id": "conflict-id",
+                "item_type": "text",
+                "content": "cloud content",
+                "size": 20,
+                "is_favorite": false,
+                "notes": "cloud note",
+                "timestamp": 2000
+            }
+        ],
+        "folders": [],
+        "folder_items": [],
+        "extended_data": []
+    }"#;
+
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_ok());
+
+    // 3. Verify local data is preserved (INSERT OR IGNORE)
+    let content: String = conn
+        .query_row(
+            "SELECT content FROM data WHERE id = 'conflict-id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        content, "local content",
+        "Local data should be preserved on conflict"
+    );
+
+    clear_db_file(&db_path);
+}
+
+#[test]
+fn test_sync_db_errors() {
+    let _guard = test_lock();
+    
+    // 1. Test with invalid DB path (directory instead of file)
+    let temp_dir = std::env::temp_dir();
+    let invalid_db_path = temp_dir.join(format!("invalid_db_{}", Uuid::new_v4()));
+    std::fs::create_dir(&invalid_db_path).unwrap();
+    
+    set_db_path(invalid_db_path.clone());
+    
+    let json_data = r#"{ "data": [], "folders": [], "folder_items": [], "extended_data": [] }"#;
+    
+    // This should fail at init_db or Connection::open
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_err());
+    
+    std::fs::remove_dir(invalid_db_path).ok();
+}
+
+#[test]
+fn test_sync_invalid_json() {
+    let _guard = test_lock();
+    // No need to setup DB for this test as it fails before DB access
+    
+    let json_data = "{ invalid json }";
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_err());
+    assert!(result.err().unwrap().contains("JSON 解析失败"));
+}
+
+#[test]
+fn test_sync_extended_data_optional_fields() {
+    let _guard = test_lock();
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+
+    let json_data = r#"{
+        "data": [
+            {
+                "id": "item_opt",
+                "item_type": "text",
+                "content": "content",
+                "size": 10,
+                "is_favorite": false,
+                "notes": "",
+                "timestamp": 1000
+            }
+        ],
+        "folders": [],
+        "folder_items": [],
+        "extended_data": [
+            {
+                "item_id": "item_opt",
+                "ocr_text": null,
+                "icon_data": null
+            }
+        ]
+    }"#;
+
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_ok());
+
+    let conn = Connection::open(&db_path).unwrap();
+    let (ocr, icon): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT ocr_text, icon_data FROM extended_data WHERE item_id = 'item_opt'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    
+    assert!(ocr.is_none());
+    assert!(icon.is_none());
 
     clear_db_file(&db_path);
 }

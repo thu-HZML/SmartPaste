@@ -8,7 +8,9 @@ use std::fs;
 use std::path::PathBuf;
 
 fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-    crate::db::TEST_RUN_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    crate::db::TEST_RUN_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
 }
 
 use uuid::Uuid;
@@ -320,4 +322,27 @@ fn test_folder_functions() {
         all_folders.iter().find(|f| f.id == folder_b).is_none(),
         "FolderB should be removed from folders list"
     );
+}
+
+#[test]
+fn test_rename_folder() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    let folder_id = create_new_folder("OldName").expect("create folder failed");
+
+    // Rename
+    let res = rename_folder(&folder_id, "NewName");
+    assert!(res.is_ok());
+    assert_eq!(res.unwrap(), "renamed");
+
+    // Verify
+    let all_folders_json = get_all_folders().expect("get folders failed");
+    let folders: Vec<FolderItem> = serde_json::from_str(&all_folders_json).unwrap();
+    let folder = folders
+        .iter()
+        .find(|f| f.id == folder_id)
+        .expect("folder not found");
+    assert_eq!(folder.name, "NewName");
 }

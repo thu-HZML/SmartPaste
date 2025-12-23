@@ -102,3 +102,9 @@ pub fn trigger_cleanup() -> Result<String, String> {
         Err("cleanup worker not started".to_string())
     }
 }
+
+#[cfg(test)]
+pub fn reset_cleanup_sender() {
+    let mut s = CLEANUP_SENDER.write().unwrap();
+    *s = None;
+}

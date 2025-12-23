@@ -420,7 +420,7 @@ pub fn resolve_absolute_path(relative_path: &PathBuf) -> PathBuf {
 }
 
 // --- 辅助函数：处理单个文件（去除时间戳，复制到临时目录，返回绝对路径） ---
-fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
+pub(crate) fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     let path = Path::new(file_path);
 
     // 1. 检查是否存在
@@ -489,7 +489,7 @@ fn process_file_for_clipboard(file_path: &str) -> Result<PathBuf, String> {
     Ok(final_path)
 }
 
-fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
+pub(crate) fn copy_files_list_to_clipboard(paths: Vec<PathBuf>) -> Result<(), String> {
     let ctx = ClipboardContext::new().map_err(|e| e.to_string())?;
 
     // 将 PathBuf 转换为 String 列表
@@ -1211,8 +1211,8 @@ pub async fn read_db_file_base64() -> Result<String, String> {
 /// 用于前端接收本地文件列表，包含相对路径和绝对路径
 #[derive(Debug, Serialize)]
 pub struct LocalFileInfo {
-    relative_path: String,
-    file_path: String,
+    pub relative_path: String,
+    pub file_path: String,
 }
 
 /// 获取本地剪贴板文件目录中的所有文件列表，作为 Tauri command 暴露给前端调用。
@@ -1365,11 +1365,11 @@ pub async fn download_cloud_file(
 #[derive(serde::Serialize)]
 pub struct FrontendFile {
     /// 文件名
-    name: String,
+    pub name: String,
     /// Base64 编码的数据
-    data: String,
+    pub data: String,
     /// MIME 类型
-    mime: String,
+    pub mime: String,
 }
 
 /// 读取本地文件并返回给前端（Base64 编码），包括文件名和 MIME 类型。
@@ -1448,3 +1448,6 @@ pub async fn read_file_to_frontend(file_path: String) -> Result<FrontendFile, St
         mime,
     })
 }
+#[cfg(test)]
+#[path = "test_unit/test_utils.rs"]
+mod test_utils;
