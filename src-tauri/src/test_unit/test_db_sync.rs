@@ -1,5 +1,11 @@
 use super::*;
 use crate::db::sync::sync_cloud_data;
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use base64::Engine;
+use rand::Rng;
 use rusqlite::{params, Connection};
 use std::fs;
 use std::path::PathBuf;
@@ -290,20 +296,20 @@ fn test_sync_conflict_handling() {
 #[test]
 fn test_sync_db_errors() {
     let _guard = test_lock();
-    
+
     // 1. Test with invalid DB path (directory instead of file)
     let temp_dir = std::env::temp_dir();
     let invalid_db_path = temp_dir.join(format!("invalid_db_{}", Uuid::new_v4()));
     std::fs::create_dir(&invalid_db_path).unwrap();
-    
+
     set_db_path(invalid_db_path.clone());
-    
+
     let json_data = r#"{ "data": [], "folders": [], "folder_items": [], "extended_data": [] }"#;
-    
+
     // This should fail at init_db or Connection::open
     let result = sync_cloud_data(json_data);
     assert!(result.is_err());
-    
+
     std::fs::remove_dir(invalid_db_path).ok();
 }
 
@@ -311,7 +317,7 @@ fn test_sync_db_errors() {
 fn test_sync_invalid_json() {
     let _guard = test_lock();
     // No need to setup DB for this test as it fails before DB access
-    
+
     let json_data = "{ invalid json }";
     let result = sync_cloud_data(json_data);
     assert!(result.is_err());
@@ -358,9 +364,231 @@ fn test_sync_extended_data_optional_fields() {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .unwrap();
-    
+
     assert!(ocr.is_none());
     assert!(icon.is_none());
+
+    clear_db_file(&db_path);
+}
+
+#[test]
+fn test_sync_encrypted_cloud_data() {
+    let _guard = test_lock();
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+
+    // 1. Generate DEK
+    let dek_hex = crate::db::privacy::generate_dek();
+
+    // 2. Prepare encrypted data
+    // We need to manually encrypt some fields to simulate cloud data
+    let plain_content = "Secret Content";
+    let plain_note = "Secret Note";
+
+    // Helper to encrypt string
+    let encrypt_str = |s: &str| -> String {
+        let mut iv = [0u8; 12];
+        rand::rng().fill(&mut iv);
+        let nonce = Nonce::from_slice(&iv);
+
+        let key_bytes = hex::decode(&dek_hex).unwrap();
+        let cipher = Aes256Gcm::new_from_slice(&key_bytes).unwrap();
+
+        let ciphertext = cipher.encrypt(nonce, s.as_bytes()).unwrap();
+
+        let iv_b64 = base64::engine::general_purpose::STANDARD.encode(iv);
+        let ct_b64 = base64::engine::general_purpose::STANDARD.encode(ciphertext);
+        format!("{}:{}", iv_b64, ct_b64)
+    };
+
+    let enc_content = encrypt_str(plain_content);
+    let enc_note = encrypt_str(plain_note);
+
+    let json_data = format!(
+        r#"{{
+        "data": [
+            {{
+                "id": "enc_item_1",
+                "item_type": "text",
+                "content": "{}",
+                "size": 100,
+                "is_favorite": true,
+                "notes": "{}",
+                "timestamp": 1234567890
+            }}
+        ],
+        "folders": [],
+        "folder_items": [],
+        "extended_data": []
+    }}"#,
+        enc_content, enc_note
+    );
+
+    // 3. Sync with decryption
+    let result = crate::db::sync::sync_encrypted_cloud_data(&json_data, dek_hex.clone());
+    assert!(result.is_ok(), "Encrypted sync failed: {:?}", result.err());
+
+    // 4. Verify decrypted data in DB
+    let conn = Connection::open(&db_path).unwrap();
+    let (content, notes): (String, String) = conn
+        .query_row(
+            "SELECT content, notes FROM data WHERE id = 'enc_item_1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+
+    assert_eq!(content, plain_content);
+    assert_eq!(notes, plain_note);
+
+    clear_db_file(&db_path);
+}
+
+#[test]
+fn test_sync_schema_errors() {
+    let _guard = test_lock();
+
+    // Case 1: Broken data table
+    let db_path = set_test_db_path();
+    let conn = Connection::open(&db_path).unwrap();
+    // Create table with missing columns to cause INSERT failure
+    conn.execute("CREATE TABLE data (id TEXT PRIMARY KEY)", [])
+        .unwrap();
+    conn.close().unwrap();
+    let json_data = r#"{ "data": [{"id": "1", "item_type": "text", "content": "c", "size": 0, "is_favorite": false, "notes": "", "timestamp": 1}], "folders": [], "folder_items": [], "extended_data": [] }"#;
+    assert!(sync_cloud_data(json_data).is_err());
+    clear_db_file(&db_path);
+
+    // Case 2: Broken folders table
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path); // Create correct tables first
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute("DROP TABLE folders", []).unwrap();
+    conn.execute("CREATE TABLE folders (id TEXT PRIMARY KEY)", [])
+        .unwrap(); // Wrong schema
+    conn.close().unwrap();
+    let json_data = r#"{ "data": [], "folders": [{"id": "f1", "name": "n", "num_items": 0}], "folder_items": [], "extended_data": [] }"#;
+    assert!(sync_cloud_data(json_data).is_err());
+    clear_db_file(&db_path);
+
+    // Case 3: Broken folder_items table
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute("DROP TABLE folder_items", []).unwrap();
+    conn.execute("CREATE TABLE folder_items (id TEXT PRIMARY KEY)", [])
+        .unwrap(); // Wrong schema
+    conn.close().unwrap();
+    let json_data = r#"{ "data": [], "folders": [], "folder_items": [{"folder_id": "f1", "item_id": "i1"}], "extended_data": [] }"#;
+    assert!(sync_cloud_data(json_data).is_err());
+    clear_db_file(&db_path);
+
+    // Case 4: Broken extended_data table
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+    let conn = Connection::open(&db_path).unwrap();
+    conn.execute("DROP TABLE extended_data", []).unwrap();
+    conn.execute("CREATE TABLE extended_data (id TEXT PRIMARY KEY)", [])
+        .unwrap(); // Wrong schema
+    conn.close().unwrap();
+    let json_data = r#"{ "data": [], "folders": [], "folder_items": [], "extended_data": [{"item_id": "i1", "ocr_text": null, "icon_data": null}] }"#;
+    assert!(sync_cloud_data(json_data).is_err());
+    clear_db_file(&db_path);
+}
+
+#[test]
+fn test_sync_init_db_error() {
+    let _guard = test_lock();
+    let mut p = std::env::temp_dir();
+    let filename = format!("smartpaste_test_sync_err_{}", Uuid::new_v4());
+    p.push(&filename);
+
+    // Create a directory at the path where DB should be
+    std::fs::create_dir(&p).unwrap();
+    set_db_path(p.clone());
+
+    let json_data = r#"{ "data": [], "folders": [], "folder_items": [], "extended_data": [] }"#;
+    let result = sync_cloud_data(json_data);
+    assert!(result.is_err());
+
+    std::fs::remove_dir(&p).unwrap();
+}
+
+#[test]
+fn test_sync_encrypted_decryption_failures() {
+    let _guard = test_lock();
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+    let dek_hex = crate::db::privacy::generate_dek();
+
+    // 1. Invalid format (no colon)
+    // 2. Invalid Base64 IV
+    // 3. Invalid Base64 Ciphertext
+    // 4. Decryption failure (wrong key/tag)
+
+    let json_data = r#"{
+        "data": [
+            { "id": "fail1", "item_type": "text", "content": "no_colon", "size": 0, "is_favorite": false, "notes": "", "timestamp": 1 },
+            { "id": "fail2", "item_type": "text", "content": "!!!:validbase64", "size": 0, "is_favorite": false, "notes": "", "timestamp": 2 },
+            { "id": "fail3", "item_type": "text", "content": "validbase64:!!!", "size": 0, "is_favorite": false, "notes": "", "timestamp": 3 },
+            { "id": "fail4", "item_type": "text", "content": "YWJjZGVmZ2hpamts:YWJjZGVmZ2hpamts", "size": 0, "is_favorite": false, "notes": "", "timestamp": 4 }
+        ],
+        "folders": [], "folder_items": [], "extended_data": []
+    }"#;
+
+    let result = crate::db::sync::sync_encrypted_cloud_data(json_data, dek_hex);
+    assert!(result.is_ok()); // Should succeed but store original strings
+
+    let conn = Connection::open(&db_path).unwrap();
+
+    let c1: String = conn
+        .query_row("SELECT content FROM data WHERE id='fail1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(c1, "no_colon");
+
+    let c2: String = conn
+        .query_row("SELECT content FROM data WHERE id='fail2'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(c2, "!!!:validbase64");
+
+    let c3: String = conn
+        .query_row("SELECT content FROM data WHERE id='fail3'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(c3, "validbase64:!!!");
+
+    let c4: String = conn
+        .query_row("SELECT content FROM data WHERE id='fail4'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(c4, "YWJjZGVmZ2hpamts:YWJjZGVmZ2hpamts");
+
+    clear_db_file(&db_path);
+}
+
+#[test]
+fn test_sync_encrypted_invalid_dek() {
+    let _guard = test_lock();
+    let db_path = set_test_db_path();
+    let _ = init_db(&db_path);
+
+    let json_data = r#"{ "data": [], "folders": [], "folder_items": [], "extended_data": [] }"#;
+
+    // Invalid hex
+    let res = crate::db::sync::sync_encrypted_cloud_data(json_data, "invalid_hex".to_string());
+    assert!(res.is_err());
+    assert!(res.err().unwrap().contains("Invalid DEK hex"));
+
+    // Invalid length
+    let res = crate::db::sync::sync_encrypted_cloud_data(json_data, "123456".to_string());
+    assert!(res.is_err());
+    assert!(res.err().unwrap().contains("DEK must be 32 bytes"));
 
     clear_db_file(&db_path);
 }
