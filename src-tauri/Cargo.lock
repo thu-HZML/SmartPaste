@@ -1160,6 +1160,7 @@ dependencies = [
  "chrono",
  "clipboard-files",
  "clipboard-rs",
+ "dunce",
  "hex",
  "image",
  "lazy_static",
