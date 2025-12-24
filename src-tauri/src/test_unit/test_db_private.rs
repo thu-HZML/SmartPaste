@@ -525,3 +525,154 @@ fn test_check_and_mark_private_item_coverage() {
     assert!(!res);
     assert!(!is_item_private(&item_phone.id));
 }
+
+#[test]
+fn test_encrypted_db_workflow() {
+    let _g = test_lock();
+    set_test_db_path();
+    clear_db_file();
+
+    // 1. 准备数据
+    let item = make_item("enc-1", "Sensitive Content", "Secret Note");
+    insert_received_db_data(item.clone()).unwrap();
+
+    // 2. 生成密钥
+    let dek_hex = crate::db::privacy::generate_dek();
+
+    // 3. 准备加密上传
+    let encrypted_b64 = crate::db::privacy::prepare_encrypted_db_upload(dek_hex.clone())
+        .expect("Failed to prepare encrypted upload");
+
+    assert!(!encrypted_b64.is_empty());
+
+    // 4. 模拟清空数据库（或在新环境）
+    clear_db_file();
+    let _ = init_db(get_db_path().as_path());
+
+    // 验证数据已清空
+    let conn = Connection::open(get_db_path()).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT count(*) FROM data", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 0);
+    drop(conn); // 释放连接以便 restore
+
+    // 5. 从加密数据恢复
+    crate::db::privacy::restore_from_encrypted_db(dek_hex, encrypted_b64)
+        .expect("Failed to restore from encrypted db");
+
+    // 6. 验证数据已恢复
+    let conn = Connection::open(get_db_path()).unwrap();
+    let content: String = conn
+        .query_row("SELECT content FROM data WHERE id = 'enc-1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(content, "Sensitive Content");
+    drop(conn);
+
+    clear_db_file();
+}
+
+#[test]
+fn test_file_encryption() {
+    let _g = test_lock();
+    let temp_dir = std::env::temp_dir();
+    let input_path = temp_dir.join(format!("test_plain_{}.txt", Uuid::new_v4()));
+    let enc_path = temp_dir.join(format!("test_enc_{}.bin", Uuid::new_v4()));
+    let dec_path = temp_dir.join(format!("test_dec_{}.txt", Uuid::new_v4()));
+
+    // 1. 创建源文件
+    let original_content = "This is a secret file content.";
+    fs::write(&input_path, original_content).unwrap();
+
+    // 2. 生成密钥
+    let dek_hex = crate::db::privacy::generate_dek();
+
+    // 3. 加密
+    crate::db::privacy::encrypt_file(
+        input_path.to_string_lossy().to_string(),
+        enc_path.to_string_lossy().to_string(),
+        dek_hex.clone(),
+    )
+    .expect("Encryption failed");
+
+    assert!(enc_path.exists());
+    let enc_content = fs::read(&enc_path).unwrap();
+    assert_ne!(enc_content, original_content.as_bytes());
+
+    // 4. 解密
+    crate::db::privacy::decrypt_file(
+        enc_path.to_string_lossy().to_string(),
+        dec_path.to_string_lossy().to_string(),
+        dek_hex,
+    )
+    .expect("Decryption failed");
+
+    // 5. 验证
+    let dec_content = fs::read_to_string(&dec_path).unwrap();
+    assert_eq!(dec_content, original_content);
+
+    // Cleanup
+    let _ = fs::remove_file(input_path);
+    let _ = fs::remove_file(enc_path);
+    let _ = fs::remove_file(dec_path);
+}
+
+#[test]
+fn test_key_management() {
+    // 1. Salt & DEK Generation
+    let salt = crate::db::privacy::generate_salt();
+    let dek = crate::db::privacy::generate_dek();
+    assert!(salt.len() > 32);
+    assert_eq!(dek.len(), 64); // 32 bytes hex -> 64 chars
+
+    // 2. Derive MK
+    let password = "my_secure_password";
+    let mk = crate::db::privacy::derive_mk(password, &salt).expect("Derive MK failed");
+    assert_eq!(mk.len(), 64);
+
+    // 3. Wrap DEK
+    let wrapped_dek = crate::db::privacy::wrap_dek(&dek, &mk).expect("Wrap DEK failed");
+    assert_ne!(wrapped_dek, dek);
+
+    // 4. Unwrap DEK
+    let unwrapped_dek =
+        crate::db::privacy::unwrap_dek(&wrapped_dek, &mk).expect("Unwrap DEK failed");
+    assert_eq!(unwrapped_dek, dek);
+}
+
+#[test]
+fn test_delete_temp_encrypted_file() {
+    let _g = test_lock();
+    let temp_dir = std::env::temp_dir();
+    let file_path = temp_dir.join(format!("temp_del_{}.bin", Uuid::new_v4()));
+
+    // 1. Test non-existent file
+    let res =
+        crate::db::privacy::delete_temp_encrypted_file(file_path.to_string_lossy().to_string());
+    assert!(res.is_err());
+
+    // 2. Test small file
+    fs::write(&file_path, "short").unwrap();
+    let res =
+        crate::db::privacy::delete_temp_encrypted_file(file_path.to_string_lossy().to_string());
+    assert!(res.is_err()); // Too small
+
+    // 3. Test SQLite file
+    let mut sqlite_header = b"SQLite format 3\0".to_vec();
+    sqlite_header.extend_from_slice(&[0u8; 100]);
+    fs::write(&file_path, &sqlite_header).unwrap();
+    let res =
+        crate::db::privacy::delete_temp_encrypted_file(file_path.to_string_lossy().to_string());
+    assert!(res.is_err()); // Is SQLite
+
+    // 4. Test valid encrypted file (mock)
+    let mut valid_data = vec![0u8; 12]; // Nonce
+    valid_data.extend_from_slice(b"some encrypted data");
+    fs::write(&file_path, &valid_data).unwrap();
+    let res =
+        crate::db::privacy::delete_temp_encrypted_file(file_path.to_string_lossy().to_string());
+    assert!(res.is_ok());
+    assert!(!file_path.exists());
+}
