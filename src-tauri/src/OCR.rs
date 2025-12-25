@@ -12,6 +12,9 @@ fn parse_language(code: &str) -> Result<Language, String> {
         "eng" | "en" | "english" => Ok(Language::English),
         "zh" | "chi" | "chinese" | "zh-cn" | "chi_sim" | "zh_cn" => Ok(Language::Chinese),
         "ja" | "jpn" | "japanese" => Ok(Language::Japanese),
+        "ko" | "kor" | "korean" => Ok(Language::Korean),
+        "fr" | "fra" | "fre" | "french" => Ok(Language::French),
+        "de" | "deu" | "ger" | "german" => Ok(Language::German),
         other => Err(format!("Unsupported language code: {}", other)),
     }
 }
@@ -112,6 +115,9 @@ pub async fn ocr_image(file_path: String) -> Result<String, String> {
         .await
         .map_err(|e| format!("OCR recognition failed: {}", e))?;
 
+    // 删除所有空白字符
+    let text = text.replace(char::is_whitespace, "");
+
     Ok(text)
 }
 
@@ -126,62 +132,5 @@ pub fn reset_ocr_engine() -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::path::Path;
-
-    // 重置并配置 OCR 引擎，确保每个测试有确定的初始状态
-    fn reset_and_configure() -> Result<(), String> {
-        // 忽略 reset 的错误（如果尚未初始化也没关系）
-        let _ = reset_ocr_engine();
-        configure_ocr(
-            Some("windows".to_string()),
-            Some(vec!["eng", "chi", "jpn"]),
-            Some(0.9),
-            Some(60),
-        )
-        .map(|_| ())
-    }
-
-    #[tokio::test]
-    /// 测试 OCR 配置：在干净状态下能配置并允许重复配置（替换）
-    async fn test_configure_ocr() -> Result<(), String> {
-        // 保证干净状态并第一次配置
-        reset_and_configure()?;
-
-        // 再次配置（应当成功，允许替换）
-        let res = configure_ocr(
-            Some("windows".to_string()),
-            Some(vec!["eng", "chi", "jpn"]),
-            Some(0.9),
-            Some(60),
-        );
-        assert!(res.is_ok(), "reconfigure failed: {:?}", res.err());
-        println!("{}", res.unwrap());
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    /// 测试 OCR 识别：在识别前确保已配置，若测试图片不存在则跳过具体断言
-    async fn test_ocr_image() -> Result<(), String> {
-        reset_and_configure()?;
-
-        let images = [
-            "./src/OCR_test_images/OCR_zh_en.png",
-            "./src/OCR_test_images/OCR_ja.png",
-        ];
-
-        for p in images {
-            if !Path::new(p).exists() {
-                println!("test image missing, skip: {}", p);
-                continue;
-            }
-            let text = ocr_image(p.to_string()).await?;
-            println!("Recognized text from {}: {}", p, text);
-            assert!(!text.trim().is_empty(), "OCR returned empty text for {}", p);
-        }
-
-        Ok(())
-    }
-}
+#[path = "test_unit/test_ocr.rs"]
+mod test_ocr;

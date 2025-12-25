@@ -8,314 +8,28 @@ mod clipboard;
 mod config;
 mod db;
 mod ocr;
+mod utils;
+
+// 注册性能测试模块 (仅在测试模式下编译)
+#[cfg(test)]
+#[path = "test_unit/test_performance.rs"]
+mod test_performance;
 
 use app_setup::{
-    update_shortcut, update_shortcut2, AppShortcutState, AppShortcutState2, ClipboardSourceState,
+    get_all_shortcuts, get_current_shortcut, update_shortcut, AppShortcutManager,
+    ClipboardSourceState,
 };
-use arboard::Clipboard;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
-use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_notification;
+use utils::EncryptionState;
 
-#[tauri::command]
-fn test_function() -> String {
-    "这是来自 Rust 的测试信息".to_string()
-}
-
-/// 设置或取消应用的开机自启。作为 Tauri command 暴露给前端调用。
-/// # Param
-/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
-/// enable: bool - true表示启用开机自启，false表示禁用。
-/// # Returns
-/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
-#[tauri::command]
-async fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
-    let autolaunch = app.autolaunch();
-
-    if enable {
-        autolaunch
-            .enable()
-            .map_err(|e| format!("启用开机自启失败: {}", e))?;
-    } else {
-        autolaunch
-            .disable()
-            .map_err(|e| format!("禁用开机自启失败: {}", e))?;
-    }
-
-    Ok(())
-}
-
-/// 检查应用是否已设置为开机自启。作为 Tauri command 暴露给前端调用。
-/// # Param
-/// app: tauri::AppHandle - Tauri 的应用句柄，用于访问应用相关功能。
-/// # Returns
-/// Result<bool, String> - 操作成功则返回 Ok(bool)，其中 true 表示已启用自启，false 表示未启用。失败则返回包含错误信息的 Err。
-#[tauri::command]
-async fn is_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
-    let autolaunch = app.autolaunch();
-
-    autolaunch
-        .is_enabled()
-        .map_err(|e| format!("检查自启状态失败: {}", e))
-}
-
-#[tauri::command]
-fn write_to_clipboard(
-    text: String,
-    app_handle: tauri::AppHandle,
-    state: State<'_, ClipboardSourceState>,
-) -> Result<(), String> {
-    // 设置标志，表示这是前端触发的复制
-    *state.is_frontend_copy.lock().unwrap() = true;
-
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.set_text(text).map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-/// 将指定的文本写入系统剪贴板。作为 Tauri command 暴露给前端调用。
-/// 此函数会设置一个状态标志，以区分是前端主动复制还是由其他程序引起的剪贴板变化。
-/// # Param
-/// text: String - 需要写入剪贴板的文本内容。
-/// app_handle: tauri::AppHandle - Tauri 的应用句柄。
-/// state: State<'_,ClipboardSourceState> - 用于管理剪贴板来源状态的 Tauri 状态。
-/// # Returns
-/// Result<(), String> - 操作成功则返回 Ok(())，失败则返回包含错误信息的 Err。
-#[tauri::command]
-async fn write_file_to_clipboard(
-    app_handle: tauri::AppHandle,
-    file_path: String,
-    state: State<'_, ClipboardSourceState>,
-) -> Result<(), String> {
-    // 设置标志，表示这是前端触发的复制
-    *state.is_frontend_copy.lock().unwrap() = true;
-    let path = Path::new(&file_path);
-
-    // 检查文件是否存在
-    if !path.exists() {
-        return Err(format!("文件不存在: {}", file_path));
-    }
-
-    // 检查是否是文件（不是目录）
-    // if !path.is_file() {
-    //     return Err("路径指向的不是文件".to_string());
-    // }
-
-    // 获取文件的绝对路径
-    let absolute_path =
-        fs::canonicalize(path).map_err(|e| format!("无法获取文件绝对路径: {}", e))?;
-
-    let mut final_path_str = absolute_path.to_string_lossy().to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        // 去除 Rust canonicalize 产生的 \\?\ 前缀
-        const VERBATIM_PREFIX: &str = r"\\?\";
-        if final_path_str.starts_with(VERBATIM_PREFIX) {
-            final_path_str = final_path_str[VERBATIM_PREFIX.len()..].to_string();
-        }
-    }
-    // 根据不同平台调用相应的文件复制方法
-    copy_file_to_clipboard(PathBuf::from(final_path_str))
-}
-
-/// 跨平台地将文件复制到系统剪贴板。作为 Tauri command 暴露给前端调用。
-/// 此函数会根据编译的目标操作系统（Windows, macOS, Linux）调用相应的底层实现。
-/// # Param
-/// file_path: PathBuf - 要复制的文件的路径。
-/// # Returns
-/// Result<(), String> - 操作成功则返回 Ok(())，失败（如路径非法或底层实现出错）则返回包含错误信息的 Err。
-#[tauri::command]
-fn copy_file_to_clipboard(file_path: PathBuf) -> Result<(), String> {
-    let file_path_str = file_path.to_str().ok_or("文件路径包含非法字符")?;
-
-    #[cfg(target_os = "windows")]
-    {
-        copy_file_to_clipboard_windows(file_path_str)
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        copy_file_to_clipboard_macos(file_path_str)
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        copy_file_to_clipboard_linux(file_path_str)
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn copy_file_to_clipboard_windows(file_path: &str) -> Result<(), String> {
-    use std::process::Command;
-
-    let ps_script = format!(
-        "$sc = New-Object System.Collections.Specialized.StringCollection; $sc.Add('{}'); Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetFileDropList($sc);",
-        file_path.replace("'", "''") // 转义 PowerShell 中的单引号
-    );
-
-    // 使用 -NoProfile 加快启动速度，-WindowStyle Hidden 隐藏窗口闪烁
-    let output = Command::new("powershell")
-        .args(&[
-            "-NoProfile",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            &ps_script,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        return Ok(());
-    }
-
-    // 如果失败，读取 stderr 获取详细错误信息（方便调试）
-    let err_msg = String::from_utf8_lossy(&output.stderr);
-    Err(format!("复制文件到剪贴板失败: {}", err_msg))
-}
-
-#[cfg(target_os = "macos")]
-fn copy_file_to_clipboard_macos(file_path: &str) -> Result<(), String> {
-    use std::process::Command;
-
-    // 使用AppleScript复制文件
-    let apple_script = format!(
-        "set the clipboard to POSIX file \"{}\"",
-        file_path.replace("\"", "\\\"")
-    );
-
-    let output = Command::new("osascript")
-        .args(&["-e", &apple_script])
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        return Ok(());
-    }
-
-    Err("复制文件到剪贴板失败".to_string())
-}
-
-#[cfg(target_os = "linux")]
-fn copy_file_to_clipboard_linux(file_path: &str) -> Result<(), String> {
-    use std::process::Command;
-
-    // Linux上的文件复制比较复杂，尝试多种方法
-
-    // 方法1: 使用xclip复制文件URI
-    let file_uri = format!("file://{}", file_path);
-    let output = Command::new("xclip")
-        .args(&["-selection", "clipboard", "-t", "text/uri-list"])
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| e.to_string())?
-        .stdin
-        .unwrap()
-        .write_all(file_uri.as_bytes())
-        .map_err(|e| e.to_string())?;
-
-    // 检查xclip是否成功
-    if Command::new("xclip")
-        .args(&["-selection", "clipboard", "-o"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return Ok(());
-    }
-
-    Err("Linux系统文件复制功能受限，请确保已安装xclip".to_string())
-}
-#[tauri::command]
-fn get_current_shortcut(state: tauri::State<AppShortcutState>) -> String {
-    state.current_shortcut.lock().unwrap().clone()
-}
-
-#[tauri::command]
-fn get_current_shortcut2(state: tauri::State<AppShortcutState2>) -> String {
-    state.current_shortcut.lock().unwrap().clone()
-}
-/// 获取文件的系统图标（Base64 格式，不包含文件夹）
-#[tauri::command]
-async fn get_file_icon(path: String) -> Result<String, String> {
-    let p = Path::new(&path);
-
-    // 1. 检查路径是否存在
-    if !p.exists() {
-        return Err(format!("路径不存在: {}", path));
-    }
-
-    // 2. 排除文件夹 (根据你的要求)
-    if p.is_dir() {
-        return Err("不支持获取文件夹图标".to_string());
-    }
-
-    // 3. 仅在 Windows 下执行提取逻辑
-    #[cfg(target_os = "windows")]
-    {
-        #[cfg(target_os = "windows")]
-        use std::os::windows::process::CommandExt;
-        use std::process::Command;
-
-        // PowerShell 脚本：
-        // 1. 加载 System.Drawing
-        // 2. 使用 ExtractAssociatedIcon 提取图标
-        // 3. 转换为 Bitmap -> 内存流 -> PNG 格式 -> Base64 字符串
-        let ps_script = format!(
-            r#"
-            Add-Type -AssemblyName System.Drawing
-            $path = '{}'
-            try {{
-                $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
-                if ($icon -ne $null) {{
-                    $ms = New-Object System.IO.MemoryStream
-                    $icon.ToBitmap().Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-                    $base64 = [Convert]::ToBase64String($ms.ToArray())
-                    Write-Output $base64
-                    $ms.Dispose()
-                    $icon.Dispose()
-                }}
-            }} catch {{
-                Write-Error $_
-            }}
-            "#,
-            path.replace("'", "''") // 转义单引号
-        );
-
-        // const CREATE_NO_WINDOW: u32 = 0x08000000; // 如果你想完全隐藏控制台窗口
-        let output = Command::new("powershell")
-            .args(&["-NoProfile", "-Command", &ps_script])
-            // .creation_flags(CREATE_NO_WINDOW) // 可选：防止闪烁，但在 Tauri 2.0 插件中通常不需要
-            .output()
-            .map_err(|e| format!("执行 PowerShell 失败: {}", e))?;
-
-        if !output.status.success() {
-            let err = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("提取图标失败: {}", err));
-        }
-
-        let base64_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-        if base64_str.is_empty() {
-            return Err("提取的图标数据为空".to_string());
-        }
-
-        // 返回前端可直接用于 <img src="..."> 的格式
-        Ok(format!("data:image/png;base64,{}", base64_str))
-    }
-
-    // 4. macOS/Linux 的占位符（如果后续需要支持，需使用其他方法）
-    #[cfg(not(target_os = "windows"))]
-    {
-        Err("当前系统暂不支持图标提取".to_string())
-    }
-}
 fn main() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init()) // 文件系统插件
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
@@ -323,35 +37,39 @@ fn main() {
             MacosLauncher::LaunchAgent,
             Some(vec![]), // 可以传递启动参数，这里为空
         ))
-        .manage(AppShortcutState {
-            current_shortcut: Mutex::new(String::new()),
-        })
-        .manage(AppShortcutState2 {
-            current_shortcut: Mutex::new(String::new()),
-        })
+        .plugin(tauri_plugin_notification::init())
+        .manage(AppShortcutManager::new())
         .manage(ClipboardSourceState {
-            // 新增的状态
             is_frontend_copy: Mutex::new(false),
         })
+        .manage(EncryptionState {
+            dek: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
-            test_function,
-            write_to_clipboard,
-            write_file_to_clipboard,
-            copy_file_to_clipboard,
+            utils::test_function,
+            utils::write_to_clipboard,
+            utils::write_file_to_clipboard,
+            utils::copy_file_to_clipboard,
+            utils::start_key_listener,
+            utils::stop_key_listener,
             update_shortcut,
-            update_shortcut2,
             get_current_shortcut,
-            get_current_shortcut2,
-            set_autostart,
-            is_autostart_enabled,
-            get_file_icon,
+            get_all_shortcuts,
+            utils::get_file_icon,
+            utils::write_files_to_clipboard,
+            utils::export_to_zip,
+            utils::import_data_from_zip,
+            utils::start_mouse_button_listener,
+            utils::start_mouse_move_listener,
+            utils::stop_mouse_listener,
+            utils::get_utils_dir_path,
+            utils::read_file_to_frontend,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
             db::get_latest_data,
             db::get_data_by_id,
             db::delete_all_data,
-            db::delete_unfavorited_data,
             db::delete_data,
             db::delete_data_by_id,
             db::update_data_content_by_id,
@@ -359,9 +77,10 @@ fn main() {
             db::favorite_data_by_id,
             db::unfavorite_data_by_id,
             db::filter_data_by_favorite,
-            db::search_text_content,
+            db::get_favorite_data_count,
             db::add_notes_by_id,
             db::filter_data_by_type,
+            db::comprehensive_search,
             db::create_new_folder,
             db::rename_folder,
             db::delete_folder,
@@ -370,129 +89,237 @@ fn main() {
             db::remove_item_from_folder,
             db::filter_data_by_folder,
             db::get_folders_by_item_id,
+            db::get_ocr_text_by_item_id,
+            db::search_data_by_ocr_text,
+            db::get_icon_data_by_item_id,
+            db::mark_passwords_as_private,
+            db::prepare_encrypted_db_upload,
+            db::restore_from_encrypted_db,
+            db::mark_bank_cards_as_private,
+            db::mark_identity_numbers_as_private,
+            db::mark_phone_numbers_as_private,
+            db::clear_all_private_data,
+            db::auto_mark_private_data,
+            db::check_and_mark_private_item,
+            db::trigger_cleanup,
+            db::sync_cloud_data,
+            db::sync_encrypted_cloud_data,
+            db::encrypt_file,
+            db::decrypt_file,
+            db::generate_salt,
+            db::generate_dek,
+            db::derive_mk,
+            db::wrap_dek,
+            db::unwrap_dek,
+            db::delete_temp_encrypted_file,
+            db::top_data_by_id,
             ocr::configure_ocr,
             ocr::ocr_image,
             config::get_config_json,
-            config::set_config_autostart,
-            config::set_tray_icon_visible,
-            config::set_minimize_to_tray,
-            config::set_auto_save,
-            config::set_retention_days,
-            config::set_max_history_items,
-            config::set_ignore_short_text,
-            config::set_ignore_big_file,
-            config::add_ignored_app,
-            config::remove_ignored_app,
-            config::clear_all_ignored_apps,
-            config::set_auto_classify,
-            config::set_ocr_auto_recognition,
-            config::set_delete_confirmation,
-            config::set_keep_favorites,
-            config::set_auto_sort,
-            config::set_ai_enabled,
-            config::set_ai_service,
-            config::set_ai_api_key,
-            config::set_ai_auto_tag,
-            config::set_ai_auto_summary,
-            config::set_ai_translation,
-            config::set_ai_web_search,
-            config::set_sensitive_filter,
-            config::set_filter_passwords,
-            config::set_filter_bank_cards,
-            config::set_filter_id_cards,
-            config::set_filter_phone_numbers,
-            config::set_privacy_retention_days,
-            config::get_privacy_records,
-            config::delete_all_privacy_records,
-            config::set_storage_path,
-            config::set_auto_backup,
-            config::set_backup_frequency,
-            config::set_last_backup_path,
-            config::set_cloud_sync_enabled,
-            config::set_sync_frequency,
-            config::set_sync_content_type,
-            config::set_encrypt_cloud_data,
-            config::set_sync_only_wifi,
-            config::set_username,
-            config::set_email,
-            config::set_bio,
-            config::set_avatar_path,
+            config::set_config_item,
+            config::get_config_item,
+            config::sync_and_apply_config,
+            utils::read_file_base64,
+            utils::get_local_files_to_upload,
+            utils::read_db_file_base64,
+            utils::save_clipboard_file,
+            utils::download_cloud_file,
+            utils::set_dek_state,
+            utils::get_dek_state,
+            utils::clear_dek_state
         ])
         .setup(move |app| {
-            // 初始化数据库路径
-            let app_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
-            if !app_dir.exists() {
-                std::fs::create_dir_all(&app_dir).expect("无法创建应用数据目录");
+            // 1. 获取系统默认的应用数据目录
+            let app_default_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
+            if !app_default_dir.exists() {
+                std::fs::create_dir_all(&app_default_dir).expect("无法创建默认应用目录");
             }
 
-            // 初始化配置文件
-            let config_path = app_dir.join("config.json");
-            config::set_config_path(config_path.clone());
+            // 2. 初始化引导配置 - 先从默认位置加载
+            let default_config_path = app_default_dir.join("config.json");
+            config::set_config_path(default_config_path.clone());
             let init_result = config::init_config();
             println!("配置初始化结果: {}", init_result);
 
-            // 设置数据库路径
-            let mut db_path = app_dir.join("smartpaste.db");
-            // db::set_db_path(db_path.clone());
-
-            // 获取配置文件中的存储路径设置
-            if let Some(lock) = config::CONFIG.get() {
+            // 3. 确定最终的数据存储根目录
+            let mut data_root = app_default_dir.clone();
+            let custom_storage_path: Option<String> = if let Some(lock) = config::CONFIG.get() {
                 let cfg = lock.read().unwrap();
-                // 如果配置中没有存储路径，则使用默认的 app_dir
-                if cfg.storage_path.is_none() {
-                    drop(cfg); // 释放读锁
-                    config::set_storage_path(app_dir.to_string_lossy().to_string());
-                }
-                // 否则，使用配置中的存储路径
-                else if let Some(ref path_str) = cfg.storage_path {
-                    let custom_path = PathBuf::from(path_str);
-                    if custom_path.exists() && custom_path.is_dir() {
-                        drop(cfg); // 释放读锁
-                        config::set_storage_path(custom_path.to_string_lossy().to_string());
-                        db_path = custom_path.join("smartpaste.db");
+                cfg.storage_path.clone()
+            } else {
+                None
+            };
+            // 接着使用提取出来的字符串进行逻辑处理
+            if let Some(ref path_str) = custom_storage_path {
+                // 规范化路径逻辑
+                #[cfg(target_os = "windows")]
+                let custom_path = PathBuf::from(path_str.replace("/", "\\"));
+                #[cfg(not(target_os = "windows"))]
+                let custom_path = PathBuf::from(path_str);
+
+                if !path_str.trim().is_empty() {
+                    println!("✅ 检测到配置的存储路径: {}", custom_path.display());
+
+                    // 检查自定义路径是否存在，如果不存在则创建
+                    if !custom_path.exists() {
+                        println!("📁 创建存储路径: {}", custom_path.display());
+                        if let Err(e) = std::fs::create_dir_all(&custom_path) {
+                            eprintln!("❌ 创建存储路径失败: {}", e);
+                        } else {
+                            data_root = custom_path.clone();
+                        }
                     } else {
-                        eprintln!(
-                            "⚠️ 配置的存储路径无效，使用默认路径: {}",
-                            app_dir.to_string_lossy()
+                        data_root = custom_path.clone();
+                    }
+
+                    // 检查新路径下是否有配置文件
+                    let new_config_path = data_root.join("config.json");
+                    if new_config_path.exists() {
+                        println!(
+                            "📄 检测到新路径下的配置文件，切换到: {}",
+                            new_config_path.display()
                         );
-                        drop(cfg); // 释放读锁
-                        config::set_storage_path(app_dir.to_string_lossy().to_string());
+                        config::set_config_path(new_config_path.clone());
+
+                        // 🔥 这里现在可以安全地调用 reload_config 了，因为外面没有持有读锁
+                        let reload_result = config::reload_config();
+                        println!("重新加载配置结果: {}", reload_result);
+                    } else {
+                        println!("ℹ️ 新路径下没有配置文件，将使用默认配置路径");
+                        // 如果新路径没有配置文件，但存储路径已设置，我们创建一个
+                        println!("📝 在新路径创建配置文件");
+
+                        // 这里需要再次获取读锁来复制配置，但这没问题，因为上面的锁已经释放了
+                        if let Some(lock) = config::CONFIG.get() {
+                            let config_to_save = lock.read().unwrap().clone();
+                            config::set_config_path(new_config_path.clone());
+                            if let Err(e) = config::save_config(config_to_save) {
+                                eprintln!("❌ 创建新路径配置文件失败: {}", e);
+                                // 恢复默认路径
+                                config::set_config_path(default_config_path.clone());
+                            } else {
+                                println!("✅ 新路径配置文件创建成功");
+                            }
+                        }
                     }
                 }
             }
 
-            // 以现有数据库路径，修改 Config 中的数据存储路径
-            // let set_db_path_result = config::set_db_storage_path(db_path.clone());
+            // 4. 配置各类文件的最终路径
+            let final_db_path = data_root.join("smartpaste.db");
+            let final_files_dir = data_root.join("files");
 
-            // 设置数据库路径并打印结果
-            println!("设置数据库路径结果: {}", db_path.to_string_lossy());
-            db::set_db_path(db_path.clone());
-            // 调试：读取并打印数据库中所有记录
-            /*
-            match db::get_all_data() {
-                Ok(json) => println!("DEBUG get_all_data: {}", json),
-                Err(e) => eprintln!("DEBUG get_all_data error: {}", e),
+            // 5. 确保 files 文件夹存在
+            if !final_files_dir.exists() {
+                std::fs::create_dir_all(&final_files_dir).expect("无法创建 files 文件夹");
             }
-            */
-            // 现有快捷键 / 线程 / 文件路径逻辑继续使用 app_dir
-            let files_dir = app_dir.join("files");
-            std::fs::create_dir_all(&files_dir).unwrap();
-            // 设置系统托盘
-            app_setup::setup_tray(app)?;
 
-            // 注册全局快捷键
+            // 6. 设置数据库路径
+            println!("📂 数据库路径设置为: {}", final_db_path.to_string_lossy());
+            db::set_db_path(final_db_path);
+
+            // 6.1 执行初始化清理（清除过期数据）
+            if let Some(lock) = config::CONFIG.get() {
+                let retention_days = lock.read().unwrap().retention_days;
+                println!("🧹 执行初始化清理，保留天数: {} 天", retention_days);
+                match db::clear_data_expired(retention_days) {
+                    Ok(deleted) => {
+                        if deleted > 0 {
+                            println!("   ✅ 初始化清理: 删除了 {} 条过期记录", deleted);
+                        } else {
+                            println!("   ✅ 初始化清理: 没有过期数据");
+                        }
+                    }
+                    Err(e) => eprintln!("   ❌ 初始化清理失败: {}", e),
+                }
+            }
+
+            // 6.2 启动后台清理线程（实时监听和定期清理）
+            app_setup::start_cleanup_worker();
+
+            // 7. 打印最终使用的配置路径
+            let current_config_path = config::get_config_path();
+            println!("📄 最终配置文件路径: {}", current_config_path.display());
+
+            // 8. 根据配置自动标记隐私数据
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("🔒 正在根据配置初始化隐私数据标记...");
+                match db::auto_mark_private_data(
+                    cfg.filter_passwords,
+                    cfg.filter_bank_cards,
+                    cfg.filter_id_cards,
+                    cfg.filter_phone_numbers,
+                ) {
+                    Ok(count) => println!("✅ 初始化隐私标记完成，受影响记录数: {}", count),
+                    Err(e) => eprintln!("❌ 初始化隐私标记失败: {}", e),
+                }
+            }
+
+            // 9. 获取OCR配置并初始化OCR引擎
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("👁️ 正在初始化 OCR 引擎...");
+
+                let provider = cfg.ocr_provider.clone();
+                let languages = cfg.ocr_languages.clone();
+
+                // 转换 Vec<String> 为 Vec<&str> 以匹配 configure_ocr 签名
+                let languages_ref: Option<Vec<&str>> = if let Some(ref langs) = languages {
+                    Some(langs.iter().map(|s| s.as_str()).collect())
+                } else {
+                    None
+                };
+
+                let confidence = cfg.ocr_confidence_threshold;
+                let timeout = cfg.ocr_timeout_secs;
+
+                match ocr::configure_ocr(provider, languages_ref, confidence, timeout) {
+                    Ok(msg) => println!("✅ OCR引擎初始化成功: {}", msg),
+                    Err(e) => eprintln!("❌ OCR引擎初始化失败: {}", e),
+                }
+            }
+
+            // 打印当前配置的存储路径用于验证
+            if let Some(lock) = config::CONFIG.get() {
+                let cfg = lock.read().unwrap();
+                println!("📍 配置中记录的存储路径: {:?}", cfg.storage_path);
+                println!("📍 最终数据根目录: {}", data_root.display());
+
+                // 验证存储路径是否与最终数据根目录一致
+                if let Some(ref storage_path) = cfg.storage_path {
+                    let storage_path_buf = PathBuf::from(storage_path);
+                    if storage_path_buf != data_root {
+                        println!("⚠️ 警告: 配置中的存储路径与最终数据根目录不一致");
+                        println!("  配置存储路径: {}", storage_path);
+                        println!("  实际数据根目录: {}", data_root.display());
+                    }
+                }
+            }
+
+            let tray_icon_visible = if let Some(lock) = config::CONFIG.get() {
+                lock.read().unwrap().tray_icon_visible
+            } else {
+                true // 默认显示
+            };
+
+            if tray_icon_visible {
+                // 只有在 visible 为 true 时才创建托盘图标
+                app_setup::setup_tray(app)?;
+                println!("✅ 托盘图标已创建");
+            } else {
+                // 如果是 false，则不创建托盘图标
+                println!("🚫 托盘图标配置为不可见，跳过创建");
+            }
             app_setup::setup_global_shortcuts(app.handle().clone())?;
 
-            // 启动剪贴板监控
             let handle = app.handle().clone();
             app_setup::start_clipboard_monitor(handle);
 
-            // 初始隐藏主窗口，避免启动时闪烁
             if let Some(window) = app.get_webview_window("main") {
                 window.hide()?;
             }
 
-            // 设置主窗口为透明 + 穿透
             if let Some(window) = app.get_webview_window("main") {
                 window.show()?;
             }
@@ -503,27 +330,5 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("❌ 启动 Tauri 应用失败: {:?}", e);
-    }
-}
-
-// 辅助函数：切换窗口显示/隐藏
-fn toggle_window_visibility(window: &tauri::WebviewWindow) {
-    match window.is_visible() {
-        Ok(visible) => {
-            if visible {
-                if let Err(e) = window.hide() {
-                    eprintln!("❌ 隐藏窗口失败: {:?}", e);
-                } else {
-                    println!("👻 隐藏桌宠窗口");
-                }
-            } else {
-                if let Err(e) = window.show() {
-                    eprintln!("❌ 显示窗口失败: {:?}", e);
-                } else {
-                    println!("👀 显示桌宠窗口");
-                }
-            }
-        }
-        Err(e) => eprintln!("❌ 获取窗口可见性失败: {:?}", e),
     }
 }

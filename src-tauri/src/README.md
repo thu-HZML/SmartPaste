@@ -5,6 +5,7 @@ src/
 ├── db.rs             # 数据库模块，现在从 clipboard.rs 导入数据结构
 ├── test_db.rs        # 数据库模块的单元测试
 ├── clipboard.rs      # 定义核心数据结构 ClipboardItem
+├── utils.rs          # 定义暴露给前端的函数
 └── app_setup.rs      # 包含所有应用设置逻辑 (托盘、快捷键、监控)
 ```
 

@@ -1,12 +1,5 @@
 <template>
   <div class="settings-container">
-    <!-- 设置头部 -->
-    <header class="settings-header">
-      <h1>设置</h1>
-      <button class="back-btn" @click="goBack">← 返回</button>
-    </header>
-
-    <!-- 设置内容区域 -->
     <div class="settings-content">
       <!-- 左侧导航栏 -->
       <nav class="settings-nav">
@@ -36,7 +29,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoStart" @change="toggleAutoStart">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.autostart" 
+                  @change="updateSetting('autostart', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -44,38 +41,16 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <h3>启动时最小化到托盘</h3>
-              <p>启动时不弹出窗口，挂载在后台</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleMinimizeToTray">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
               <h3>显示系统托盘图标</h3>
-              <p>在系统托盘显示应用图标，方便快速访问</p>
+              <p>在系统托盘显示应用图标</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleTrayIcon">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动保存剪贴板历史</h3>
-              <p>自动保存剪贴板内容到历史记录</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoSave" @change="toggleAutoSave">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.tray_icon_visible" 
+                  @change="updateSetting('tray_icon_visible', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -87,11 +62,15 @@
               <p>自动删除超过指定天数的历史记录</p>
             </div>
             <div class="setting-control">
-              <select v-model="settings.retentionDays" class="select-input" @change="updateRetentionDays">
-                <option value="7">7天</option>
-                <option value="30">30天</option>
-                <option value="90">90天</option>
-                <option value="0">永久保存</option>
+              <select 
+                v-model="settings.retention_days" 
+                @change="updateSetting('retention_days', Number($event.target.value))" 
+                class="select-input"
+              >
+                <option value=7>7天</option>
+                <option value=30>30天</option>
+                <option value=90>90天</option>
+                <option value=0>永久保存</option>
               </select>
             </div>
           </div>
@@ -101,105 +80,28 @@
         <div v-if="activeNav === 'shortcuts'" class="panel-section">
           <h2>快捷键设置</h2>
           
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>显示/隐藏桌宠</h3>
-              <p>快速显示或隐藏剪贴板管理器桌宠</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('toggleWindow')">
-                {{ settings.shortcuts.toggleWindow || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>显示/隐藏剪贴板</h3>
-              <p>快速显示或隐藏剪贴板</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording2('pasteWindow')">
-                {{ settings.shortcuts.pasteWindow || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>显示/隐藏AI Agent</h3>
-              <p>快速显示或隐藏AI助手</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording2('AIWindow')">
-                {{ settings.shortcuts.AIWindow || '点击设置' }}
-              </div>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>快速粘贴</h3>
-              <p>使用快捷键快速粘贴最近的内容</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>快速收藏</h3>
-              <p>使用快捷键快速收藏最近的复制内容</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>快速Tag</h3>
-              <p>还没想好</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>截图并识别</h3>
-              <p>使用快捷键快速截图并使用OCR识别</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('quickPaste')">
-                {{ settings.shortcuts.quickPaste || '点击设置' }}
-              </div>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>清空剪贴板历史</h3>
-              <p>快速清空所有剪贴板历史记录</p>
-            </div>
-            <div class="setting-control">
-              <div class="shortcut-input" @click="startRecording('clearHistory')">
-                {{ settings.shortcuts.clearHistory || '点击设置' }}
-              </div>
-            </div>
-          </div>
-          
           <div class="hint">
             <p>提示：点击快捷键输入框，然后按下您想要设置的组合键</p>
+            <p>按 ESC 键可取消设置</p>
           </div>
+
+          <div v-for="key in shortcutKeys" :key="key" class="setting-item">
+            <div class="setting-info">
+              <h3>{{ shortcutDisplayNames[key] }}</h3>
+              <p>自定义全局快捷键</p>
+            </div>
+            <div class="setting-control">
+              <input 
+                type="text" 
+                :value="settings[key]" 
+                :class="['shortcut-input', { 'recording-active': shortcutManager.isRecording && shortcutManager.currentType === key }]"
+                @click="startRecording(key)"
+                readonly
+                :placeholder="shortcutManager.isRecording && shortcutManager.currentType === key ? '正在录制...' : '点击设置'"
+              >
+            </div>
+          </div>
+          
         </div>
 
         <!-- 剪贴板参数设置 -->
@@ -210,14 +112,16 @@
             <div class="setting-info">
               <h3>最大历史记录数量</h3>
               <p>限制保存的剪贴板历史记录数量</p>
+              <p>（为0时不限数量）</p>
             </div>
             <div class="setting-control">
               <input 
                 type="number" 
-                v-model="settings.maxHistoryItems" 
-                min="10" 
-                max="1000" 
+                v-model="settings.max_history_items" 
+                min="0" 
+                max="100000000" 
                 class="number-input"
+                @change="updateSetting('max_history_items', Number($event.target.value))" 
               >
             </div>
           </div>
@@ -230,10 +134,11 @@
             <div class="setting-control">
               <input 
                 type="number" 
-                v-model="settings.ignoreShortText" 
+                v-model="settings.ignore_short_text_len" 
                 min="0" 
                 max="50" 
                 class="number-input"
+                @change="updateSetting('ignore_short_text_len', Number($event.target.value))" 
               >
               <span class="unit">字符</span>
             </div>
@@ -243,85 +148,18 @@
             <div class="setting-info">
               <h3>忽略大文件</h3>
               <p>不保存字符数大于指定值的文件</p>
+              <p>（为0时不限大小）</p>
             </div>
             <div class="setting-control">
               <input 
                 type="number" 
-                v-model="settings.ignoreBigFile" 
-                min="5" 
-                max="100" 
+                v-model="settings.ignore_big_file_mb" 
+                min="0" 
+                max="1000000" 
                 class="number-input"
+                @change="updateSetting('ignore_big_file_mb', Number($event.target.value))"
               >
               <span class="unit">MB</span>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>忽略特定应用</h3>
-              <p>不记录来自这些应用的剪贴板内容</p>
-            </div>
-            <div class="setting-control">
-              <div class="tag-input-container">
-                <div 
-                  v-for="(app, index) in settings.ignoredApps" 
-                  :key="index" 
-                  class="tag"
-                >
-                  {{ app }}
-                  <span @click="removeIgnoredApp(index)" class="tag-remove">×</span>
-                </div>
-                <input 
-                  type="text" 
-                  v-model="newIgnoredApp" 
-                  placeholder="输入应用名称" 
-                  @keyup.enter="addIgnoredApp"
-                  class="tag-input"
-                >
-              </div>
-            </div>
-          </div>
-          
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>文本预览长度</h3>
-              <p>在列表中显示的文本预览长度</p>
-            </div>
-            <div class="setting-control">
-              <input 
-                type="number" 
-                v-model="settings.previewLength" 
-                min="20" 
-                max="200" 
-                class="number-input"
-              >
-              <span class="unit">字符</span>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动分类</h3>
-              <p>自动分类开关</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleAutoClassify">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>OCR自动识别</h3>
-              <p>OCR自动识别开关</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleOCRAutoRecognition">
-                <span class="slider"></span>
-              </label>
             </div>
           </div>
 
@@ -332,7 +170,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleOCRAutoRecognition">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.delete_confirmation" 
+                  @change="updateSetting('delete_confirmation', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -345,7 +187,11 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleKeepFavorites">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.keep_favorites_on_delete" 
+                  @change="updateSetting('keep_favorites_on_delete', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
@@ -358,13 +204,15 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.showTrayIcon" @change="toggleAutoSort">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.auto_sort" 
+                  @change="updateSetting('auto_sort', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
-
-
         </div>
 
         <!-- AI Agent 设置 -->
@@ -374,73 +222,129 @@
           <div class="setting-item">
             <div class="setting-info">
               <h3>启用AI助手</h3>
-              <p>启用AI智能助手功能</p>
+              <p>启用AI智能助手功能（可对最新复制内容提问）</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.aiEnabled" @change="toggleAIEnabled">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.ai_enabled" 
+                  @change="updateSetting('ai_enabled', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
 
-          <div v-if="settings.aiEnabled" class="ai-settings">
+          <div v-if="settings.ai_enabled" class="ai-settings">
             <div class="setting-item">
               <div class="setting-info">
                 <h3>选择AI服务</h3>
                 <p>选择使用的AI服务提供商</p>
               </div>
               <div class="setting-control">
-                <select v-model="settings.aiService" class="select-input" @change="updateAIService">
+                <select 
+                  v-model="settings.ai_provider" 
+                  @change="updateSetting('ai_provider', $event.target.value)" 
+                  class="select-input"
+                >
+                  <option value="default">默认</option>
                   <option value="openai">OpenAI</option>
-                  <option value="claude">Claude</option>
-                  <option value="gemini">Gemini</option>
+                  <option value="google">Google</option>
+                  <option value="aliyun">Aliyun</option>
                   <option value="deepseek">DeepSeek</option>
+                  <option value="moonshot">Moonshot</option>
                   <option value="custom">自定义</option>
+                </select>
+              </div>
+            </div>
+
+            <div v-if="settings.ai_provider !== 'default'" class="setting-item">
+              <div class="setting-info">
+                <h3>API密钥</h3>
+                <p>设置AI服务的API密钥</p>
+              </div>
+              <div class="setting-control">
+                <input 
+                  type="password" 
+                  v-model="settings.ai_api_key" 
+                  @blur="updateSetting('ai_api_key', $event.target.value)"
+                  class="text-input" 
+                  placeholder="输入API密钥"
+                >
+              </div>
+            </div>
+
+            <div v-if="settings.ai_provider !== 'default'" class="setting-item">
+              <div class="setting-info">
+                <h3>base_url</h3>
+                <p>设置AI服务的基础URL，如(https://llmapi.paratera.com/v1)</p>
+              </div>
+              <div class="setting-control">
+                <input 
+                  type="text" 
+                  v-model="settings.ai_base_url" 
+                  @blur="updateSetting('ai_base_url', $event.target.value)"
+                  class="text-input" 
+                  placeholder="输入base_url"
+                >
+              </div>
+            </div>
+
+            <div v-if="settings.ai_provider !== 'default'" class="setting-item">
+              <div class="setting-info">
+                <h3>模型名称</h3>
+                <p>设置AI服务的模型</p>
+              </div>
+              <div class="setting-control">
+                <input 
+                  type="text" 
+                  v-model="settings.ai_model" 
+                  @blur="updateSetting('ai_model', $event.target.value)"
+                  class="text-input" 
+                  placeholder="输入模型名称"
+                >
+              </div>
+            </div>
+
+            <div v-if="settings.ai_provider === 'default'" class="setting-item">
+              <div class="setting-info">
+                <h3>选择AI模型</h3>
+                <p>选择使用的AI模型</p>
+              </div>
+              <div class="setting-control">
+                <select 
+                  v-model="settings.ai_model" 
+                  @change="updateSetting('ai_model', $event.target.value)" 
+                  class="select-input"
+                >
+                  <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
+                  <option value="Doubao-Seedream-4.0">Doubao-Seedream-4.0</option>
+                  <option value="Qwen3-VL-235B-A22B-Instruct">Qwen3-VL-235B-A22B-Instruct</option>
+                  <option value="Kimi-K2">Kimi-K2</option>
+                  <option value="GLM-4.6">GLM-4.6</option>
                 </select>
               </div>
             </div>
 
             <div class="setting-item">
               <div class="setting-info">
-                <h3>API密钥</h3>
-                <p>设置AI服务的API密钥</p>
+                <h3>采样温度</h3>
+                <p>采样温度越高，ai生成文本的随机性和多样性越强</p>
               </div>
               <div class="setting-control">
-                <input type="password" v-model="settings.aiApiKey" @blur="updateAIApiKey" class="text-input" placeholder="输入API密钥">
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>AI功能开关</h3>
-                <p>启用或禁用各项AI功能</p>
-              </div>
-              <div class="setting-control">
-                <div class="checkbox-group">
-                  <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiAutoTag"  @change="toggleAIAutoTag"> 自动打Tag
-                  </label>
-                  <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiAutoSummary" @change="toggleAIAutoSummary"> 自动总结
-                  </label>
-                  <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiTranslation" @change="toggleAITranslation"> 翻译
-                  </label>
-                  <label class="checkbox-item">
-                    <input type="checkbox" v-model="settings.aiWebSearch" @change="toggleAIWebSearch"> 联网搜索
-                  </label>
+                <div class="slider-container">
+                  <input 
+                    type="range" 
+                    :value="settings.ai_temperature" 
+                    min="0.5" 
+                    max="2" 
+                    step="0.1" 
+                    class="slider-input"
+                    @input="updateSetting('ai_temperature', Number($event.target.value))"
+                  >
+                  <span class="slider-value">{{ settings.ai_temperature }}</span>
                 </div>
-              </div>
-            </div>
-
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>清空AI对话历史</h3>
-                <p>清除所有AI对话记录</p>
-              </div>
-              <div class="setting-control">
-                <button class="btn btn-secondary" @click="clearAiHistory">清空历史</button>
               </div>
             </div>
           </div>
@@ -457,13 +361,17 @@
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.sensitiveFilter" @change="toggleSensitiveFilter">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.sensitive_filter" 
+                  @change="updateSetting('sensitive_filter', $event.target.checked)"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
 
-          <div v-if="settings.sensitiveFilter" class="setting-item">
+          <div v-if="settings.sensitive_filter" class="setting-item">
             <div class="setting-info">
               <h3>过滤类型</h3>
               <p>选择要过滤的敏感信息类型</p>
@@ -471,16 +379,32 @@
             <div class="setting-control">
               <div class="checkbox-group">
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterPasswords" @change="toggleFilterPasswords"> 密码
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_passwords" 
+                    @change="updateSetting('filter_passwords', $event.target.checked)"
+                  > 密码<span class="tip-text">（匹配备注中的‘密码’字样）</span>
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterBankCards" @change="toggleFilterBankCards"> 银行卡号
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_bank_cards" 
+                    @change="updateSetting('filter_bank_cards', $event.target.checked)"
+                  > 银行卡号
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterIDCards"  @change="toggleFilterIDCards"> 身份证号
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_id_cards" 
+                    @change="updateSetting('filter_id_cards', $event.target.checked)"
+                  > 身份证号
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" v-model="settings.filterPhoneNumbers" @change="toggleFilterPhoneNumbers"> 手机号
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.filter_phone_numbers" 
+                    @change="updateSetting('filter_phone_numbers', $event.target.checked)"
+                  > 手机号
                 </label>
               </div>
             </div>
@@ -492,32 +416,7 @@
               <p>查看和管理标记为隐私的记录</p>
             </div>
             <div class="setting-control">
-              <button class="btn btn-secondary" @click="viewPrivacyRecords">查看隐私记录</button>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动清理隐私记录</h3>
-              <p>自动删除超过指定天数的隐私记录</p>
-            </div>
-            <div class="setting-control">
-              <select v-model="settings.privacyRetentionDays" class="select-input"  @change="updatePrivacyRetentionDays">
-                <option value="1">1天</option>
-                <option value="7">7天</option>
-                <option value="30">30天</option>
-                <option value="0">手动删除</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>删除所有隐私记录</h3>
-              <p>永久删除所有标记为隐私的记录</p>
-            </div>
-            <div class="setting-control">
-              <button class="btn btn-danger" @click="deleteAllPrivacyRecords">删除所有隐私记录</button>
+              <button class="btn btn-secondary" @click="showPrivate">查看隐私记录</button>
             </div>
           </div>
         </div>
@@ -536,47 +435,20 @@
                 <div class="path-input-group">
                   <input 
                     type="text" 
-                    v-model="settings.dataStoragePath" 
+                    :value="settings.storage_path" 
                     class="text-input path-input" 
                     readonly
-                    :title="settings.dataStoragePath || '未设置存储路径'"
+                    :title="settings.storage_path || '未设置存储路径'"
                     placeholder="点击右侧按钮选择路径"
                   >
                   <button class="btn btn-secondary path-btn" @click="changeStoragePath">
-                    {{ settings.dataStoragePath ? '更改路径' : '选择路径' }}
+                    {{ settings.storage_path ? '更改路径' : '选择路径' }}
                   </button>
                 </div>
-                <div v-if="!settings.dataStoragePath" class="path-hint">
+                <div v-if="!settings.storage_path" class="path-hint">
                   <small>请选择数据存储路径</small>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <h3>自动备份</h3>
-              <p>定期自动备份数据</p>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.autoBackup" @change="toggleAutoBackup">
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div v-if="settings.autoBackup" class="setting-item">
-            <div class="setting-info">
-              <h3>备份频率</h3>
-              <p>自动备份的频率</p>
-            </div>
-            <div class="setting-control">
-              <select v-model="settings.backupFrequency" class="select-input" @change="updateBackupFrequency">>
-                <option value="daily">每天</option>
-                <option value="weekly">每周</option>
-                <option value="monthly">每月</option>
-              </select>
             </div>
           </div>
 
@@ -600,13 +472,6 @@
                 <button class="btn btn-secondary" @click="importData">导入数据</button>
               </div>
 
-              <div class="action-item">
-                <div class="action-info">
-                  <h4>立即备份</h4>
-                  <p>立即创建数据备份</p>
-                </div>
-                <button class="btn btn-secondary" @click="createBackup">立即备份</button>
-              </div>
             </div>
           </div>
         </div>
@@ -616,13 +481,7 @@
           <h2>云端同步</h2>
           
           <!-- 同步状态显示 -->
-          <div class="sync-status" v-if="userLoggedIn">
-            <div class="status-item">
-              <span class="status-label">同步状态:</span>
-              <span class="status-value" :class="{'success': lastSyncStatus === 'success', 'error': lastSyncStatus === 'error'}">
-                {{ lastSyncStatus === 'success' ? '同步成功' : lastSyncStatus === 'error' ? '同步失败' : '未同步' }}
-              </span>
-            </div>
+          <div class="sync-status" v-if="userLoggedIn && settings.cloud_sync_enabled">           
             <div class="status-item">
               <span class="status-label">上次同步时间:</span>
               <span class="status-value">
@@ -630,33 +489,41 @@
               </span>
             </div>
             <div class="status-actions">
-              <button class="btn btn-small" @click="manualSync" :disabled="isSyncing">
+              <button class="btn btn-small" @click="handleCloudPush" :disabled="isSyncing">
                 {{ isSyncing ? '同步中...' : '立即同步' }}
               </button>
             </div>
           </div>
 
-          <div class="setting-item">
+          <div class="setting-item" :class="{ 'no-border': settings.cloud_sync_enabled }">
             <div class="setting-info">
               <h3>启用云端同步</h3>
               <p>将剪贴板历史同步到云端，跨设备访问</p>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
-                <input type="checkbox" v-model="settings.cloudSync">
+                <input 
+                  type="checkbox" 
+                  :checked="settings.cloud_sync_enabled" 
+                  @change="handleCloudSyncToggle"
+                >
                 <span class="slider"></span>
               </label>
             </div>
           </div>
           
-          <div v-if="settings.cloudSync" class="cloud-settings">
+          <div v-if="settings.cloud_sync_enabled" class="cloud-settings">
             <div class="setting-item">
               <div class="setting-info">
                 <h3>同步频率</h3>
                 <p>自动同步剪贴板历史的频率</p>
               </div>
               <div class="setting-control">
-                <select v-model="settings.syncFrequency" class="select-input">
+                <select 
+                  v-model="settings.sync_frequency" 
+                  @change="updateSetting('sync_frequency', $event.target.value)" 
+                  class="select-input"
+                >
                   <option value="realtime">实时同步</option>
                   <option value="5min">每5分钟</option>
                   <option value="15min">每15分钟</option>
@@ -667,53 +534,38 @@
 
             <div class="setting-item">
               <div class="setting-info">
-                <h3>同步内容类型</h3>
-                <p>同步(仅文本 / 包含图片 / 包含文件)</p>
-              </div>
-              <div class="setting-control">
-                <select v-model="settings.syncContantType" class="select-input">
-                  <option value="onlytxt">仅文本</option>
-                  <option value="containphoto">包含图片</option>
-                  <option value="containfile">包含文件</option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="setting-item">
-              <div class="setting-info">
                 <h3>加密同步数据</h3>
-                <p>使用端到端加密保护您的剪贴板数据</p>
+                <p>使用端到端加密 (E2EE) 保护您的数据，服务器无法查看内容</p>
               </div>
               <div class="setting-control">
                 <label class="toggle-switch">
-                  <input type="checkbox" v-model="settings.encryptCloudData">
+                  <input 
+                    type="checkbox" 
+                    :checked="settings.encrypt_cloud_data" 
+                    @change="updateSetting('encrypt_cloud_data', $event.target.checked)"
+                  >
                   <span class="slider"></span>
                 </label>
               </div>
             </div>
 
-            <div class="setting-item">
-              <div class="setting-info">
-                <h3>仅WiFi下同步</h3>
-                <p>仅WiFi下同步</p>
+            <div v-if="settings.encrypt_cloud_data" class="encryption-status-panel">   
+              <div v-if="securityStore.hasDek()" class="status-ok">
+                <span class="icon">🔒</span> 
+                <span>密钥已激活，数据传输安全</span>
               </div>
-              <div class="setting-control">
-                <label class="toggle-switch">
-                  <input type="checkbox" v-model="settings.syncOnlyWifi">
-                  <span class="slider"></span>
-                </label>
-              </div>
+            
+              <div v-else class="status-warning">
+                <div class="warning-text">
+                  <span class="icon">⚠️</span>
+                  <span>密钥未加载，无法同步数据</span>
+                </div>
+                <button class="btn btn-small btn-secondary" @click="restoreKeysManually">
+                  验证密码以恢复
+                </button>
+              </div>            
             </div>
             
-            <div class="account-status" v-if="!userLoggedIn">
-              <p>您尚未登录，请登录以启用云端同步功能</p>
-              <button class="btn btn-primary" @click="login">登录账户</button>
-            </div>
-            
-            <div class="account-status" v-else>
-              <p>已登录为: {{ userEmail }}</p>
-              <button class="btn btn-secondary" @click="logout">退出登录</button>
-            </div>
           </div>
         </div>
 
@@ -723,29 +575,33 @@
           
           <div class="user-profile">
             <div class="avatar-section">
-              <div class="avatar">👤</div>
-              <button class="btn btn-secondary">更换头像</button>
+              <div class="avatar">
+                <img v-if="userInfo.avatar" :src="userInfo.avatar" alt="用户头像" class="user-avatar-img">
+                <span v-else>👤</span>
+              </div>
+              <button class="btn btn-secondary" @click="changeAvatar">更换头像</button>
             </div>
             
             <div class="user-details">
               <div class="form-group">
                 <label>用户名</label>
-                <input type="text" v-model="userInfo.username" class="text-input">
+                <div class="display-value">{{ userInfo.username || '未登录' }}</div>
               </div>
               
               <div class="form-group">
                 <label>电子邮箱</label>
-                <input type="email" v-model="userInfo.email" class="text-input">
+                <div class="display-value">{{ userInfo.email || '无邮箱信息' }}</div>
               </div>
               
               <div class="form-group">
                 <label>个人简介</label>
-                <textarea v-model="userInfo.bio" class="textarea-input" rows="3"></textarea>
-              </div>
-              
-              <div class="form-actions">
-                <button class="btn btn-primary" @click="saveUserInfo">保存更改</button>
-                <button class="btn btn-secondary" @click="resetUserInfo">重置</button>
+                <textarea 
+                  :value="userInfo.bio" 
+                  @input="userInfo.bio = $event.target.value"
+                  @blur="updateUserInfo()"
+                  class="textarea-input" 
+                  rows="3"
+                ></textarea>
               </div>
             </div>
           </div>
@@ -753,8 +609,19 @@
           <div class="account-actions">
             <h3>账户操作</h3>
             <div class="action-buttons">
-              <button class="btn btn-secondary" @click="changePassword">修改密码</button>
-              <button class="btn btn-danger" @click="deleteAccount">删除账户</button>
+              <template v-if="userLoggedIn">
+                <button class="btn btn-secondary" @click.prevent="logout">退出登录</button>
+                <button class="btn btn-secondary" @click="openChangePasswordDialog" :disabled="!userLoggedIn">修改密码</button>
+                <button class="btn btn-danger" @click="deleteAccount" :disabled="loading">
+                  <span v-if="loading">处理中...</span>
+                  <span v-else>删除账户</span>
+                </button>
+              </template>
+              
+              <template v-else>
+                <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
+                <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
+              </template>
             </div>
           </div>
         </div>
@@ -765,1176 +632,316 @@
     <div v-if="showToast" class="toast">
       {{ toastMessage }}
     </div>
+
+    <!-- 注册对话框 -->
+    <div v-if="showRegisterDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>注册新账户</h3>
+          <button @click="closeRegisterDialog" class="close-btn">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <form @submit.prevent="handleRegister">
+            <div class="form-group">
+              <label for="username">用户名</label>
+              <input
+                id="username"
+                v-model="registerData.username"
+                type="text"
+                required
+                placeholder="请输入用户名（不能为空）"
+                class="form-input"
+                :class="{ 'error': registerErrors.username }"
+              />
+              <div v-if="registerErrors.username" class="error-message">{{ registerErrors.username }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="email">邮箱</label>
+              <input
+                id="email"
+                v-model="registerData.email"
+                type="email"
+                required
+                placeholder="请输入邮箱"
+                class="form-input"
+                :class="{ 'error': registerErrors.email }"
+              />
+              <div v-if="registerErrors.email" class="error-message">{{ registerErrors.email }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="password">密码</label>
+              <input
+                id="password"
+                v-model="registerData.password"
+                type="password"
+                required
+                placeholder="请输入密码（至少8位，不能为纯数字）"
+                class="form-input"
+                :class="{ 'error': registerErrors.password }"
+              />
+              <div v-if="registerErrors.password" class="error-message">{{ registerErrors.password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="password2">确认密码</label>
+              <input
+                id="password2"
+                v-model="registerData.password2"
+                type="password"
+                required
+                placeholder="请再次输入密码"
+                class="form-input"
+                :class="{ 'error': registerErrors.password2 }"
+              />
+              <div v-if="registerErrors.password2" class="error-message">{{ registerErrors.password2 }}</div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeRegisterDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="registerLoading" class="btn btn-primary">
+                <span v-if="registerLoading">注册中...</span>
+                <span v-else>注册</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登录对话框 -->
+    <div v-if="showLoginDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>登录账户</h3>
+          <button @click="closeLoginDialog" class="close-btn">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <form @submit.prevent="handleLogin">
+            <div class="form-group">
+              <label for="login-username">用户名</label>
+              <input
+                id="login-username"
+                v-model="loginData.username"
+                type="text"
+                required
+                placeholder="请输入用户名"
+                class="form-input"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label for="login-password">密码</label>
+              <input
+                id="login-password"
+                v-model="loginData.password"
+                type="password"
+                required
+                placeholder="请输入密码"
+                class="form-input"
+              />
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeLoginDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="loginLoading" class="btn btn-primary">
+                <span v-if="loginLoading">登录中...</span>
+                <span v-else>登录</span>
+              </button>
+            </div>
+            
+            <div class="form-footer">
+              <p>还没有账户？ <a href="#" @click.prevent="showLoginDialog = false; openRegisterDialog()">立即注册</a></p>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- 修改密码对话框 -->
+    <div v-if="showChangePasswordDialog" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>修改密码</h3>
+          <button @click="closeChangePasswordDialog" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <form @submit.prevent="handleChangePassword">
+            <div class="form-group">
+              <label for="old-password">旧密码</label>
+              <input
+                id="old-password"
+                v-model="changePasswordData.old_password"
+                type="password"
+                required
+                placeholder="请输入旧密码"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.old_password }"
+              />
+              <div v-if="changePasswordErrors.old_password" class="error-message">{{ changePasswordErrors.old_password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="new-password">新密码</label>
+              <input
+                id="new-password"
+                v-model="changePasswordData.new_password"
+                type="password"
+                required
+                placeholder="请输入新密码（至少8位，不能为纯数字）"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.new_password }"
+              />
+              <div v-if="changePasswordErrors.new_password" class="error-message">{{ changePasswordErrors.new_password }}</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="new-password2">确认新密码</label>
+              <input
+                id="new-password2"
+                v-model="changePasswordData.new_password2"
+                type="password"
+                required
+                placeholder="请再次输入新密码"
+                class="form-input"
+                :class="{ 'error': changePasswordErrors.new_password2 }"
+              />
+              <div v-if="changePasswordErrors.new_password2" class="error-message">{{ changePasswordErrors.new_password2 }}</div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" @click="closeChangePasswordDialog" class="btn btn-secondary">
+                取消
+              </button>
+              <button type="submit" :disabled="changePasswordLoading" class="btn btn-primary">
+                <span v-if="changePasswordLoading">修改中...</span>
+                <span v-else>确定修改</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { invoke } from '@tauri-apps/api/core'
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
-import { 
-  Cog6ToothIcon,
-  TvIcon,
-  CloudIcon,
-  ClipboardIcon,
-  UserIcon,
-  SparklesIcon,     // 新增
-  ShieldCheckIcon,   // 新增
-  ArchiveBoxIcon
- } from '@heroicons/vue/24/outline'
+import { usePreferences } from '../composables/Preferences'
+import { useSecurityStore } from '../stores/security'
+import { watch } from 'vue'
 
-const router = useRouter()
-const currentWindow = getCurrentWindow();
+const {
+  // 状态
+  activeNav,
+  showToast,
+  toastMessage,
+  recordingShortcut,
+  newIgnoredApp,
+  userLoggedIn,
+  userEmail,
+  autostart,
+  loading,
+  errorMsg,
+  successMsg,
+  currentShortcut,
+  shortcutManager,
+  recordingShortcutType,
+  lastSyncTime,
+  lastSyncStatus,
+  isSyncing,
+  userInfo,
+  navItems,
+  settings,
+  shortcutDisplayNames,
+  shortcutKeys,
 
-// 响应式数据
-const activeNav = ref('general')
-const showToast = ref(false)
-const toastMessage = ref('')
-const recordingShortcut = ref('')
-const newIgnoredApp = ref('')
-const userLoggedIn = ref(true)
-const userEmail = ref('user@example.com')
+  // 注册登录相关状态
+  showRegisterDialog,
+  showLoginDialog,
+  registerData,
+  loginData,
+  registerErrors,
+  registerLoading,
+  loginLoading,
 
-const autostart = ref(false)
-const loading = ref(false)
+  // 修改密码相关状态
+  showChangePasswordDialog,
+  changePasswordData,
+  changePasswordErrors,
+  changePasswordLoading,
 
-// 添加快捷键设置所需的变量
-const errorMsg = ref('')
-const successMsg = ref('')
-const currentShortcut = ref('')
-let timer = null
-const recordingShortcutType = ref('') // 当前正在录制的快捷键类型
-const isRecording = ref(false) // 是否正在录制
-let currentKeys = new Set() // 记录当前按下的键
+  // 安全相关状态
+  securityStore,
 
-// 导航项
-const navItems = ref([
-  { id: 'general', name: '通用设置', icon: Cog6ToothIcon },
-  { id: 'shortcuts', name: '快捷键设置', icon: TvIcon },
-  { id: 'clipboard', name: '剪贴板参数设置', icon: ClipboardIcon },
-  { id: 'ai', name: 'AI Agent 设置', icon: ClipboardIcon },
-  { id: 'security', name: '安全与隐私', icon: ClipboardIcon }, 
-  { id: 'backup', name: '数据备份', icon: ClipboardIcon },
-    { id: 'cloud', name: '云端入口', icon: CloudIcon },
-  { id: 'user', name: '用户信息', icon: UserIcon }
+  // 基础方法
+  setActiveNav,
+  goBack,
+  login,
+  logout,
+  resetUserInfo,
+  showMessage,
+
+  // 注册登录方法
+  handleRegister,
+  handleLogin,
+  openRegisterDialog,
+  openLoginDialog,
+  closeRegisterDialog,
+  closeLoginDialog,
+  updateUserInfo,
+
+  // 修改密码方法
+  handleChangePassword,
+  openChangePasswordDialog,
+  closeChangePasswordDialog,
   
-])
+  // 快捷键方法
+  startRecording,
+  cancelRecording,
+  setShortcut,
 
-// 设置数据
-const settings = reactive({
-  autoStart: true,
-  showTrayIcon: true,
-  autoSave: true,
-  retentionDays: '30',
-  maxHistoryItems: 100,
-  ignoreShortText: 3,
-  ignoreBigFile: 5,
-  ignoredApps: ['密码管理器', '银行应用'],
-  previewLength: 115,
-  cloudSync: true,
-  syncFrequency: 'realtime',
-  syncContantType: 'onlytxt',
-  syncOnlyWifi: true,
-  encryptCloudData: true,
+  // 设置方法
+  updateSetting,
+  toggleOCRLanguage,
+  changeStoragePath,
 
-  // 剪贴板参数设置
-  autoClassify: true,
-  ocrAutoRecognition: true,
-  deleteConfirmation: true,
-  keepFavorites: true,
-  autoSort: true,
+  // 数据管理方法
+  clearAiHistory,
+  exportData,
+  importData,
+  createBackup,
 
-  // AI Agent 设置
-  aiEnabled: false,
-  aiService: 'openai',
-  aiApiKey: '',
-  aiAutoTag: true,
-  aiAutoSummary: true,
-  aiTranslation: true,
-  aiWebSearch: false,
+  // 隐私管理方法
+  showPrivate,
   
-  // 安全与隐私
-  sensitiveFilter: true,
-  filterPasswords: true,
-  filterBankCards: true,
-  filterIDCards: true,
-  filterPhoneNumbers: true,
-  privacyRetentionDays: '7',
-  
-  // 数据备份
-  dataStoragePath: '',
-  autoBackup: true,
-  backupFrequency: 'weekly',
-
-  shortcuts: {
-    toggleWindow: '',
-    pasteWindow: '',
-    AIWindow: '',
-    quickPaste: '',
-    clearHistory: ''
-  }
-})
-
-// 同步状态相关数据
-const lastSyncTime = ref(null) // 上次同步时间戳
-const lastSyncStatus = ref('') // 'success', 'error', ''
-const isSyncing = ref(false) // 是否正在同步
-
-// 用户信息
-const userInfo = reactive({
-  username: '当前用户',
-  email: 'user@example.com',
-  bio: '剪贴板管理爱好者'
-})
-
-// 方法定义
-const setActiveNav = (navId) => {
-  activeNav.value = navId
-}
-
-const goBack = () => {
-  router.back()
-}
-
-const login = () => {
-  // 模拟登录
-  userLoggedIn.value = true
-  showMessage('登录成功')
-}
-
-const logout = () => {
-  userLoggedIn.value = false
-  showMessage('已退出登录')
-}
-
-const resetUserInfo = () => {
-  Object.assign(userInfo, {
-    username: '当前用户',
-    email: 'user@example.com',
-    bio: '剪贴板管理爱好者'
-  })
-  showMessage('用户信息已重置')
-}
-
-
-const showMessage = (message) => {
-  toastMessage.value = message
-  showToast.value = true
-  setTimeout(() => {
-    showToast.value = false
-  }, 2000)
-}
-
-// 加载当前快捷键设置
-const loadCurrentShortcuts = async () => {
-  try {
-    const toggleWindowShortcut = await invoke('get_current_shortcut')
-    const pasteWindowShortcut = await invoke('get_current_shortcut2')
-    
-    settings.shortcuts.toggleWindow = toggleWindowShortcut || 'Shift+D'
-    settings.shortcuts.pasteWindow = pasteWindowShortcut || 'Alt+Shift+C'
-    
-    console.log('加载当前快捷键:', {
-      toggleWindow: settings.shortcuts.toggleWindow,
-      pasteWindow: settings.shortcuts.pasteWindow
-    })
-  } catch (error) {
-    console.error('加载快捷键失败:', error)
-    // 设置默认值
-    settings.shortcuts.toggleWindow = 'Shift+D'
-    settings.shortcuts.pasteWindow = 'Alt+Shift+C'
-  }
-}
-
-// 生命周期
-onMounted(async () => {
-  // 加载保存的设置
-  const savedSettings = localStorage.getItem('clipboardSettings')
-  if (savedSettings) {
-    Object.assign(settings, JSON.parse(savedSettings))
-  }
-  const savedTime = localStorage.getItem('lastSyncTime');
-  if (savedTime) {
-    lastSyncTime.value = parseInt(savedTime);
-  }
-  await checkAutostartStatus()
-  await loadCurrentShortcuts()
-
-  // 初始化窗口大小
-  try {
-    await currentWindow.setSize(new LogicalSize(800, 580));
-  } catch (error) {
-    console.error('设置窗口大小失败:', error)
-  }
-})
-
-// 通用设置相关函数
-// 启动时自动运行
-// 检查自启状态
-const checkAutostartStatus = async () => {
-  try {
-    const isEnabled = await invoke('is_autostart_enabled')
-    settings.autoStart = isEnabled
-    console.log('当前自启状态:', isEnabled)
-  } catch (error) {
-    console.error('检查自启状态失败:', error)
-    showMessage('检查自启状态失败')
-  }
-}
-
-// 切换自启状态 - 唯一的函数
-const toggleAutoStart = async () => {
-  loading.value = true
-  try {
-    await invoke('set_autostart', { enable: settings.autoStart })
-    const message = settings.autoStart ? '已开启开机自启' : '已关闭开机自启'
-    console.log(message)
-    showMessage(message)
-  } catch (error) {
-    console.error('设置自启失败:', error)
-    showMessage(`设置失败: ${error}`)
-    // 出错时恢复原状态
-    settings.autoStart = !settings.autoStart
-  } finally {
-    loading.value = false
-  }
-}
-// 显示系统托盘图标
-const toggleTrayIcon = async () => {
-  try {
-    await invoke('set_tray_icon_visibility', { visible: settings.showTrayIcon })
-    showMessage(settings.showTrayIcon ? '已显示托盘图标' : '已隐藏托盘图标')
-  } catch (error) {
-    console.error('设置托盘图标失败:', error)
-    settings.showTrayIcon = !settings.showTrayIcon
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-//启动时最小化到托盘
-const toggleMinimizeToTray = async () => {
-  try {
-    await invoke('set_minimize_to_tray', { enabled: settings.showTrayIcon })
-    showMessage(settings.showTrayIcon ? '已启用启动时最小化到托盘' : '已禁用启动时最小化到托盘')
-  } catch (error) {
-    console.error('设置最小化到托盘失败:', error)
-    settings.showTrayIcon = !settings.showTrayIcon
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 自动保存剪贴板历史
-const toggleAutoSave = async () => {
-  try {
-    await invoke('set_auto_save', { enabled: settings.autoSave })
-    showMessage(settings.autoSave ? '已启用自动保存' : '已禁用自动保存')
-  } catch (error) {
-    console.error('设置自动保存失败:', error)
-    settings.autoSave = !settings.autoSave
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 历史记录保留时间
-const updateRetentionDays = async () => {
-  try {
-    await invoke('set_retention_days', { days: parseInt(settings.retentionDays) })
-    showMessage(`历史记录保留时间已设置为 ${settings.retentionDays} 天`)
-  } catch (error) {
-    console.error('设置保留时间失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 快捷键设置相关函数
-// 开始录制快捷键
-const startRecording = (shortcutType) => {
-  recordingShortcutType.value = shortcutType
-  isRecording.value = true
-  currentKeys.clear()
-  showMessage(`请按下 ${getShortcutDisplayName(shortcutType)} 的快捷键...`)
-  
-  // 添加全局键盘事件监听
-  window.addEventListener('keydown', handleKeyDownDuringRecording)
-  window.addEventListener('keyup', handleKeyUpDuringRecording)
-}
-
-const startRecording2 = (shortcutType) => {
-  recordingShortcutType.value = shortcutType
-  isRecording.value = true
-  currentKeys.clear()
-  showMessage(`请按下 ${getShortcutDisplayName(shortcutType)} 的快捷键...`)
-  
-  // 添加全局键盘事件监听
-  window.addEventListener('keydown', handleKeyDownDuringRecording2)
-  window.addEventListener('keyup', handleKeyUpDuringRecording)
-}
-
-// 处理录制期间的按键
-const handleKeyDownDuringRecording = (event) => {
-  if (!isRecording.value) return
-  
-  event.preventDefault()
-  event.stopPropagation()
-  
-  // 记录按下的键
-  const key = getKeyName(event)
-  if (key) {
-    currentKeys.add(key)
-  }
-  
-  // 如果按下了 Escape 键，取消录制
-  if (event.key === 'Escape') {
-    cancelRecording()
-    return
-  }
-  
-  // 当有至少一个普通键（非修饰键）被按下时，完成录制
-  const hasRegularKey = Array.from(currentKeys).some(key => 
-    !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(key)
-  )
-  
-  if (hasRegularKey && currentKeys.size > 0) {
-    const shortcutStr = Array.from(currentKeys).join('+')
-    finishRecording(shortcutStr)
-  }
-}
-
-const handleKeyDownDuringRecording2 = (event) => {
-  if (!isRecording.value) return
-  
-  event.preventDefault()
-  event.stopPropagation()
-  
-  // 记录按下的键
-  const key = getKeyName(event)
-  if (key) {
-    currentKeys.add(key)
-  }
-  
-  // 如果按下了 Escape 键，取消录制
-  if (event.key === 'Escape') {
-    cancelRecording()
-    return
-  }
-  
-  // 当有至少一个普通键（非修饰键）被按下时，完成录制
-  const hasRegularKey = Array.from(currentKeys).some(key => 
-    !['Ctrl', 'Alt', 'Shift', 'Meta'].includes(key)
-  )
-  
-  if (hasRegularKey && currentKeys.size > 0) {
-    const shortcutStr = Array.from(currentKeys).join('+')
-    finishRecording2(shortcutStr)
-  }
-}
-
-// 处理按键释放
-const handleKeyUpDuringRecording = (event) => {
-  if (!isRecording.value) return
-  
-  const key = getKeyName(event)
-  if (key) {
-    currentKeys.delete(key)
-  }
-}
-
-// 获取按键名称
-const getKeyName = (event) => {
-  if (event.key === 'Control') return 'Ctrl'
-  if (event.key === 'Alt') return 'Alt'
-  if (event.key === 'Shift') return 'Shift'
-  if (event.key === 'Meta') return 'Meta'
-  
-  // 排除修饰键
-  if (event.key === 'Control' || event.key === 'Alt' || 
-      event.key === 'Shift' || event.key === 'Meta') {
-    return null
-  }
-  
-  // 处理特殊按键
-  if (event.key === ' ') return 'Space'
-  if (event.key === 'Escape') return 'Escape'
-  
-  // 处理功能键
-  if (event.key.startsWith('F') && event.key.length > 1) {
-    const fNumber = event.key.slice(1)
-    if (!isNaN(fNumber)) {
-      return event.key
-    }
-  }
-  
-  // 处理字母键（转换为大写）
-  if (event.key.length === 1 && event.key.match(/[a-zA-Z]/)) {
-    return event.key.toUpperCase()
-  }
-  
-  // 处理数字键
-  if (event.key.match(/^[0-9]$/)) {
-    return event.key
-  }
-  
-  // 处理其他常见按键
-  const specialKeys = {
-    'ArrowUp': 'Up',
-    'ArrowDown': 'Down', 
-    'ArrowLeft': 'Left',
-    'ArrowRight': 'Right',
-    'Enter': 'Enter',
-    'Tab': 'Tab',
-    'CapsLock': 'CapsLock',
-    'Backspace': 'Backspace',
-    'Delete': 'Delete',
-    'Insert': 'Insert',
-    'Home': 'Home',
-    'End': 'End',
-    'PageUp': 'PageUp',
-    'PageDown': 'PageDown',
-    ' ': 'Space'
-  }
-  
-  return specialKeys[event.key] || event.key
-}
-
-// 完成录制并设置快捷键
-const finishRecording = async (newShortcut) => {
-  isRecording.value = false
-  const shortcutType = recordingShortcutType.value
-  recordingShortcutType.value = ''
-  
-  // 移除事件监听
-  window.removeEventListener('keydown', handleKeyDownDuringRecording)
-  window.removeEventListener('keyup', handleKeyUpDuringRecording)
-  
-  // 调用你的 setShortcut 函数
-  await setShortcut(newShortcut, shortcutType)
-}
-
-const finishRecording2 = async (newShortcut) => {
-  isRecording.value = false
-  const shortcutType = recordingShortcutType.value
-  recordingShortcutType.value = ''
-  
-  // 移除事件监听
-  window.removeEventListener('keydown', handleKeyDownDuringRecording)
-  window.removeEventListener('keyup', handleKeyUpDuringRecording)
-  
-  // 调用你的 setShortcut 函数
-  await setShortcut2(newShortcut, shortcutType)
-}
-
-const setShortcut = async (newShortcutStr, shortcutType = null) => {
-  const targetType = shortcutType || recordingShortcutType.value
-  if (!targetType) {
-    console.error('没有指定快捷键类型')
-    return
-  }
-  
-  errorMsg.value = '';
-  successMsg.value = '';
-
-  try {
-    // 根据后端函数，只传递 new_shortcut_str 参数
-    await invoke('update_shortcut', { 
-      newShortcutStr: newShortcutStr 
-    });
-
-    // 更新界面显示
-    settings.shortcuts[targetType] = newShortcutStr;
-    successMsg.value = `${getShortcutDisplayName(targetType)} 快捷键设置成功！`;
-    console.log(`✅ ${getShortcutDisplayName(targetType)} 快捷键已成功更新为: ${newShortcutStr}`);
-
-    await loadCurrentShortcuts();
-  } catch (err) {
-    errorMsg.value = `设置失败: ${err}`;
-    console.error('❌ 设置快捷键失败:', err);
-    
-    // 如果出错，可能是因为快捷键冲突，提示用户
-    if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
-      errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键';
-    }
-  }
-
-  // 3秒后自动清除提示消息
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(() => {
-    successMsg.value = '';
-    errorMsg.value = '';
-  }, 3000);
-}
-
-const setShortcut2 = async (newShortcutStr, shortcutType = null) => {
-  const targetType = shortcutType || recordingShortcutType.value
-  if (!targetType) {
-    console.error('没有指定快捷键类型')
-    return
-  }
-  
-  errorMsg.value = '';
-  successMsg.value = '';
-
-  try {
-    // 根据后端函数，只传递 new_shortcut_str 参数
-    await invoke('update_shortcut2', { 
-      newShortcutStr: newShortcutStr 
-    });
-
-    // 更新界面显示
-    settings.shortcuts[targetType] = newShortcutStr;
-    successMsg.value = `${getShortcutDisplayName(targetType)} 快捷键设置成功！`;
-    console.log(`✅ ${getShortcutDisplayName(targetType)} 快捷键已成功更新为: ${newShortcutStr}`);
-    await loadCurrentShortcuts();
-  } catch (err) {
-    errorMsg.value = `设置失败: ${err}`;
-    console.error('❌ 设置快捷键失败:', err);
-    
-    // 如果出错，可能是因为快捷键冲突，提示用户
-    if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
-      errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键';
-    }
-  }
-
-  // 3秒后自动清除提示消息
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(() => {
-    successMsg.value = '';
-    errorMsg.value = '';
-  }, 3000);
-}
-
-// 辅助函数：获取快捷键显示名称
-const getShortcutDisplayName = (shortcutType) => {
-  const nameMap = {
-    'toggleWindow': '显示/隐藏主窗口',
-    'asteWindow': '显示/隐藏剪贴板',
-    'quickPaste': '快速粘贴', 
-    'clearHistory': '清空剪贴板历史'
-  };
-  return nameMap[shortcutType] || shortcutType;
-}
-
-// 取消录制（可选）
-const cancelRecording = () => {
-  isRecording.value = false
-  recordingShortcutType.value = ''
-  window.removeEventListener('keydown', handleKeyDownDuringRecording)
-  window.removeEventListener('keyup', handleKeyUpDuringRecording)
-  showMessage('已取消快捷键设置')
-}
-
-// 剪贴板参数设置相关函数
-// 最大历史记录数量
-const updateMaxHistoryItems = async () => {
-  try {
-    await invoke('set_max_history_items', { maxItems: settings.maxHistoryItems })
-    showMessage(`最大历史记录数量已设置为 ${settings.maxHistoryItems}`)
-  } catch (error) {
-    console.error('设置最大历史记录数量失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 忽略短文本
-const updateIgnoreShortText = async () => {
-  try {
-    await invoke('set_ignore_short_text', { minLength: settings.ignoreShortText })
-    showMessage(`已设置忽略 ${settings.ignoreShortText} 字符以下的文本`)
-  } catch (error) {
-    console.error('设置忽略短文本失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 忽略大文件
-const updateIgnoreBigFile = async () => {
-  try {
-    await invoke('set_ignore_big_file', { mincapacity: settings.ignoreBigFile })
-    showMessage(`已设置忽略 ${settings.ignoreBigFile} MB以上的文件`)
-  } catch (error) {
-    console.error('设置忽略大文件失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 添加忽略应用
-const addIgnoredApp = async () => {
-  if (newIgnoredApp.value.trim() && !settings.ignoredApps.includes(newIgnoredApp.value.trim())) {
-    const newApp = newIgnoredApp.value.trim()
-    settings.ignoredApps.push(newApp)
-    newIgnoredApp.value = ''
-    
-    try {
-      await invoke('add_ignored_app', { appName: newApp })
-      showMessage(`已添加忽略应用: ${newApp}`)
-    } catch (error) {
-      console.error('添加忽略应用失败:', error)
-      settings.ignoredApps.pop() // 回滚
-      showMessage(`添加失败: ${error}`)
-    }
-  }
-}
-
-// 移除忽略应用
-const removeIgnoredApp = async (index) => {
-  const removedApp = settings.ignoredApps[index]
-  settings.ignoredApps.splice(index, 1)
-  
-  try {
-    await invoke('remove_ignored_app', { appName: removedApp })
-    showMessage(`已移除忽略应用: ${removedApp}`)
-  } catch (error) {
-    console.error('移除忽略应用失败:', error)
-    settings.ignoredApps.splice(index, 0, removedApp) // 回滚
-    showMessage(`移除失败: ${error}`)
-  }
-}
-
-// 文本预览长度
-const updatePreviewLength = async () => {
-  try {
-    await invoke('set_preview_length', { length: settings.previewLength })
-    showMessage(`文本预览长度已设置为 ${settings.previewLength} 字符`)
-  } catch (error) {
-    console.error('设置预览长度失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 清空所有忽略应用
-const clearAllIgnoredApps = async () => {
-  if (settings.ignoredApps.length === 0) {
-    showMessage('没有可清空的忽略应用')
-    return
-  }
-  
-  if (confirm('确定要清空所有忽略应用吗？')) {
-    const oldApps = [...settings.ignoredApps]
-    settings.ignoredApps = []
-    
-    try {
-      await invoke('clear_all_ignored_apps')
-      showMessage('已清空所有忽略应用')
-    } catch (error) {
-      console.error('清空忽略应用失败:', error)
-      settings.ignoredApps = oldApps // 回滚
-      showMessage(`清空失败: ${error}`)
-    }
-  }
-}
-//自动分类开关
-const toggleAutoClassify = async () => {
-  try {
-    await invoke('set_auto_classify', { enabled: settings.autoClassify })
-    showMessage(settings.autoClassify ? '已启用自动分类' : '已禁用自动分类')
-  } catch (error) {
-    console.error('设置自动分类失败:', error)
-    settings.autoClassify = !settings.autoClassify
-    showMessage(`设置失败: ${error}`)
-  }
-}
-//OCR自动识别
-const toggleOCRAutoRecognition = async () => {
-  try {
-    await invoke('set_ocr_auto_recognition', { enabled: settings.ocrAutoRecognition })
-    showMessage(settings.ocrAutoRecognition ? '已启用OCR自动识别' : '已禁用OCR自动识别')
-  } catch (error) {
-    console.error('设置OCR自动识别失败:', error)
-    settings.ocrAutoRecognition = !settings.ocrAutoRecognition
-    showMessage(`设置失败: ${error}`)
-  }
-}
-//删除确认
-const toggleDeleteConfirmation = async () => {
-  try {
-    await invoke('set_delete_confirmation', { enabled: settings.deleteConfirmation })
-    showMessage(settings.deleteConfirmation ? '已启用删除确认' : '已禁用删除确认')
-  } catch (error) {
-    console.error('设置删除确认失败:', error)
-    settings.deleteConfirmation = !settings.deleteConfirmation
-    showMessage(`设置失败: ${error}`)
-  }
-}
-//收藏保留
-const toggleKeepFavorites = async () => {
-  try {
-    await invoke('set_keep_favorites', { enabled: settings.keepFavorites })
-    showMessage(settings.keepFavorites ? '已启用收藏保留' : '已禁用收藏保留')
-  } catch (error) {
-    console.error('设置收藏保留失败:', error)
-    settings.keepFavorites = !settings.keepFavorites
-    showMessage(`设置失败: ${error}`)
-  }
-}
-//自动排序
-const toggleAutoSort = async () => {
-  try {
-    await invoke('set_auto_sort', { enabled: settings.autoSort })
-    showMessage(settings.autoSort ? '已启用自动排序' : '已禁用自动排序')
-  } catch (error) {
-    console.error('设置自动排序失败:', error)
-    settings.autoSort = !settings.autoSort
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// AI Agent 设置相关方法
-const toggleAIEnabled = async () => {
-  try {
-    await invoke('set_ai_enabled', { enabled: settings.aiEnabled })
-    showMessage(settings.aiEnabled ? '已启用AI助手' : '已禁用AI助手')
-  } catch (error) {
-    console.error('设置AI助手失败:', error)
-    settings.aiEnabled = !settings.aiEnabled
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateAIService = async () => {
-  try {
-    await invoke('set_ai_service', { service: settings.aiService })
-    showMessage(`AI服务已设置为 ${getAIServiceName(settings.aiService)}`)
-  } catch (error) {
-    console.error('设置AI服务失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateAIApiKey = async () => {
-  try {
-    await invoke('set_ai_api_key', { apiKey: settings.aiApiKey })
-    showMessage('API密钥已保存')
-  } catch (error) {
-    console.error('设置API密钥失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAIAutoTag = async () => {
-  try {
-    await invoke('set_ai_auto_tag', { enabled: settings.aiAutoTag })
-    showMessage(settings.aiAutoTag ? '已启用自动打Tag' : '已禁用自动打Tag')
-  } catch (error) {
-    console.error('设置自动打Tag失败:', error)
-    settings.aiAutoTag = !settings.aiAutoTag
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAIAutoSummary = async () => {
-  try {
-    await invoke('set_ai_auto_summary', { enabled: settings.aiAutoSummary })
-    showMessage(settings.aiAutoSummary ? '已启用自动总结' : '已禁用自动总结')
-  } catch (error) {
-    console.error('设置自动总结失败:', error)
-    settings.aiAutoSummary = !settings.aiAutoSummary
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAITranslation = async () => {
-  try {
-    await invoke('set_ai_translation', { enabled: settings.aiTranslation })
-    showMessage(settings.aiTranslation ? '已启用翻译功能' : '已禁用翻译功能')
-  } catch (error) {
-    console.error('设置翻译功能失败:', error)
-    settings.aiTranslation = !settings.aiTranslation
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleAIWebSearch = async () => {
-  try {
-    await invoke('set_ai_web_search', { enabled: settings.aiWebSearch })
-    showMessage(settings.aiWebSearch ? '已启用联网搜索' : '已禁用联网搜索')
-  } catch (error) {
-    console.error('设置联网搜索失败:', error)
-    settings.aiWebSearch = !settings.aiWebSearch
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const clearAiHistory = async () => {
-  if (confirm('确定要清空所有AI对话历史吗？此操作不可恢复。')) {
-    try {
-      await invoke('clear_ai_history')
-      showMessage('AI对话历史已清空')
-    } catch (error) {
-      console.error('清空AI历史失败:', error)
-      showMessage(`清空失败: ${error}`)
-    }
-  }
-}
-
-// 安全与隐私相关方法
-const toggleSensitiveFilter = async () => {
-  try {
-    await invoke('set_sensitive_filter', { enabled: settings.sensitiveFilter })
-    showMessage(settings.sensitiveFilter ? '已启用敏感词过滤' : '已禁用敏感词过滤')
-  } catch (error) {
-    console.error('设置敏感词过滤失败:', error)
-    settings.sensitiveFilter = !settings.sensitiveFilter
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterPasswords = async () => {
-  try {
-    await invoke('set_filter_passwords', { enabled: settings.filterPasswords })
-    showMessage(settings.filterPasswords ? '已启用密码过滤' : '已禁用密码过滤')
-  } catch (error) {
-    console.error('设置密码过滤失败:', error)
-    settings.filterPasswords = !settings.filterPasswords
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterBankCards = async () => {
-  try {
-    await invoke('set_filter_bank_cards', { enabled: settings.filterBankCards })
-    showMessage(settings.filterBankCards ? '已启用银行卡号过滤' : '已禁用银行卡号过滤')
-  } catch (error) {
-    console.error('设置银行卡号过滤失败:', error)
-    settings.filterBankCards = !settings.filterBankCards
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterIDCards = async () => {
-  try {
-    await invoke('set_filter_id_cards', { enabled: settings.filterIDCards })
-    showMessage(settings.filterIDCards ? '已启用身份证号过滤' : '已禁用身份证号过滤')
-  } catch (error) {
-    console.error('设置身份证号过滤失败:', error)
-    settings.filterIDCards = !settings.filterIDCards
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const toggleFilterPhoneNumbers = async () => {
-  try {
-    await invoke('set_filter_phone_numbers', { enabled: settings.filterPhoneNumbers })
-    showMessage(settings.filterPhoneNumbers ? '已启用手机号过滤' : '已禁用手机号过滤')
-  } catch (error) {
-    console.error('设置手机号过滤失败:', error)
-    settings.filterPhoneNumbers = !settings.filterPhoneNumbers
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updatePrivacyRetentionDays = async () => {
-  try {
-    await invoke('set_privacy_retention_days', { days: parseInt(settings.privacyRetentionDays) })
-    showMessage(`隐私记录保留时间已设置为 ${settings.privacyRetentionDays} 天`)
-  } catch (error) {
-    console.error('设置隐私记录保留时间失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-const viewPrivacyRecords = async () => {
-  try {
-    const records = await invoke('get_privacy_records')
-    // 这里可以打开一个模态框显示隐私记录
-    showMessage(`找到 ${records.length} 条隐私记录`)
-  } catch (error) {
-    console.error('获取隐私记录失败:', error)
-    showMessage(`获取失败: ${error}`)
-  }
-}
-
-const deleteAllPrivacyRecords = async () => {
-  if (confirm('确定要永久删除所有隐私记录吗？此操作不可恢复！')) {
-    try {
-      await invoke('delete_all_privacy_records')
-      showMessage('所有隐私记录已删除')
-    } catch (error) {
-      console.error('删除隐私记录失败:', error)
-      showMessage(`删除失败: ${error}`)
-    }
-  }
-}
-
-// 数据备份相关方法
-const changeStoragePath = async () => {
-  try {
-    const newPath = await invoke('select_storage_path')
-    if (newPath) {
-      settings.dataStoragePath = newPath
-      await invoke('set_storage_path', { path: newPath })
-      showMessage('存储路径已更新')
-    }
-  } catch (error) {
-    console.error('更改存储路径失败:', error)
-    showMessage(`更改失败: ${error}`)
-  }
-}
-
-const toggleAutoBackup = async () => {
-  try {
-    await invoke('set_auto_backup', { enabled: settings.autoBackup })
-    showMessage(settings.autoBackup ? '已启用自动备份' : '已禁用自动备份')
-  } catch (error) {
-    console.error('设置自动备份失败:', error)
-    settings.autoBackup = !settings.autoBackup
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const updateBackupFrequency = async () => {
-  try {
-    await invoke('set_backup_frequency', { frequency: settings.backupFrequency })
-    showMessage(`备份频率已设置为 ${getBackupFrequencyName(settings.backupFrequency)}`)
-  } catch (error) {
-    console.error('设置备份频率失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-const exportData = async () => {
-  try {
-    const exportPath = await invoke('export_user_data')
-    showMessage(`数据已导出到: ${exportPath}`)
-  } catch (error) {
-    console.error('导出数据失败:', error)
-    showMessage(`导出失败: ${error}`)
-  }
-}
-
-const importData = async () => {
-  try {
-    const result = await invoke('import_user_data')
-    if (result.success) {
-      showMessage('数据导入成功')
-    }
-  } catch (error) {
-    console.error('导入数据失败:', error)
-    showMessage(`导入失败: ${error}`)
-  }
-}
-
-const createBackup = async () => {
-  try {
-    const backupPath = await invoke('create_backup')
-    showMessage(`备份已创建: ${backupPath}`)
-  } catch (error) {
-    console.error('创建备份失败:', error)
-    showMessage(`备份失败: ${error}`)
-  }
-}
-
-// 辅助函数
-const getAIServiceName = (service) => {
-  const serviceMap = {
-    'openai': 'OpenAI',
-    'claude': 'Claude', 
-    'gemini': 'Gemini',
-    'deepseek': 'DeepSeek',
-    'custom': '自定义'
-  }
-  return serviceMap[service] || service
-}
-
-const getBackupFrequencyName = (frequency) => {
-  const frequencyMap = {
-    'daily': '每天',
-    'weekly': '每周',
-    'monthly': '每月'
-  }
-  return frequencyMap[frequency] || frequency
-}
-
-// 云端同步相关函数
-// 启用/禁用云端同步
-const toggleCloudSync = async () => {
-  try {
-    await invoke('set_cloud_sync', { enabled: settings.cloudSync })
-    showMessage(settings.cloudSync ? '已启用云端同步' : '已禁用云端同步')
-  } catch (error) {
-    console.error('设置云端同步失败:', error)
-    settings.cloudSync = !settings.cloudSync
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 格式化时间显示
-const formatTime = (timestamp) => {
-  if (!timestamp) return '';
-  const date = new Date(timestamp);
-  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-}
-
-// 手动同步
-const manualSync = async () => {
-  if (isSyncing.value) return;
-  
-  isSyncing.value = true;
-  try {
-    // 调用同步API
-    await invoke('force_cloud_sync');
-    lastSyncStatus.value = 'success';
-    lastSyncTime.value = Date.now();
-    
-    // 保存同步时间到本地存储
-    localStorage.setItem('lastSyncTime', lastSyncTime.value);
-    showMessage('同步成功');
-  } catch (error) {
-    lastSyncStatus.value = 'error';
-    console.error('同步失败:', error);
-    showMessage(`同步失败: ${error}`);
-  } finally {
-    isSyncing.value = false;
-  }
-}
-
-// 同步频率
-const updateSyncFrequency = async () => {
-  try {
-    await invoke('set_sync_frequency', { frequency: settings.syncFrequency })
-    showMessage(`同步频率已设置为 ${getFrequencyText(settings.syncFrequency)}`)
-  } catch (error) {
-    console.error('设置同步频率失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 加密同步数据
-const toggleEncryptCloudData = async () => {
-  try {
-    await invoke('set_encrypt_cloud_data', { enabled: settings.encryptCloudData })
-    showMessage(settings.encryptCloudData ? '已启用数据加密' : '已禁用数据加密')
-  } catch (error) {
-    console.error('设置数据加密失败:', error)
-    settings.encryptCloudData = !settings.encryptCloudData
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 立即同步
-const syncNow = async () => {
-  try {
-    showMessage('正在同步...')
-    await invoke('force_cloud_sync')
-    showMessage('云端同步完成')
-  } catch (error) {
-    console.error('同步失败:', error)
-    showMessage(`同步失败: ${error}`)
-  }
-}
-
-// 查看同步状态
-const checkSyncStatus = async () => {
-  try {
-    const status = await invoke('get_sync_status')
-    showMessage(`同步状态: ${status.lastSync ? `最后同步 ${formatTime(status.lastSync)}` : '从未同步'}`)
-  } catch (error) {
-    console.error('获取同步状态失败:', error)
-    showMessage(`获取状态失败: ${error}`)
-  }
-}
-
-// 辅助函数：获取频率文本
-const getFrequencyText = (frequency) => {
-  const frequencyMap = {
-    'realtime': '实时',
-    '5min': '5分钟',
-    '15min': '15分钟', 
-    '1hour': '1小时'
-  }
-  return frequencyMap[frequency] || frequency
-}
-
-// 用户信息相关函数
-// 保存用户信息
-const saveUserInfo = async () => {
-  try {
-    await invoke('update_user_profile', {
-      username: userInfo.username,
-      email: userInfo.email,
-      bio: userInfo.bio
-    })
-    showMessage('用户信息已保存')
-  } catch (error) {
-    console.error('保存用户信息失败:', error)
-    showMessage(`保存失败: ${error}`)
-  }
-}
-
-// 更换头像
-const changeAvatar = async () => {
-  try {
-    const filePath = await invoke('select_avatar_file')
-    if (filePath) {
-      await invoke('upload_user_avatar', { filePath })
-      showMessage('头像更换成功')
-    }
-  } catch (error) {
-    console.error('更换头像失败:', error)
-    showMessage(`更换失败: ${error}`)
-  }
-}
-
-// 修改密码
-const changePassword = async () => {
-  try {
-    // 这里应该打开密码修改模态框
-    const result = await invoke('open_change_password_dialog')
-    if (result.success) {
-      showMessage('密码修改成功')
-    }
-  } catch (error) {
-    console.error('修改密码失败:', error)
-    showMessage(`修改失败: ${error}`)
-  }
-}
-
-// 删除账户
-const deleteAccount = async () => {
-  if (confirm('确定要删除账户吗？此操作将永久删除所有数据且不可恢复！')) {
-    try {
-      await invoke('delete_user_account')
-      showMessage('账户已删除')
-      router.push('/')
-    } catch (error) {
-      console.error('删除账户失败:', error)
-      showMessage(`删除失败: ${error}`)
-    }
-  }
-}
-
-// 导出用户数据
-const exportUserData = async () => {
-  try {
-    const exportPath = await invoke('export_user_data')
-    showMessage(`用户数据已导出到: ${exportPath}`)
-  } catch (error) {
-    console.error('导出数据失败:', error)
-    showMessage(`导出失败: ${error}`)
-  }
-}
-
-// 导入用户数据
-const importUserData = async () => {
-  try {
-    const importPath = await invoke('import_user_data')
-    showMessage('用户数据导入成功')
-    // 重新加载用户信息
-    await loadUserInfo()
-  } catch (error) {
-    console.error('导入数据失败:', error)
-    showMessage(`导入失败: ${error}`)
-  }
-}
-
-// 加载用户信息
-const loadUserInfo = async () => {
-  try {
-    const profile = await invoke('get_user_profile')
-    Object.assign(userInfo, profile)
-  } catch (error) {
-    console.error('加载用户信息失败:', error)
-  }
-}
-
+  // 云端同步方法
+  handleCloudSyncToggle,
+  formatTime,
+  manualSync,
+  syncNow,
+  checkSyncStatus,
+  handleCloudPush,
+  restoreKeysManually,
+  handleCloudPull,
+
+  // 用户管理方法
+  changeAvatar,
+  changePassword,
+  deleteAccount,
+
+  // 辅助方法
+  getAIServiceName,
+  getBackupFrequencyName
+} = usePreferences()
 </script>
 
 <style scoped>
@@ -2201,11 +1208,23 @@ input:checked + .slider:before {
   text-align: center;
   min-width: 120px;
   transition: all 0.2s;
+  user-select: none;
 }
 
 .shortcut-input:hover {
   border-color: #3498db;
   background: #f8f9fa;
+}
+
+.shortcut-status-messages {
+    margin-top: 24px;
+}
+
+.shortcut-input.recording-active {
+  border-color: #e67e22; /* Orange color for active recording */
+  background: #fdf3e9; /* Light orange background */
+  box-shadow: 0 0 5px rgba(230, 126, 34, 0.5);
+  animation: pulse-border 1s infinite alternate;
 }
 
 .hint {
@@ -2325,8 +1344,8 @@ input:checked + .slider:before {
 
 /* 云端设置样式 */
 .cloud-settings {
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 0px;
+  padding-top: 0px;
   border-top: 1px solid #f0f0f0;
 }
 
@@ -2394,6 +1413,10 @@ input:checked + .slider:before {
   cursor: not-allowed;
 }
 
+.setting-item.no-border {
+  border-bottom: none;
+}
+
 /* 用户信息样式 */
 .user-profile {
   display: flex;
@@ -2417,6 +1440,17 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   font-size: 32px;
+  overflow: hidden; /* 隐藏超出圆形区域的部分 */
+  position: relative; /* 为绝对定位的图片做准备 */
+  border: 2px solid #e1e8ed;/* 添加边框增强圆形效果 */
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 确保图片覆盖整个容器并保持比例 */
+  object-position: center center; /* 确保图片居中显示 */
+  display: block;
 }
 
 .user-details {
@@ -2497,6 +1531,206 @@ input:checked + .slider:before {
   background: #c0392b;
 }
 
+/* 未登录用户界面 */
+.unlogged-user {
+  padding: 40px 20px;
+  text-align: center;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+}
+
+.unlogged-message h3 {
+  margin-bottom: 10px;
+  color: #2c3e50;
+  font-size: 18px;
+}
+
+.unlogged-message p {
+  margin-bottom: 20px;
+  color: #7f8c8d;
+}
+
+.unlogged-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.display-value {
+  padding: 8px 12px;
+  border: 1px solid #e1e8ed;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #2c3e50;
+  background: #f8f9fa; /* Light background to make it look like a static display field */
+  word-break: break-all;
+}
+
+/* 账户按钮组 */
+.account-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #2c3e50;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+/* 表单样式 */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.25);
+}
+
+.form-input.error {
+  border-color: #e74c3c;
+}
+
+.error-message {
+  color: #e74c3c;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 30px;
+}
+
+.form-footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #7f8c8d;
+}
+
+.form-footer a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+.form-footer a:hover {
+  text-decoration: underline;
+}
+
+/* 按钮样式更新 */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #3498db;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2980b9;
+}
+
+.btn-primary:disabled {
+  background: #a0c9e5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #ecf0f1;
+  color: #2c3e50;
+  border: 1px solid #bdc3c7;
+}
+
+.btn-secondary:hover {
+  background: #d5dbdb;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
 /* 提示信息样式 */
 .toast {
   position: fixed;
@@ -2508,8 +1742,14 @@ input:checked + .slider:before {
   padding: 12px 24px;
   border-radius: 8px;
   font-size: 14px;
-  z-index: 1000;
+  z-index: 10000;
   animation: slideUp 0.3s ease;
+}
+
+.tip-text {
+  font-size: 0.9em; 
+  color: #888; 
+  margin-left: 0px; 
 }
 
 @keyframes slideUp {
@@ -2520,6 +1760,15 @@ input:checked + .slider:before {
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes pulse-border {
+  from {
+    border-color: #e67e22;
+  }
+  to {
+    border-color: #f1c40f;
   }
 }
 
@@ -2571,4 +1820,82 @@ input:checked + .slider:before {
     align-self: center;
   }
 }
+
+/* 滑块输入样式 */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 200px;
+}
+
+.slider-input {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e1e8ed;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3498db;
+  cursor: pointer;
+}
+
+.slider-input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3498db;
+  cursor: pointer;
+  border: none;
+}
+
+.slider-value {
+  min-width: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+.encryption-status-panel {
+  margin-top: -10px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e1e8ed;
+  font-size: 13px;
+}
+
+.status-ok {
+  color: #27ae60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.status-warning {
+  color: #e67e22;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.warning-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  font-size: 16px;
+}
+
 </style>
