@@ -64,6 +64,7 @@ fn main() {
             utils::stop_mouse_listener,
             utils::get_utils_dir_path,
             utils::read_file_to_frontend,
+            utils::get_screen_resolution,
             db::insert_received_text_data,
             db::insert_received_data,
             db::get_all_data,
