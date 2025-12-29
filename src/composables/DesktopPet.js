@@ -478,10 +478,19 @@ export function useDesktopPet() {
     console.log('[DesktopPet] mounted')
     try {
       await currentWindow.setSize(new LogicalSize(150, 95))
-      await currentWindow.setPosition(new LogicalPosition(1550, 800))
+
+      // 获取实际缩放比例
       const actualScaleFactor = await currentWindow.scaleFactor()
       console.log('系统缩放比例:', actualScaleFactor)
       scaleFactor.value = actualScaleFactor
+
+      // 获取屏幕分辨率
+      const [width, height] = await invoke('get_screen_resolution')
+      console.log(`屏幕分辨率: ${width}x${height}`)
+
+      // 初始位置放在右下角
+      await currentWindow.setPosition(new LogicalPosition(width / actualScaleFactor - 150, height / actualScaleFactor - 165))
+      
       
       const position = await currentWindow.outerPosition()
       currentPosition.value = {
