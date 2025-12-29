@@ -402,6 +402,7 @@ export function usePreferences() {
             userInfo.avatar = responselogin.data.user.avatar || ''
           }
           loadUsername()
+          await emit('user-info-updated');
         }
 
         // 清空表单数据
@@ -486,6 +487,7 @@ export function usePreferences() {
           userInfo.avatar = response.data.user.avatar || ''
         }
         loadUsername()
+        await emit('user-info-updated');
 
         // === 新增: 尝试恢复 E2EE 密钥 ===
         // 使用用户刚输入的密码尝试恢复
@@ -598,6 +600,7 @@ export function usePreferences() {
         avatar: ''
       })
       showMessage('已退出登录', 'success')
+      await emit('user-info-updated');
     }
   }
 
@@ -1259,6 +1262,8 @@ const updateRetentionDays = async () => {
         userEmail.value = ''
         Object.assign(userInfo, { username: '', email: '', bio: '', avatar: '' })
         
+        await emit('user-info-updated');
+
         // 关闭对话框并清空表单
         showChangePasswordDialog.value = false
         Object.assign(changePasswordData, {
@@ -1363,6 +1368,7 @@ const updateRetentionDays = async () => {
         }
 
         showMessage('头像更换成功', 'success');
+        await emit('user-info-updated');
       } else {
         showMessage(apiResponse.message || '头像上传失败', 'error');
       }
@@ -1410,6 +1416,7 @@ const updateRetentionDays = async () => {
           Object.assign(userInfo, { username: '', email: '', bio: '', avatar: '' });
           
           showMessage('账户已成功删除', 'success');
+          await emit('user-info-updated');
           // 删除成功后跳转到主页或登录页
           //router.push('/');
         } else {

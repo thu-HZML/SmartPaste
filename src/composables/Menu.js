@@ -1,7 +1,7 @@
 // src/components/MenuFunctions.js
-import { ref } from "vue";
-import { emit } from '@tauri-apps/api/event'
-import { toggleClipboardWindow, toggleFavoritesWindow } from '../utils/actions.js'
+import { ref,onMounted, onUnmounted } from "vue";
+import { emit, listen } from '@tauri-apps/api/event'
+import { toggleClipboardWindow, toggleFavoritesWindow, toggleSetWindow } from '../utils/actions.js'
 
 const username = ref("未登录");
 const userAvatar = ref("");
@@ -46,12 +46,34 @@ export function loadUsername() {
   
   // 失败或未登录，则设置为默认值
   username.value = "未登录";
+  userAvatar.value = "";
   console.log('未找到有效用户名数据，设置为: 未登录');
 }
 // 初始化时加载用户名
 loadUsername();
 
 export function useUsername() {
+  let unlisten = null;
+
+  onMounted(async () => {
+    // 1. 每次组件挂载时，确保数据是最新的
+    loadUsername();
+
+    // 2. 注册全局事件监听器
+    // 当其他窗口（如设置页）发出 'user-info-updated' 事件时，刷新数据
+    unlisten = await listen('user-info-updated', () => {
+      console.log('收到用户信息更新通知，正在刷新 Menu...');
+      loadUsername();
+    });
+  });
+
+  onUnmounted(() => {
+    // 组件卸载时取消监听，防止内存泄漏
+    if (unlisten) {
+      unlisten();
+    }
+  });
+  
   return {
     username, // 返回全局的响应式引用
     userAvatar,

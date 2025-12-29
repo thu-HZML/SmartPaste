@@ -83,7 +83,10 @@ class ApiService {
       result = await response.json();
       
       if (!response.ok) {
-        throw new Error('登录失败');
+        const errorMessage = (result && result.error) ? result.error : 
+                             (result && result.detail) ? result.detail : 
+                             '登录失败，请检查用户名或密码';
+        throw new Error(errorMessage);
       }
       
       const token = result.jwt.access;
