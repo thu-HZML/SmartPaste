@@ -82,7 +82,7 @@
 
     <!-- 剪贴板记录列表 -->
     <main class="app-main">
-      <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"界面 -->
+      <!-- "全部"、"图片"、"视频"、"文件"、"收藏夹内容"、"隐私"界面 -->
       <div v-if="['all', 'text', 'image', 'file', 'folder', 'private'].includes(activeCategory)">
         <div v-if="filteredHistory.length === 0" class="empty-state">
           <p v-if="searchQuery">未找到匹配的记录</p>
@@ -228,7 +228,7 @@
               <span class="content-count">{{ item.num_items }}</span> 
               <button 
                 class="icon-btn-small" 
-                @click.stop="noteItem(item)"
+                @click.stop="showRenameFolder(item)"
                 title="重命名"
               >
                 <PencilSquareIcon class="icon-default" />
@@ -377,6 +377,21 @@
         </div>
       </div>    
     </div>
+    <!-- 收藏夹重命名模态框 -->
+    <div v-if="showRenameModal" class="modal">
+      <div class="modal-content">
+        <h3>收藏夹名称</h3>
+        <textarea 
+          v-model="renameText" 
+          class="edit-textarea"
+          placeholder="请输入新名字..."
+        ></textarea>
+        <div class="modal-actions">
+          <button @click="cancelRename" class="btn btn-secondary">取消</button>
+          <button @click="saveRename" class="btn btn-primary">保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -415,12 +430,14 @@ const {
   showOcrModal,
   showDeleteModal,
   showDeleteSingleModal,
+  showRenameModal,
   editingText,
   editingItem,
   notingText,
   notingItem,
   ocrText,
   folderNotingText,
+  renameText,
   currentFolder,
   currentItem,
   folderQuery,
@@ -466,6 +483,9 @@ const {
   showFolder,
   addFolder,
   cancelFolder,
+  showRenameFolder,
+  cancelRename,
+  saveRename,
   removeFolder,
   addFolderToast,
   showFolderContent,

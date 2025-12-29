@@ -28,12 +28,15 @@ export function useClipboardApp() {
   const showOcrModal = ref(false)
   const showDeleteModal = ref(false)
   const showDeleteSingleModal = ref(false)
+  const showRenameModal = ref(false)
   const editingText = ref('')
   const editingItem = ref(null)
   const notingText = ref('')
   const notingItem = ref(null)
+  const renameItem = ref(null)
   const ocrText = ref('')
   const folderNotingText = ref('')
+  const renameText = ref('')
 
   // 指向性数据
   const currentFolder = ref(null)
@@ -432,6 +435,37 @@ export function useClipboardApp() {
     showNoteModal.value = false
     notingItem.value = null
     notingText.value = ''
+  }
+
+  // 重命名收藏夹
+  const showRenameFolder = (item) => {
+    renameItem.value = item
+    renameText.value = item.name
+    showRenameModal.value = true
+  }
+
+  // 保存重命名
+  const saveRename = async () => {
+    if (renameText.value.trim() && renameItem) {
+      renameItem.value.name = renameText.value.trim()
+      if (!renameText.value || renameText.value.trim() === '') {
+        showMessage('内容不能为空')
+      } else {
+        await invoke('rename_folder', { 
+          folderId: renameItem.value.id, 
+          newName: renameText.value.trim() 
+        })
+      }
+      showMessage('收藏夹名称已更新')
+    }
+    cancelRename()
+  }
+
+  // 取消备注
+  const cancelRename = () => {
+    showRenameModal.value = false
+    renameItem.value = null
+    renameText.value = ''
   }
 
   // 显示OCR内容
@@ -1157,12 +1191,14 @@ export function useClipboardApp() {
     showOcrModal,
     showDeleteModal,
     showDeleteSingleModal,
+    showRenameModal,
     editingText,
     editingItem,
     notingText,
     notingItem,
     ocrText,
     folderNotingText,
+    renameText,
     currentFolder,
     currentItem,
     folderQuery,
@@ -1208,6 +1244,9 @@ export function useClipboardApp() {
     showFolder,
     addFolder,
     cancelFolder,
+    showRenameFolder,
+    cancelRename,
+    saveRename,
     removeFolder,
     addFolderToast,
     showFolderContent,
