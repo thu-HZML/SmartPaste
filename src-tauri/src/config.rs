@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{OnceLock, RwLock},
 };
 use tauri::Manager;
