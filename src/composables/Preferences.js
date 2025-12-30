@@ -16,7 +16,8 @@ import {
   UserIcon,
   EyeSlashIcon,
   InboxArrowDownIcon,
-  ChatBubbleLeftRightIcon
+  ChatBubbleLeftRightIcon,
+  QuestionMarkCircleIcon
 } from '@heroicons/vue/24/outline'
 import { togglePrivateWindow } from '../utils/actions.js'
 
@@ -162,6 +163,10 @@ export function usePreferences() {
   const showChangePasswordDialog = ref(false)
   const changePasswordLoading = ref(false)
 
+  // 二维码显示状态
+  const showWechatQr = ref(false)
+  const showAlipayQr = ref(false)
+
   // 窗口关闭监听器
   let firstCloseWindow = true
   let unlistenCloseRequested = null
@@ -236,7 +241,8 @@ export function usePreferences() {
     { id: 'security', name: '安全与隐私', icon: EyeSlashIcon }, 
     { id: 'backup', name: '数据备份', icon: InboxArrowDownIcon },
     { id: 'cloud', name: '云端入口', icon: CloudIcon },
-    { id: 'user', name: '用户信息', icon: UserIcon }
+    { id: 'user', name: '用户信息', icon: UserIcon },
+    { id: 'help', name: '帮助', icon: QuestionMarkCircleIcon }
   ])
 
   // 设置数据
@@ -1768,6 +1774,10 @@ const updateRetentionDays = async () => {
     changePasswordData,
     changePasswordErrors,
     changePasswordLoading,
+
+    // 二维码显示相关状态
+    showWechatQr,
+    showAlipayQr,
 
     // 安全相关状态
     securityStore,
