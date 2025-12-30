@@ -3,7 +3,7 @@ import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { emit } from '@tauri-apps/api/event'
+import { listen,emit } from '@tauri-apps/api/event'
 import { apiService,ensureAbsoluteAvatarUrl } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import { useSecurityStore } from '../stores/security'
@@ -502,6 +502,8 @@ export function usePreferences() {
            // 如果恢复成功，且设置中未开启加密（可能是新设备），自动开启
            if (securityStore.hasDek() && !settings.encrypt_cloud_data) {
              settings.encrypt_cloud_data = true;
+             console.log('📡 广播密钥给桌宠窗口...');
+              await emit('security-dek-update', { dek: securityStore.dek });
            }
         } catch (e) {
            console.warn("E2EE 自动恢复失败 (可能未启用或网络问题):", e);
@@ -892,6 +894,13 @@ const updateRetentionDays = async () => {
 
   // 设置相关方法
   const updateSetting = async (key, value) => {
+     // 如果更新的是 encrypt_cloud_data，发送事件到主窗口
+    if (key === 'encrypt_cloud_data') {
+      await emit('encrypt-cloud-data-changed', { 
+        enabled: value 
+      })
+      console.log(`📡 发送 encrypt_cloud_data 变更事件: ${value}`)
+    }
     // 如果是开启加密，需要特殊处理
     if (key === 'encrypt_cloud_data' && value === true) {
       // 1. 检查是否登录
@@ -935,6 +944,7 @@ const updateRetentionDays = async () => {
         } else {
            // 云端无密钥，执行首次生成流程
            await setupE2EE(password);
+           await emit('security-dek-update', { dek: securityStore.dek });
         }
       } catch (e) {
          showMessage(`操作失败: ${e.message}`, 'error');
@@ -957,6 +967,7 @@ const updateRetentionDays = async () => {
         })
         console.log(`📡 发送 ai_enabled 变更事件: ${value}`)
       }
+
     } catch (error) {
       console.error(`设置 ${key} 失败:`, error)
       settings[key] = oldValue
@@ -1451,6 +1462,19 @@ const updateRetentionDays = async () => {
       return;
     }
 
+    if (!settings.encrypt_cloud_data) {
+      // 弹出提示 (使用 showMessage 模拟弹窗体验，或者可以使用 window.alert)
+      // 这里为了用户体验，提示后自动跳转到安全页面
+      showMessage('为保障隐私安全，必须开启“端到端加密”才能同步数据！', 'error');
+      
+      // 可以在这里加一个原生弹窗，确保用户看到
+      // window.alert('安全警告：请先在“安全与隐私”中开启端到端加密！');
+      
+      // 自动跳转到安全设置页，引导用户开启
+      activeNav.value = 'cloud'; 
+      return;
+    }
+
     isSyncing.value = true;
     
     try {
@@ -1550,7 +1574,7 @@ const updateRetentionDays = async () => {
             // 判断是否需要作为加密临时文件下载
             // 如果开启了加密且有密钥，我们将文件下载为 .enc 后缀，之后再解密
             let downloadPath = relativePath;
-            if (settings.encrypt_cloud_data && securityStore.dek) {
+            if (securityStore.dek) {
                 downloadPath = relativePath + ".enc";
             }
 
@@ -1562,7 +1586,7 @@ const updateRetentionDays = async () => {
             });
 
             // 如果是加密模式，下载完成后进行解密
-            if (relativePath.endsWith('.enc') && securityStore.dek) {
+            if (securityStore.dek) {
                 // === E2EE 解密流程 ===
                 const isWin = storageRoot.includes('\\');
                 const sep = isWin ? '\\' : '/';
@@ -1726,6 +1750,15 @@ const updateRetentionDays = async () => {
     if (securityStore.hasDek() && settings.encrypt_cloud_data) {
       console.log("检测到 SessionStorage 存有密钥，已自动恢复加密环境");
     }
+    await listen('request-dek-sync', async () => {
+        console.log('📡 [Preferences] 收到密钥同步请求');
+        if (securityStore.hasDek()) {
+            console.log('✅ 主窗口拥有密钥，正在广播...');
+            await emit('security-dek-update', { dek: securityStore.dek });
+        } else {
+            console.warn('❌ 无法同步：主窗口当前也没有密钥 (请先登录或验证)');
+        }
+    });
 
     onUnmounted(() => {
       if (unlisten) unlisten();
