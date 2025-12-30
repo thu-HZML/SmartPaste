@@ -1392,7 +1392,109 @@ pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
         Err("Config not initialized".to_string())
     }
 }
+/// 强制将当前配置文件所在的目录设置为存储路径
+/// 
+/// 这个命令会将 config.json 文件所在的目录路径写入 storage_path 字段
+/// 主要用于修复配置或重置存储路径到默认位置
+/// 
+/// # 使用场景
+/// 1. 当存储路径配置损坏时
+/// 2. 需要重置到默认存储位置时
+/// 3. 修复路径相关的配置问题
+/// 
+/// # 注意
+/// 这个操作不会迁移数据文件，只会更新配置文件
+/// 
+/// # Returns
+/// String - 操作结果信息
+#[tauri::command]
+pub fn force_set_storage_path_to_config_dir(app: tauri::AppHandle) -> String {
+    // 1. 获取当前配置文件的路径
+    let config_path = get_config_path();
+    println!("📄 当前配置文件路径: {}", config_path.display());
+    
+    // 2. 获取配置文件所在的目录
+    let config_dir = config_path.parent()
+        .unwrap_or_else(|| {
+            eprintln!("⚠️ 无法获取配置文件父目录");
+            Path::new(".")
+        });
+    
+    // 3. 将目录路径转换为字符串并规范化
+    let dir_path = config_dir.to_string_lossy().to_string();
+    
+    // 4. 根据操作系统规范化路径分隔符
+    #[cfg(target_os = "windows")]
+    let normalized_path = dir_path.replace("\\", "/"); // Windows上统一使用正斜杠
+    
+    #[cfg(not(target_os = "windows"))]
+    let normalized_path = dir_path.clone();
+    
+    println!("📍 强制设置存储路径为: {}", normalized_path);
+    
+    // 5. 更新配置中的 storage_path 字段
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.storage_path = Some(normalized_path.clone());
+        
+        // 6. 保存配置到文件
+        let cfg_clone = cfg.clone();
+        match save_config(cfg_clone) {
+            Ok(_) => {
+                println!("✅ 存储路径已强制设置为配置文件所在目录");
+                
+                // 7. 更新默认路径的配置文件（与主逻辑保持一致）
+                let app_default_dir = app.path().app_data_dir().unwrap();
+                let default_config_path = app_default_dir.join("config.json");
+                
+                if default_config_path != config_path {
+                    println!("📝 同时更新默认路径的配置文件");
+                    
+                    // 保存到默认路径
+                    let old_path_for_default = get_config_path();
+                    set_config_path(default_config_path.clone());
+                    
+                    if let Err(e) = save_config(cfg.clone()) {
+                        println!("⚠️ 更新默认路径配置文件失败: {}", e);
+                        // 恢复配置路径
+                        set_config_path(old_path_for_default);
+                    } else {
+                        println!("✅ 默认路径配置文件更新成功");
+                        // 恢复配置路径到原路径
+                        set_config_path(config_path.clone());
+                    }
+                }
+                
+                format!("存储路径已强制设置为: {}", normalized_path)
+            }
+            Err(e) => {
+                format!("保存配置失败: {}", e)
+            }
+        }
+    } else {
+        "配置未初始化".to_string()
+    }
+}
 
+/// 辅助函数：获取配置文件所在目录的路径
+/// 
+/// # Returns
+/// PathBuf - 配置文件所在目录的路径
+#[tauri::command]
+pub fn get_config_directory_path() -> String {
+    let config_path = get_config_path();
+    let config_dir = config_path.parent()
+        .unwrap_or_else(|| Path::new("."));
+    
+    // 规范化路径分隔符
+    #[cfg(target_os = "windows")]
+    let dir_str = config_dir.to_string_lossy().replace("\\", "/");
+    
+    #[cfg(not(target_os = "windows"))]
+    let dir_str = config_dir.to_string_lossy().to_string();
+    
+    dir_str
+}
 #[cfg(test)]
 #[path = "test_unit/test_config.rs"]
 mod test_config;
