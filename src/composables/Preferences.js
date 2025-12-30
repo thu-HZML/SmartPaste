@@ -47,6 +47,16 @@ export const executeCloudPush = async (dek = null) => {
     if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
 
     // 2. 同步数据库
+
+    const userString = localStorage.getItem('user');
+      const userData = JSON.parse(userString);
+      const userId = userData.user.id;
+      const clearResult = await apiService.clearSqliteDatabase(userId);
+      if (!clearResult.success) {
+        throw new Error(`清空云端数据库失败: ${clearResult.message}`);
+      }
+    console.log('云端数据库已清空，开始上传数据...', 'info');
+
     let dbBlob;
     
     if (dek) {
@@ -1502,7 +1512,15 @@ const updateRetentionDays = async () => {
     isSyncing.value = true;
     
     try {
-      showMessage('正在推送数据至云端...', 'info');
+      const userString = localStorage.getItem('user');
+      const userData = JSON.parse(userString);
+      const userId = userData.user.id;
+      const clearResult = await apiService.clearSqliteDatabase(userId);
+      if (!clearResult.success) {
+        throw new Error(`清空云端数据库失败: ${clearResult.message}`);
+      }
+      showMessage('云端数据库已清空，开始上传数据...', 'info');
+
       // 传入 DEK (如果有且开启了加密)
       const dek = (settings.encrypt_cloud_data && securityStore.dek) ? securityStore.dek : null;
       
@@ -1677,6 +1695,25 @@ const updateRetentionDays = async () => {
       if (!isSilent) showMessage(`同步失败: ${error.message || error}`, 'error');
     } finally {
       isSyncing.value = false;
+    }
+  };
+
+  // 在组件中调用
+  const handleClearDatabase = async (userId) => {
+    const response = await clearSqliteDatabase(userId);
+
+    if (response.success) {
+      const { deleted } = response.data;
+      console.log(`已清空:
+        - 剪贴板文件: ${deleted.clipboard_files} 个
+        - 数据记录: ${deleted.data} 条
+        - 文件夹: ${deleted.folders} 个
+        - 文件夹项: ${deleted.folder_items} 条
+        - 扩展数据: ${deleted.extended_data} 条
+      `);
+      alert('数据库清空成功');
+    } else {
+      alert(`清空失败: ${response.message}`);
     }
   };
 

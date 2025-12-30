@@ -969,6 +969,62 @@ class ApiService {
   }
 
   /**
+ * [POST] 清空指定用户的SQLite数据库内容
+ * 接口: POST /sync/sqlite/clear/{user_id}/
+ * @param {number} user_id - 用户ID
+ * @returns {Promise<{success: boolean, message: string, data: object|null}>} 
+ *          data 包含清空操作结果：message, user_id, deleted统计信息
+ */
+  async clearSqliteDatabase(user_id) {
+    let result = null;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('未登录或Token缺失');
+      }
+
+      // 替换URL中的路径参数
+      const url = `${API_BASE_URL}/sync/sqlite/clear/${user_id}/`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      result = await response.json();
+
+      if (!response.ok) {
+        const errorMessage = result?.error || 
+                            result?.detail || 
+                            `清空数据库失败，状态码: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      // API成功返回的结构是 { message, user_id, deleted }
+      return {
+        success: true,
+        message: result.message || '数据库清空成功',
+        data: {
+          user_id: result.user_id,
+          deleted: result.deleted,
+          message: result.message
+        }
+      };
+
+    } catch (error) {
+      console.error('清空SQLite数据库错误:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '网络错误或服务器异常',
+        data: result
+      };
+    }
+  }
+
+  /**
    * 解析SSE数据
    * @param {string} dataStr - SSE数据字符串
    * @returns {string|null} 解析出的内容
