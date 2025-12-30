@@ -1562,7 +1562,7 @@ const updateRetentionDays = async () => {
             });
 
             // 如果是加密模式，下载完成后进行解密
-            if (settings.encrypt_cloud_data && securityStore.dek) {
+            if (relativePath.endsWith('.enc') && securityStore.dek) {
                 // === E2EE 解密流程 ===
                 const isWin = storageRoot.includes('\\');
                 const sep = isWin ? '\\' : '/';
