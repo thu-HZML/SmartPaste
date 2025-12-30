@@ -929,30 +929,54 @@ const updateRetentionDays = async () => {
       // 简单方案：弹出一个 prompt (浏览器原生)，或者你需要实现一个密码输入模态框
       const password = window.prompt("为了启用端到端加密，请验证您的登录密码：");
       if (!password) {
-        settings[key] = false; // 用户取消
+        settings[key] = true; 
+        setTimeout(() => {
+          settings[key] = false;
+        }, 0);
         return;
       }
 
-      // 尝试恢复（万一云端已有），如果云端没有则生成
-      try {
-        const recovered = await recoverE2EE(password);
-        if (recovered) {
-           // 恢复成功，更新设置
-           settings[key] = true;
-           await invoke('set_config_item', { key, value: true });
-           showMessage('密钥恢复成功，加密已启用', 'success');
-        } else {
-           // 云端无密钥，执行首次生成流程
-           await setupE2EE(password);
-           await emit('security-dek-update', { dek: securityStore.dek });
-        }
-      } catch (e) {
-         showMessage(`操作失败: ${e.message}`, 'error');
-         settings[key] = false;
+      const userString = localStorage.getItem('user');
+      let userName = '';
+      if (userString) {
+        const user = JSON.parse(userString);
+        userName = user.user.username;
       }
+      const response = await apiService.login({
+          username: userName,
+          password: password
+        })
+
+      if (response.success) {
+          showMessage("密码验证成功，正在恢复密钥...", "info");
+          try {
+            // 复用之前定义的 recoverE2EE 逻辑
+            const success = await recoverE2EE(password); 
+            if (success) {
+                settings[key] = true;
+                await invoke('set_config_item', { key, value: true });
+                showMessage('密钥恢复成功，加密已启用', 'success');
+            } else {
+                await setupE2EE(password);
+                await emit('security-dek-update', { dek: securityStore.dek });
+            }
+        } catch(e) {
+            showMessage(e.message, "error");
+            settings[key] = false;
+        }
+      }else{
+        showMessage("密码验证失败，无法启用加密", "error");
+        settings[key] = true; 
+        setTimeout(() => {
+          settings[key] = false;
+        }, 0);
+        return;
+      }
+
+      
       return; // 结束，不执行默认逻辑
     }
-    
+
     const oldValue = settings[key]
     
     try {
@@ -1508,18 +1532,37 @@ const updateRetentionDays = async () => {
   const restoreKeysManually = async () => {
     const password = window.prompt("请输入登录密码以恢复加密密钥：");
     if (!password) return;
-    
-    try {
-        // 复用之前定义的 recoverE2EE 逻辑
-        const success = await recoverE2EE(password); 
-        if (success) {
-            showMessage("密钥恢复成功", "success");
-        } else {
-            showMessage("未找到云端密钥配置", "error");
-        }
-    } catch(e) {
-        showMessage(e.message, "error");
+
+    const userString = localStorage.getItem('user');
+    let userName = '';
+    if (userString) {
+      const user = JSON.parse(userString);
+      userName = user.user.username;
     }
+    const response = await apiService.login({
+        username: userName,
+        password: password
+      })
+
+    if (response.success) {
+        showMessage("密码验证成功，正在恢复密钥...", "info");
+        try {
+          // 复用之前定义的 recoverE2EE 逻辑
+          const success = await recoverE2EE(password); 
+          if (success) {
+              showMessage("密钥恢复成功", "success");
+          } else {
+              showMessage("未找到云端密钥配置", "error");
+          }
+      } catch(e) {        
+        showMessage(e.message, "error");
+
+      } 
+    }else{
+      showMessage("密码验证失败", "error");
+    }
+
+    
   }
 
   const handleCloudPull = async (isSilent = false) => {
