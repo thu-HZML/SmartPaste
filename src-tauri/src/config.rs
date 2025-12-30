@@ -1205,11 +1205,24 @@ pub async fn sync_and_apply_config(
     content: String,
 ) -> Result<String, String> {
     // 1. 解析 JSON 确保数据格式正确
-    let new_config: Config =
+    let cloud_config: Config =
         serde_json::from_str(&content).map_err(|e| format!("解析配置失败: {}", e))?;
 
+    // 获取当前本地配置（为了保留关键路径）
+    // 注意：需要先获取读锁拿到当前配置的副本
+    let current_local_config = {
+        let lock = CONFIG.get().ok_or("Config not initialized")?;
+        lock.read().unwrap().clone()
+    };
+    // 构建最终配置：以云端配置为基础，但回填本地的关键路径配置
+    let mut final_config = cloud_config;
+
+    final_config.storage_path = current_local_config.storage_path;
+    final_config.avatar_path = current_local_config.avatar_path;
+    final_config.last_backup_path = current_local_config.last_backup_path;
+
     // 2. 调用你提到的 save_config 将配置写入磁盘
-    save_config(new_config)?;
+    save_config(final_config)?;
 
     // 3. 调用 reload_config 将磁盘内容加载到内存变量 CONFIG
     let reload_res = reload_config();
