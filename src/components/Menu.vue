@@ -48,7 +48,7 @@
         </div>
         <span class="menu-text">设置</span>
       </div>
-      <div class="menu-item" @click="openHelp">
+      <div class="menu-item" @click="openSettings('help')"">
         <div class="menu-icon">
           <QuestionMarkCircleIcon class="icon-default" />
         </div>
