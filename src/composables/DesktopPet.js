@@ -96,13 +96,13 @@ export function useDesktopPet() {
 
   //云端同步相关
   const FREQUENCY_MAP = {
-    'realtime': 5 * 1000,     // 实时：30秒
+    'realtime': 30 * 1000,     // 实时：30秒
     '5min': 5 * 60 * 1000,     // 5分钟
     '15min': 15 * 60 * 1000,   // 15分钟
     '1hour': 60 * 60 * 1000    // 1小时
   }
 
-  const IDLE_CHECK_INTERVAL = 5 * 1000;
+  const IDLE_CHECK_INTERVAL = 30 * 1000;
   let syncTimer = null
 
   const executeSyncLoop = async () => {

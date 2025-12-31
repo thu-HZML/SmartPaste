@@ -63,18 +63,13 @@ export const executeCloudPush = async (dek = null) => {
       // === E2EE 模式 ===
       console.log("正在准备加密数据库...");
       
-      // 【修正1】改回驼峰命名 'dekHex'，符合 Tauri 默认规范
       const response = await invoke('prepare_encrypted_db_upload', { dekHex: dek });
       
       let encryptedBase64;
 
-      // 【修正2】保留智能判断：检查返回值是路径还是内容
-      // 如果返回值很长（超过500字符）或者包含 SQLite 头，说明它直接返回了内容
       if (response.length > 500 || response.startsWith("U1FMaXRl")) {
           console.log("✅ 检测到后端直接返回了数据库内容");
           
-          // 安全检查：如果是明文 SQLite 头 (U1FMaXRl...)，说明加密可能未生效
-          // 但考虑到这只是防止报错，我们先允许通过，但在控制台警告
           if (response.startsWith("U1FMaXRl")) {
              console.warn("⚠️ 警告：上传的数据似乎包含明文 SQLite 文件头，请确认 Rust 端加密是否正确。");
           }
@@ -112,7 +107,6 @@ export const executeCloudPush = async (dek = null) => {
            // === E2EE 模式 ===
            const tempEncPath = fileInfo.file_path + ".enc";
            
-           // 【修正3】这里也改回驼峰命名 inputPath, outputPath, dekHex
            await invoke('encrypt_file', { 
                inputPath: fileInfo.file_path, 
                outputPath: tempEncPath, 
@@ -122,7 +116,7 @@ export const executeCloudPush = async (dek = null) => {
            // 读取加密后的内容
            contentBase64 = await invoke('read_file_base64', { filePath: tempEncPath });
            
-           // 清理临时文件 (建议开启，防止垃圾文件堆积)
+           // 清理临时文件
            await invoke('delete_temp_encrypted_file', { path: tempEncPath });
         } else {
            // === 普通模式 ===
@@ -140,6 +134,10 @@ export const executeCloudPush = async (dek = null) => {
       }
     }
 
+    const now = Date.now();
+    localStorage.setItem('lastSyncTime', now);
+    console.log('📡 广播云端同步成功事件...');
+    await emit('cloud-sync-success', { time: now });
     return true;
   } catch (error) {
     console.error('后台同步执行出错:', error);
@@ -233,6 +231,7 @@ export function usePreferences() {
   const lastSyncTime = ref(null)
   const lastSyncStatus = ref('')
   const isSyncing = ref(false)
+  let unlistenSync = null;
 
   // 用户信息
   const userInfo = reactive({
@@ -505,7 +504,7 @@ export function usePreferences() {
         loadUsername()
         await emit('user-info-updated');
 
-        // === 新增: 尝试恢复 E2EE 密钥 ===
+        // === 尝试恢复 E2EE 密钥 ===
         // 使用用户刚输入的密码尝试恢复
         try {
            await recoverE2EE(loginData.password);
@@ -517,7 +516,7 @@ export function usePreferences() {
            }
         } catch (e) {
            console.warn("E2EE 自动恢复失败 (可能未启用或网络问题):", e);
-           // 注意：如果云端有密钥但解密失败（密码改过？），这里需要处理
+           // 注意：如果云端有密钥但解密失败
         }
 
         // 关闭登录对话框
@@ -601,7 +600,7 @@ export function usePreferences() {
     openLoginDialog()
   }
 
-  // 修改logout方法
+  // 登出
   const logout = async () => {
     const message = '确定要退出登录吗？';
     const confirmed = await window.confirm(message);
@@ -1565,12 +1564,12 @@ const updateRetentionDays = async () => {
     if (response.success) {
         showMessage("密码验证成功，正在恢复密钥...", "info");
         try {
-          // 复用之前定义的 recoverE2EE 逻辑
           const success = await recoverE2EE(password); 
           if (success) {
               showMessage("密钥恢复成功", "success");
           } else {
-              showMessage("未找到云端密钥配置", "error");
+              showMessage("未找到云端密钥配置,正在初始化...", "error");
+              await setupE2EE(password);
           }
       } catch(e) {        
         showMessage(e.message, "error");
@@ -1830,6 +1829,15 @@ const updateRetentionDays = async () => {
     if (securityStore.hasDek() && settings.encrypt_cloud_data) {
       console.log("检测到 SessionStorage 存有密钥，已自动恢复加密环境");
     }
+
+    unlistenSync = await listen('cloud-sync-success', (event) => {
+      console.log('✅ 收到同步更新事件:', event.payload.time);
+      if (event.payload.time) {
+        lastSyncTime.value = event.payload.time;
+        // 确保本地存储也同步更新（双重保险）
+        localStorage.setItem('lastSyncTime', event.payload.time);
+      }
+    });
     await listen('request-dek-sync', async () => {
         console.log('📡 [Preferences] 收到密钥同步请求');
         if (securityStore.hasDek()) {
@@ -1842,6 +1850,9 @@ const updateRetentionDays = async () => {
 
     onUnmounted(() => {
       if (unlisten) unlisten();
+      if (unlistenSync) {
+      unlistenSync();
+    }
     });
 
     // 设置窗口关闭监听器
