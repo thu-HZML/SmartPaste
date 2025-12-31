@@ -96,7 +96,7 @@ export function useDesktopPet() {
 
   //云端同步相关
   const FREQUENCY_MAP = {
-    'realtime': 30 * 1000,     // 实时：30秒
+    'realtime': 30 * 1000,     // 30秒
     '5min': 5 * 60 * 1000,     // 5分钟
     '15min': 15 * 60 * 1000,   // 15分钟
     '1hour': 60 * 60 * 1000    // 1小时
@@ -144,7 +144,7 @@ export function useDesktopPet() {
 
       // 2. 判定逻辑
       if (!token) {
-         console.warn('🛑 [SyncLoop] 跳过: 未登录');
+         //console.warn('🛑 [SyncLoop] 跳过: 未登录');
          shouldSync = false;
       } else if (!isSyncEnabled) {
          // console.log('⏸️ [SyncLoop] 跳过: 自动同步开关已关闭');
@@ -180,7 +180,6 @@ export function useDesktopPet() {
         
         console.log(`✅ [SyncLoop] 同步成功! 下次检查: ${nextDelay/1000}秒后`)
       } catch (e) {
-        // 只有这里才会打印红色的报错信息
         console.error('❌ [SyncLoop] 上传过程发生错误:', e)
       }
     } else {
@@ -587,11 +586,11 @@ export function useDesktopPet() {
           await securityStore.initFromBackend();
       }
 
-      // 3. 【关键修改】先设置监听器！
+      // 3. 先设置监听器！
       // 这样 unlistenDekUpdate 才会生效，准备接收主窗口的回复
       await setupGlobalListeners()
 
-      // 4. 【关键修改】然后再发出请求
+      // 4. 然后再发出请求
       // 如果 Store 里没密钥，且已登录，向主窗口求救
       if (settings.encrypt_cloud_data && !securityStore.hasDek() && localStorage.getItem('token')) {
           console.log('❓ [DesktopPet] 缺少密钥，请求主窗口同步...');

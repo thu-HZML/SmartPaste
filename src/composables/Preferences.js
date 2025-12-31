@@ -671,86 +671,6 @@ export function usePreferences() {
     }, 2000)
   }
 
-
-  // 通用设置相关函数
-// 启动时自动运行
-// 检查自启状态
-/*
-const checkAutostartStatus = async () => {
-  try {
-    const isEnabled = await invoke('is_autostart_enabled')
-    settings.autoStart = isEnabled
-    console.log('当前自启状态:', isEnabled)
-  } catch (error) {
-    console.error('检查自启状态失败:', error)
-    showMessage('检查自启状态失败')
-  }
-}
-
-// 切换自启状态 - 唯一的函数
-const toggleAutoStart = async () => {
-  loading.value = true
-  try {
-    await invoke('set_autostart', { enable: settings.autoStart })
-    const message = settings.autoStart ? '已开启开机自启' : '已关闭开机自启'
-    console.log(message)
-    showMessage(message)
-  } catch (error) {
-    console.error('设置自启失败:', error)
-    showMessage(`设置失败: ${error}`)
-    // 出错时恢复原状态
-    settings.autoStart = !settings.autoStart
-  } finally {
-    loading.value = false
-  }
-}
-// 显示系统托盘图标
-const toggleTrayIcon = async () => {
-  try {
-    await invoke('set_tray_icon_visibility', { visible: settings.showTrayIcon })
-    showMessage(settings.showTrayIcon ? '已显示托盘图标' : '已隐藏托盘图标')
-  } catch (error) {
-    console.error('设置托盘图标失败:', error)
-    settings.showTrayIcon = !settings.showTrayIcon
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-//启动时最小化到托盘
-const toggleMinimizeToTray = async () => {
-  try {
-    await invoke('set_minimize_to_tray', { enabled: settings.showTrayIcon })
-    showMessage(settings.showTrayIcon ? '已启用启动时最小化到托盘' : '已禁用启动时最小化到托盘')
-  } catch (error) {
-    console.error('设置最小化到托盘失败:', error)
-    settings.showTrayIcon = !settings.showTrayIcon
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 自动保存剪贴板历史
-const toggleAutoSave = async () => {
-  try {
-    await invoke('set_auto_save', { enabled: settings.autoSave })
-    showMessage(settings.autoSave ? '已启用自动保存' : '已禁用自动保存')
-  } catch (error) {
-    console.error('设置自动保存失败:', error)
-    settings.autoSave = !settings.autoSave
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 历史记录保留时间
-const updateRetentionDays = async () => {
-  try {
-    await invoke('set_retention_days', { days: parseInt(settings.retentionDays) })
-    showMessage(`历史记录保留时间已设置为 ${settings.retentionDays} 天`)
-  } catch (error) {
-    console.error('设置保留时间失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}*/
-
   // 快捷键相关方法
   const startRecording = (shortcutType) => {
     shortcutManager.currentType = shortcutType
@@ -875,11 +795,11 @@ const updateRetentionDays = async () => {
 
       await updateSetting(shortcutType, newShortcutStr)
       successMsg.value = `${shortcutDisplayNames[shortcutType]} 快捷键设置成功！`
-      console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
+      //console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
 
     } catch (err) {
       errorMsg.value = `设置失败: ${err}`
-      console.error('❌ 设置快捷键失败:', err)
+      //console.error('❌ 设置快捷键失败:', err)
       
       if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
         errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键'
@@ -934,8 +854,6 @@ const updateRetentionDays = async () => {
       }
 
       // 3. 内存无密钥，需要走 Setup 流程
-      // 这里有一个 UI 交互问题：我们需要密码。
-      // 简单方案：弹出一个 prompt (浏览器原生)，或者你需要实现一个密码输入模态框
       const password = window.prompt("为了启用端到端加密，请验证您的登录密码：");
       if (!password) {
         settings[key] = true; 
@@ -959,7 +877,6 @@ const updateRetentionDays = async () => {
       if (response.success) {
           showMessage("密码验证成功，正在恢复密钥...", "info");
           try {
-            // 复用之前定义的 recoverE2EE 逻辑
             const success = await recoverE2EE(password); 
             if (success) {
                 settings[key] = true;
@@ -983,7 +900,7 @@ const updateRetentionDays = async () => {
       }
 
       
-      return; // 结束，不执行默认逻辑
+      return; 
     }
 
     const oldValue = settings[key]
@@ -1081,7 +998,6 @@ const updateRetentionDays = async () => {
 
   const createBackup = async () => {
     try {
-      // const backupPath = await invoke('create_backup')
       showMessage(`备份已创建: ${backupPath}`)
     } catch (error) {
       console.error('创建备份失败:', error)
@@ -1164,7 +1080,7 @@ const updateRetentionDays = async () => {
   }
 
   /**
-   * 流程 3.1: 初始化 E2EE (生成并上传密钥)
+   * 初始化 E2EE (生成并上传密钥)
    * 当用户开启加密开关时调用
    */
   const setupE2EE = async (password) => {
@@ -1213,7 +1129,7 @@ const updateRetentionDays = async () => {
   }
 
   /**
-   * 流程 3.2: 恢复 E2EE (从云端获取并解密密钥)
+   * 恢复 E2EE (从云端获取并解密密钥)
    * 登录成功后，或检测到需要密钥时调用
    */
   const recoverE2EE = async (password) => {
@@ -1245,7 +1161,6 @@ const updateRetentionDays = async () => {
         // 恢复成功后，确保本地开关与云端状态一致
         if (!settings.encrypt_cloud_data) {
            settings.encrypt_cloud_data = true;
-           // 可以在这里静默更新一下本地配置，避免下次重复提示
            invoke('set_config_item', { key: 'encrypt_cloud_data', value: true }).catch(()=>{});
         }
         
@@ -1257,7 +1172,6 @@ const updateRetentionDays = async () => {
       }
     } catch (e) {
       console.error("密钥恢复异常:", e);
-      // 如果是自动恢复（登录时），尽量不要抛出打断流程的 Error，除非是密码错误明确需要提示
       // 这里返回 false 表示恢复失败
       return false;
     }
@@ -1324,8 +1238,6 @@ const updateRetentionDays = async () => {
         Object.keys(changePasswordErrors).forEach(key => {
           changePasswordErrors[key] = ''
         })
-        
-        // 建议：可以添加页面跳转或刷新逻辑
 
       } else {
         // API 返回错误
@@ -1496,8 +1408,7 @@ const updateRetentionDays = async () => {
     }
 
     if (!settings.encrypt_cloud_data) {
-      // 弹出提示 (使用 showMessage 模拟弹窗体验，或者可以使用 window.alert)
-      // 这里为了用户体验，提示后自动跳转到安全页面
+
       showMessage('为保障隐私安全，必须开启“端到端加密”才能同步数据！', 'error');
       
       // 可以在这里加一个原生弹窗，确保用户看到
@@ -1529,7 +1440,7 @@ const updateRetentionDays = async () => {
          throw new Error("加密密钥丢失，请重新登录或验证密码以恢复同步能力");
       }
 
-      await executeCloudPush(dek); // 传入 dek
+      await executeCloudPush(dek); 
 
       // 成功处理
       showMessage('云端数据推送成功！', 'success');
@@ -1638,7 +1549,7 @@ const updateRetentionDays = async () => {
                 downloadPath = relativePath + ".enc";
             }
 
-            // 【核心修改】调用 Rust 命令下载文件，避开 CORS
+            // 调用 Rust 命令下载文件，避开 CORS
             await invoke('download_cloud_file', { 
                 url: fileUrl, 
                 authToken: token, 
