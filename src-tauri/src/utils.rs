@@ -1448,6 +1448,19 @@ pub async fn read_file_to_frontend(file_path: String) -> Result<FrontendFile, St
         mime,
     })
 }
+
+#[tauri::command]
+pub async fn get_screen_resolution() -> Result<(u32, u32), String> {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+        
+        let width = GetSystemMetrics(SM_CXSCREEN) as u32;
+        let height = GetSystemMetrics(SM_CYSCREEN) as u32;
+        Ok((width, height))
+    }
+}
+
 #[cfg(test)]
 #[path = "test_unit/test_utils.rs"]
 mod test_utils;

@@ -524,7 +524,7 @@
                   @change="updateSetting('sync_frequency', $event.target.value)" 
                   class="select-input"
                 >
-                  <option value="realtime">实时同步</option>
+                  <option value="realtime">每30秒</option>
                   <option value="5min">每5分钟</option>
                   <option value="15min">每15分钟</option>
                   <option value="1hour">每小时</option>
@@ -622,6 +622,81 @@
                 <button class="btn btn-primary" @click="openRegisterDialog">注册账户</button>
                 <button class="btn btn-secondary" @click="openLoginDialog">登录</button>
               </template>
+            </div>
+          </div>
+        </div>
+        <!-- 帮助 -->
+        <div v-if="activeNav === 'help'" class="panel-section">
+          <h2>帮助</h2>
+          
+          <!-- 开源地址 -->
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>开源地址</h3>
+              <p>本项目已在 GitHub 上开源</p>
+            </div>
+            <div class="setting-control">
+              <a href="https://github.com/thu-HZML/SmartPaste/tree/master" target="_blank" class="btn btn-secondary">
+                访问 GitHub
+              </a>
+            </div>
+          </div>
+
+          <!-- 软件使用 -->
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>软件使用</h3>
+              <p>使用技巧和注意事项</p>
+            </div>
+            <div class="setting-control">
+              <div class="usage-tips">
+                <ul class="tips-list">
+                  <li>• 双击收藏图标可选择其他收藏夹</li>
+                  <li>• 按住 Shift 键单击可多选复制剪贴板历史记录</li>
+                  <li>• 服务器即将到期，后续仅开放本地功能，无法使用云端以及 AI 功能</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- 赞助我们 -->
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>赞助我们</h3>
+              <p>支持项目的持续开发与维护</p>
+            </div>
+            <div class="setting-control">
+              <div class="donation-methods">
+                <button class="donation-btn" @click="showWechatQr = true">
+                  <img src="/resources/pay/weChat.jpg" alt="微信支付" class="donation-icon">
+                </button>
+                <button class="donation-btn" @click="showAlipayQr = true">
+                  <img src="/resources/pay/alipay.png" alt="支付宝支付" class="donation-icon">
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 鸣谢 -->
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>鸣谢</h3>
+              <p>感谢以下开源项目及作者的支持</p>
+            </div>
+            <div class="setting-control">
+              <div class="credits-content">
+                <div class="credits-links">
+                  <a href="https://github.com/EcoPasteHub/EcoPaste" target="_blank" class="credit-link">
+                    • 项目一：🎉跨平台的剪贴板管理工具 | Cross-platform clipboard management tool
+                  </a>
+                  <a href="https://github.com/ayangweb/BongoCat" target="_blank" class="credit-link">
+                    • 项目二：🐱 跨平台互动桌宠 BongoCat，为桌面增添乐趣！
+                  </a>
+                </div>
+                <p class="thanks-text">
+                  感谢所有贡献者和用户的支持！特别感谢作者 ayangweb 的辛勤工作。
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -830,7 +905,34 @@
         </div>
       </div>
     </div>
-    
+
+    <!-- 微信二维码弹窗 -->
+    <div v-if="showWechatQr" class="modal-overlay">
+      <div class="modal-content qr-modal">
+        <div class="modal-header">
+          <h3>微信支付</h3>
+          <button @click="showWechatQr = false" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body qr-body">
+          <img src="/resources/pay/weChatQR.jpg" alt="微信收款码" class="qr-image">
+          <p class="qr-hint">请使用微信扫码支持我们</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 支付宝二维码弹窗 -->
+    <div v-if="showAlipayQr" class="modal-overlay">
+      <div class="modal-content qr-modal">
+        <div class="modal-header">
+          <h3>支付宝</h3>
+          <button @click="showAlipayQr = false" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body qr-body">
+          <img src="/resources/pay/alipayQR.jpg" alt="微信收款码" class="qr-image">
+          <p class="qr-hint">请使用支付宝扫码支持我们</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -878,6 +980,10 @@ const {
   changePasswordData,
   changePasswordErrors,
   changePasswordLoading,
+
+  // 二维码显示相关状态
+  showWechatQr,
+  showAlipayQr,
 
   // 安全相关状态
   securityStore,
@@ -1729,6 +1835,110 @@ input:checked + .slider:before {
 .btn-small {
   padding: 6px 12px;
   font-size: 14px;
+}
+
+/* 帮助页面样式 */
+.usage-tips {
+  max-width: 300px;
+}
+
+.tips-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tips-list li {
+  padding: 4px 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.donation-methods {
+  display: flex;
+  gap: 20px;
+}
+
+.donation-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: none;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 3px;
+}
+
+.donation-btn:hover {
+  background: #f8f9fa;
+  border-color: #3498db;
+}
+
+.donation-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.donation-btn span {
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+.credits-content {
+  max-width: 300px;
+}
+
+.credits-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.credit-link {
+  color: #3498db;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.credit-link:hover {
+  text-decoration: underline;
+}
+
+.thanks-text {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* 二维码弹窗样式 */
+.qr-modal {
+  max-width: 320px;
+}
+
+.qr-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+.qr-image {
+  width: 200px;
+  height: 200px;
+  margin-bottom: 16px;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+}
+
+.qr-hint {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
 }
 
 /* 提示信息样式 */

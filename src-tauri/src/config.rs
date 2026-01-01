@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{OnceLock, RwLock},
 };
 use tauri::Manager;
@@ -840,85 +840,7 @@ pub fn get_current_storage_path() -> PathBuf {
     PathBuf::from(".")
 }
 
-/// 按传入参数修改配置信息。作为 Tauri Command 暴露给前端调用。
-///
-/// 该函数是前端修改配置的统一入口。根据传入的 `key` 找到对应的配置项，并将 `value` 转换为相应的类型进行更新。
-/// 更新成功后会自动保存到本地配置文件。
-///
-/// # Param
-/// * `key`: &str - 配置项名称。支持的键名及其对应的值类型如下：
-///
-/// **通用设置**
-/// * `"autostart"`: `bool` - 是否开机自启 (特殊处理：会调用系统 API)
-/// * `"tray_icon_visible"`: `bool` - 托盘图标是否可见
-/// * `"minimize_to_tray"`: `bool` - 启动时是否最小化到托盘
-/// * `"auto_save"`: `bool` - 是否自动保存剪贴板历史
-/// * `"retention_days"`: `u32` - 历史记录保留天数
-/// * `"global_shortcut"`: `String` - 主界面快捷键 (如 "Alt+Shift+V")
-/// * `"global_shortcut_2"`: `String` - 第二界面快捷键
-/// * `"global_shortcut_3"`: `String` - 第三快捷键
-/// * `"global_shortcut_4"`: `String` - 第四快捷键
-/// * `"global_shortcut_5"`: `String` - 第五快捷键
-///
-/// **剪贴板参数**
-/// * `"max_history_items"`: `u32` - 最大历史记录数量
-/// * `"ignore_short_text_len"`: `u32` - 忽略短文本的最短字符数
-/// * `"ignore_big_file_mb"`: `u32` - 忽略大文件的大小阈值 (MB)
-/// * `"ignored_apps"`: `Vec<String>` - 被忽略的应用列表
-/// * `"auto_classify"`: `bool` - 是否自动分类
-/// * `"ocr_auto_recognition"`: `bool` - 是否启用 OCR 自动识别
-/// * `"delete_confirmation"`: `bool` - 删除时是否弹出确认对话框
-/// * `"keep_favorites_on_delete"`: `bool` - 删除时是否保留收藏内容
-/// * `"auto_sort"`: `bool` - 是否启用自动排序
-///
-/// **AI Agent 相关**
-/// * `"ai_enabled"`: `bool` - 是否启用 AI 助手
-/// * `"ai_api_key"`: `Option<String>` - AI API Key
-/// * `"ai_auto_tag"`: `bool` - 是否启用 AI 自动打标签
-/// * `"ai_auto_summary"`: `bool` - 是否启用 AI 自动摘要
-/// * `"ai_translation"`: `bool` - 是否启用 AI 翻译功能
-/// * `"ai_web_search"`: `bool` - 是否启用 AI 联网搜索功能
-/// * `"ai_provider"`: `String` - AI 提供商名称
-/// * `"ai_model"`: `String` - AI 模型名称
-/// * `"ai_base_url"`: `Option<String>` - AI 服务基础 URL
-/// * `"ai_temperature"`: `f32` - AI 采样温度
-///
-/// **安全与隐私**
-/// * `"sensitive_filter"`: `bool` - 是否启用敏感词过滤总开关
-/// * `"filter_passwords"`: `bool` - 是否过滤密码类型内容
-/// * `"filter_bank_cards"`: `bool` - 是否过滤银行卡号
-/// * `"filter_id_cards"`: `bool` - 是否过滤身份证号
-/// * `"filter_phone_numbers"`: `bool` - 是否过滤手机号
-///
-/// **数据备份**
-/// * `"storage_path"`: `Option<String>` - 数据存储路径
-/// * `"auto_backup"`: `bool` - 是否启用自动备份
-/// * `"backup_frequency"`: `String` - 备份频率 ("daily"/"weekly"/"monthly")
-/// * `"last_backup_path"`: `Option<String>` - 最近一次备份文件路径
-///
-/// **云端同步**
-/// * `"cloud_sync_enabled"`: `bool` - 是否启用云端同步
-/// * `"sync_frequency"`: `String` - 同步频率
-/// * `"sync_content_type"`: `String` - 同步内容类型
-/// * `"encrypt_cloud_data"`: `bool` - 是否对云端数据进行加密
-/// * `"sync_only_wifi"`: `bool` - 是否仅在 WiFi 下进行同步
-///
-/// **用户信息**
-/// * `"username"`: `Option<String>` - 用户名
-/// * `"email"`: `Option<String>` - 邮箱
-/// * `"bio"`: `Option<String>` - 用户简介
-/// * `"avatar_path"`: `Option<String>` - 头像文件路径
-///
-/// **OCR 设置**
-/// * `"ocr_provider"`: `Option<String>` - OCR 提供商标识
-/// * `"ocr_languages"`: `Option<Vec<String>>` - OCR 语言列表
-/// * `"ocr_confidence_threshold"`: `Option<f32>` - OCR 置信度阈值
-/// * `"ocr_timeout_secs"`: `Option<u64>` - OCR 超时时间
-///
-/// * `value`: serde_json::Value - 新的配置值，类型必须与上述列表一致。
-///
-/// # Returns
-/// String - 修改结果信息，若成功返回 "config updated"，否则返回错误信息（类型不匹配等）
+
 #[tauri::command]
 pub fn set_config_item(app: tauri::AppHandle, key: &str, value: serde_json::Value) -> String {
     let config_key = match parse_config_key(key) {
@@ -1205,11 +1127,24 @@ pub async fn sync_and_apply_config(
     content: String,
 ) -> Result<String, String> {
     // 1. 解析 JSON 确保数据格式正确
-    let new_config: Config =
+    let cloud_config: Config =
         serde_json::from_str(&content).map_err(|e| format!("解析配置失败: {}", e))?;
 
+    // 获取当前本地配置（为了保留关键路径）
+    // 注意：需要先获取读锁拿到当前配置的副本
+    let current_local_config = {
+        let lock = CONFIG.get().ok_or("Config not initialized")?;
+        lock.read().unwrap().clone()
+    };
+    // 构建最终配置：以云端配置为基础，但回填本地的关键路径配置
+    let mut final_config = cloud_config;
+
+    final_config.storage_path = current_local_config.storage_path;
+    final_config.avatar_path = current_local_config.avatar_path;
+    final_config.last_backup_path = current_local_config.last_backup_path;
+
     // 2. 调用你提到的 save_config 将配置写入磁盘
-    save_config(new_config)?;
+    save_config(final_config)?;
 
     // 3. 调用 reload_config 将磁盘内容加载到内存变量 CONFIG
     let reload_res = reload_config();
@@ -1227,82 +1162,7 @@ pub async fn sync_and_apply_config(
     Ok("Config synchronized and applied".to_string())
 }
 
-/// 按传入参数获取配置信息。作为 Tauri Command 暴露给前端调用。
-///
-/// 该函数是前端获取配置的统一入口。根据传入的 `key` 找到对应的配置项，并返回其当前值。
-///
-/// # Param
-/// * `key`: &str - 配置项名称。支持的键名与 `set_config_item` 相同：
-///
-/// **通用设置**
-/// * `"autostart"`: 返回 `bool` - 是否开机自启
-/// * `"tray_icon_visible"`: 返回 `bool` - 托盘图标是否可见
-/// * `"minimize_to_tray"`: 返回 `bool` - 启动时是否最小化到托盘
-/// * `"auto_save"`: 返回 `bool` - 是否自动保存剪贴板历史
-/// * `"retention_days"`: 返回 `u32` - 历史记录保留天数
-/// * `"global_shortcut"`: 返回 `String` - 主界面快捷键
-/// * `"global_shortcut_2"`: 返回 `String` - 第二界面快捷键
-/// * `"global_shortcut_3"`: 返回 `String` - 第三快捷键
-/// * `"global_shortcut_4"`: 返回 `String` - 第四快捷键
-/// * `"global_shortcut_5"`: 返回 `String` - 第五快捷键
-///
-/// **剪贴板参数**
-/// * `"max_history_items"`: 返回 `u32` - 最大历史记录数量
-/// * `"ignore_short_text_len"`: 返回 `u32` - 忽略短文本的最短字符数
-/// * `"ignore_big_file_mb"`: 返回 `u32` - 忽略大文件的大小阈值 (MB)
-/// * `"ignored_apps"`: 返回 `Vec<String>` - 被忽略的应用列表
-/// * `"auto_classify"`: 返回 `bool` - 是否自动分类
-/// * `"ocr_auto_recognition"`: 返回 `bool` - 是否启用 OCR 自动识别
-/// * `"delete_confirmation"`: 返回 `bool` - 删除时是否弹出确认对话框
-/// * `"keep_favorites_on_delete"`: 返回 `bool` - 删除时是否保留收藏内容
-/// * `"auto_sort"`: 返回 `bool` - 是否启用自动排序
-///
-/// **AI Agent 相关**
-/// * `"ai_enabled"`: 返回 `bool` - 是否启用 AI 助手
-/// * `"ai_api_key"`: 返回 `Option<String>` - AI API Key
-/// * `"ai_auto_tag"`: 返回 `bool` - 是否启用 AI 自动打标签
-/// * `"ai_auto_summary"`: 返回 `bool` - 是否启用 AI 自动摘要
-/// * `"ai_translation"`: 返回 `bool` - 是否启用 AI 翻译功能
-/// * `"ai_web_search"`: 返回 `bool` - 是否启用 AI 联网搜索功能
-/// * `"ai_provider"`: 返回 `String` - AI 提供商
-/// * `"ai_model"`: 返回 `String` - AI 模型
-/// * `"ai_base_url"`: 返回 `Option<String>` - AI 基础 URL
-/// * `"ai_temperature"`: 返回 `f32` - AI 温度参数
-///
-/// **安全与隐私**
-/// * `"sensitive_filter"`: 返回 `bool` - 是否启用敏感词过滤总开关
-/// * `"filter_passwords"`: 返回 `bool` - 是否过滤密码类型内容
-/// * `"filter_bank_cards"`: 返回 `bool` - 是否过滤银行卡号
-/// * `"filter_id_cards"`: 返回 `bool` - 是否过滤身份证号
-/// * `"filter_phone_numbers"`: 返回 `bool` - 是否过滤手机号
-///
-/// **数据备份**
-/// * `"storage_path"`: 返回 `Option<String>` - 数据存储路径
-/// * `"auto_backup"`: 返回 `bool` - 是否启用自动备份
-/// * `"backup_frequency"`: 返回 `String` - 备份频率
-/// * `"last_backup_path"`: 返回 `Option<String>` - 最近一次备份文件路径
-///
-/// **云端同步**
-/// * `"cloud_sync_enabled"`: 返回 `bool` - 是否启用云端同步
-/// * `"sync_frequency"`: 返回 `String` - 同步频率
-/// * `"sync_content_type"`: 返回 `String` - 同步内容类型
-/// * `"encrypt_cloud_data"`: 返回 `bool` - 是否对云端数据进行加密
-/// * `"sync_only_wifi"`: 返回 `bool` - 是否仅在 WiFi 下进行同步
-///
-/// **用户信息**
-/// * `"username"`: 返回 `Option<String>` - 用户名
-/// * `"email"`: 返回 `Option<String>` - 邮箱
-/// * `"bio"`: 返回 `Option<String>` - 用户简介
-/// * `"avatar_path"`: 返回 `Option<String>` - 头像文件路径
-///
-/// **OCR 设置**
-/// * `"ocr_provider"`: 返回 `Option<String>` - OCR 提供商标识
-/// * `"ocr_languages"`: 返回 `Option<Vec<String>>` - OCR 语言列表
-/// * `"ocr_confidence_threshold"`: 返回 `Option<f32>` - OCR 置信度阈值
-/// * `"ocr_timeout_secs"`: 返回 `Option<u64>` - OCR 超时时间
-///
-/// # Returns
-/// Result<serde_json::Value, String> - 成功返回配置值的 JSON 表示，失败返回错误信息
+/// 获取单个配置信息项的值。作为 Tauri Command 暴露给前端调用。
 #[tauri::command]
 pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
     let config_key = match parse_config_key(key) {
@@ -1392,7 +1252,109 @@ pub fn get_config_item(key: &str) -> Result<serde_json::Value, String> {
         Err("Config not initialized".to_string())
     }
 }
+/// 强制将当前配置文件所在的目录设置为存储路径
+/// 
+/// 这个命令会将 config.json 文件所在的目录路径写入 storage_path 字段
+/// 主要用于修复配置或重置存储路径到默认位置
+/// 
+/// # 使用场景
+/// 1. 当存储路径配置损坏时
+/// 2. 需要重置到默认存储位置时
+/// 3. 修复路径相关的配置问题
+/// 
+/// # 注意
+/// 这个操作不会迁移数据文件，只会更新配置文件
+/// 
+/// # Returns
+/// String - 操作结果信息
+#[tauri::command]
+pub fn force_set_storage_path_to_config_dir(app: tauri::AppHandle) -> String {
+    // 1. 获取当前配置文件的路径
+    let config_path = get_config_path();
+    println!("📄 当前配置文件路径: {}", config_path.display());
+    
+    // 2. 获取配置文件所在的目录
+    let config_dir = config_path.parent()
+        .unwrap_or_else(|| {
+            eprintln!("⚠️ 无法获取配置文件父目录");
+            Path::new(".")
+        });
+    
+    // 3. 将目录路径转换为字符串并规范化
+    let dir_path = config_dir.to_string_lossy().to_string();
+    
+    // 4. 根据操作系统规范化路径分隔符
+    #[cfg(target_os = "windows")]
+    let normalized_path = dir_path.replace("\\", "/"); // Windows上统一使用正斜杠
+    
+    #[cfg(not(target_os = "windows"))]
+    let normalized_path = dir_path.clone();
+    
+    println!("📍 强制设置存储路径为: {}", normalized_path);
+    
+    // 5. 更新配置中的 storage_path 字段
+    if let Some(lock) = CONFIG.get() {
+        let mut cfg = lock.write().unwrap();
+        cfg.storage_path = Some(normalized_path.clone());
+        
+        // 6. 保存配置到文件
+        let cfg_clone = cfg.clone();
+        match save_config(cfg_clone) {
+            Ok(_) => {
+                println!("✅ 存储路径已强制设置为配置文件所在目录");
+                
+                // 7. 更新默认路径的配置文件（与主逻辑保持一致）
+                let app_default_dir = app.path().app_data_dir().unwrap();
+                let default_config_path = app_default_dir.join("config.json");
+                
+                if default_config_path != config_path {
+                    println!("📝 同时更新默认路径的配置文件");
+                    
+                    // 保存到默认路径
+                    let old_path_for_default = get_config_path();
+                    set_config_path(default_config_path.clone());
+                    
+                    if let Err(e) = save_config(cfg.clone()) {
+                        println!("⚠️ 更新默认路径配置文件失败: {}", e);
+                        // 恢复配置路径
+                        set_config_path(old_path_for_default);
+                    } else {
+                        println!("✅ 默认路径配置文件更新成功");
+                        // 恢复配置路径到原路径
+                        set_config_path(config_path.clone());
+                    }
+                }
+                
+                format!("存储路径已强制设置为: {}", normalized_path)
+            }
+            Err(e) => {
+                format!("保存配置失败: {}", e)
+            }
+        }
+    } else {
+        "配置未初始化".to_string()
+    }
+}
 
+/// 辅助函数：获取配置文件所在目录的路径
+/// 
+/// # Returns
+/// PathBuf - 配置文件所在目录的路径
+#[tauri::command]
+pub fn get_config_directory_path() -> String {
+    let config_path = get_config_path();
+    let config_dir = config_path.parent()
+        .unwrap_or_else(|| Path::new("."));
+    
+    // 规范化路径分隔符
+    #[cfg(target_os = "windows")]
+    let dir_str = config_dir.to_string_lossy().replace("\\", "/");
+    
+    #[cfg(not(target_os = "windows"))]
+    let dir_str = config_dir.to_string_lossy().to_string();
+    
+    dir_str
+}
 #[cfg(test)]
 #[path = "test_unit/test_config.rs"]
 mod test_config;

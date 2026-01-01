@@ -32,25 +32,16 @@ export function updateMainWindowPosition(position) {
  */
 export async function updateScreenWorkArea() {
   try {
-    /*
-    const allWindows = await WebviewWindow.getAll()
-    const mainWindow = allWindows.find(win => win.label === 'main')
-    
-    if (mainWindow) {
-      const monitor = await mainWindow.currentMonitor()
-      if (monitor && monitor.workArea) {
-        screenWorkArea = {
-          x: monitor.workArea.x,
-          y: monitor.workArea.y,
-          width: monitor.workArea.width,
-          height: monitor.workArea.height
-        }
-        console.log('更新屏幕工作区:', screenWorkArea)
-      }
+    const savedWindowSize = localStorage.getItem('windowSize')
+    console.log('设置窗口全局位置：', savedWindowSize)
+    if (savedWindowSize) {
+      const windowSize = JSON.parse(savedWindowSize)
+      
+      screenWorkArea.width = windowSize.width
+      screenWorkArea.height = windowSize.height
     }
-      */
   } catch (error) {
-    console.error('获取屏幕工作区失败:', error)
+    console.error('更新屏幕工作区失败:', error)
   }
 }
 
@@ -584,7 +575,7 @@ export async function createSetWindow(options = {},initialNav = 'general') {
       minimizable: false,
       maximizable: false,
       decorations: true,
-      alwaysOnTop: true,
+      alwaysOnTop: false,
       skipTaskbar: true,
       hiddenTitle: true,
       focus: true

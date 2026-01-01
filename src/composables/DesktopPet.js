@@ -1,6 +1,6 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
-import { listen } from '@tauri-apps/api/event'
+import { listen,emit } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { 
   updateMainWindowPosition, 
@@ -17,6 +17,7 @@ import {
 } from '../utils/animations.js'
 import live2d from '../utils/live2dManager.js'
 import { useSettingsStore } from '../stores/settings'
+import { useSecurityStore } from '../stores/security'
 import { executeCloudPush } from './Preferences'
 
 export function useDesktopPet() {
@@ -35,11 +36,16 @@ export function useDesktopPet() {
   const currentAnimationState = ref(AnimationState.IDLE)
   const settings = useSettingsStore().settings
 
+  const securityStore = useSecurityStore()
+  const settingsStore = useSettingsStore() 
+
   // 全局监听器
   let unlistenKeyButton = null
   let unlistenMouseButton = null
   let unlistenMouseMove = null
   let unlistenAiEnabledChanged = null
+  let unlistenDekUpdate = null
+  let unlistenEncryptEnabledChanged = null
 
   // 添加剪贴板监听器的取消函数引用
   const unlistenClipboardUpdated = ref(null)
@@ -90,7 +96,7 @@ export function useDesktopPet() {
 
   //云端同步相关
   const FREQUENCY_MAP = {
-    'realtime': 30 * 1000,     // 实时：30秒
+    'realtime': 30 * 1000,     // 30秒
     '5min': 5 * 60 * 1000,     // 5分钟
     '15min': 15 * 60 * 1000,   // 15分钟
     '1hour': 60 * 60 * 1000    // 1小时
@@ -100,53 +106,89 @@ export function useDesktopPet() {
   let syncTimer = null
 
   const executeSyncLoop = async () => {
-    console.log('🔄 [SyncLoop] 正在执行同步循环检查...')
+    // 1. 获取必要的 Store 和状态
+
+    
     let currentConfig = {}
     let shouldSync = false
     let nextDelay = IDLE_CHECK_INTERVAL
 
+    // === 调试日志：开始检查 ===
+    // console.log('🔄 [SyncLoop] 开始新一轮检查...') 
+
     try {
-      // 尝试从后端读取 config.json
+      // 获取后端配置
       const configStr = await invoke('get_config_json')
       if (configStr) {
         currentConfig = JSON.parse(configStr)
-        // console.log('📂 [SyncLoop] 读取到后端配置:', currentConfig.sync_frequency, currentConfig.cloud_sync_enabled)
       } else {
-        console.warn('⚠️ [SyncLoop] 后端返回配置为空')
-        currentConfig = settings // 降级使用内存配置
+        currentConfig = settingsStore.settings
       }
 
-      // 决定是否同步
-      if (currentConfig.cloud_sync_enabled) {
-        shouldSync = true
-        // 计算下一次正常同步的时间
-        const freq = currentConfig.sync_frequency || '5min'
-        nextDelay = FREQUENCY_MAP[freq] || FREQUENCY_MAP['5min']
+      // === 核心变量状态获取 ===
+      const isSyncEnabled = currentConfig.cloud_sync_enabled;
+      // 优先检查本地 Store 的加密开关状态（比后端配置更准）
+      const isEncryptionEnabled = settingsStore.settings.encrypt_cloud_data; 
+      // 检查密钥是否存在
+      const hasKey = securityStore.hasDek(); 
+      const token = localStorage.getItem('token');
+
+      // === 调试日志：打印当前所有状态开关 ===
+      // 如果发现不自动同步，请查看控制台输出的这行日志
+      console.log(`🕵️ [SyncCheck] 状态报告: 
+        - 登录状态: ${!!token}
+        - 自动同步开关(Sync): ${isSyncEnabled}
+        - 加密开关(Encrypt): ${isEncryptionEnabled}
+        - 密钥就绪(HasKey): ${hasKey}
+      `);
+
+      // 2. 判定逻辑
+      if (!token) {
+         //console.warn('🛑 [SyncLoop] 跳过: 未登录');
+         shouldSync = false;
+      } else if (!isSyncEnabled) {
+         // console.log('⏸️ [SyncLoop] 跳过: 自动同步开关已关闭');
+         shouldSync = false;
+      } else if (!isEncryptionEnabled) {
+         console.warn('⚠️ [SyncLoop] 拒绝同步: 安全策略限制，必须开启端到端加密');
+         shouldSync = false;
+      } else if (!hasKey) {
+         console.warn('🔒 [SyncLoop] 拒绝同步: 加密开启但密钥未解锁 (请重新登录或输入密码)');
+         await emit('request-dek-sync');
+         shouldSync = false;
       } else {
-        console.log('⏸️ [SyncLoop] 同步功能已禁用 (将进入待机轮询模式)')
-        // 如果被禁用，不停止循环，而是用较慢的速度轮询配置，等待它变回 true
-        nextDelay = IDLE_CHECK_INTERVAL 
+         // 所有条件满足！
+         shouldSync = true;
+         // 计算频率
+         const freq = currentConfig.sync_frequency || '5min'
+         nextDelay = FREQUENCY_MAP[freq] || FREQUENCY_MAP['5min']
       }
 
     } catch (e) {
-      console.error('❌ [SyncLoop] 读取配置失败:', e)
-      nextDelay = 60 * 1000
+      console.error('❌ [SyncLoop] 读取配置或状态检查失败:', e)
+      nextDelay = 60 * 1000 // 出错后延长重试时间
     }
 
-    // 同步
+    // 3. 执行同步
     if (shouldSync) {
       try {
-        console.log('🚀 [SyncLoop] 开始执行上传...')
-        await executeCloudPush()
-        console.log(`✅ [SyncLoop] 同步成功! 下次同步: ${nextDelay/1000}秒后`)
+        console.log('🚀 [SyncLoop] 条件满足，开始加密上传...')
+        const dek = securityStore.dek; 
+        
+        // 调用 Preferences.js 中的上传函数
+        await executeCloudPush(dek) 
+        
+        console.log(`✅ [SyncLoop] 同步成功! 下次检查: ${nextDelay/1000}秒后`)
       } catch (e) {
-        console.error('❌ [SyncLoop] 上传过程出错:', e)
+        console.error('❌ [SyncLoop] 上传过程发生错误:', e)
       }
     } else {
-      console.log(`💤 [SyncLoop] 跳过本次上传. 下次检查: ${nextDelay/1000}秒后`)
+      // 条件不满足时，静默跳过，不报错
+      // console.log(`💤 [SyncLoop] 本轮跳过. 下次检查: ${nextDelay/1000}秒后`)
     }
-    // 重新设置定时器
-    if (syncTimer !== null) { // 确保没有被 unmount 清除
+
+    // 4. 重置定时器
+    if (syncTimer !== null) { 
         clearTimeout(syncTimer) 
         syncTimer = setTimeout(executeSyncLoop, nextDelay)
     }
@@ -167,8 +209,8 @@ export function useDesktopPet() {
   }
 
   watch(
-    () => [settings.ai_enabled, settings.cloud_sync_enabled, settings.sync_frequency],
-    ([newAi, newSync, newFreq], [oldAi, oldSync, oldFreq]) => {
+    () => [settings.ai_enabled, settings.cloud_sync_enabled, settings.sync_frequency,settings.encrypt_cloud_data],
+    ([newAi, newSync, newFreq, newEncrypt], [oldAi, oldSync, oldFreq, oldEncrypt]) => {
       // AI 监听逻辑
       if (newAi !== oldAi) {
         console.log(`AI功能设置变化: ${oldAi} -> ${newAi}`)
@@ -176,7 +218,7 @@ export function useDesktopPet() {
       }
       
       // 同步 监听逻辑
-      if (newSync !== oldSync || newFreq !== oldFreq) {
+      if (newSync !== oldSync || newFreq !== oldFreq || newEncrypt !== oldEncrypt) {
         console.log('检测到同步设置变更，重启定时器...')
         startSyncTimer()
       }
@@ -361,6 +403,31 @@ export function useDesktopPet() {
         // 直接更新 settings 的值
         settings.ai_enabled = enabled
       })
+
+      // 监听加密设置变更事件
+      unlistenEncryptEnabledChanged = await listen('encrypt-cloud-data-changed', (event) => {
+        const { enabled } = event.payload
+        console.log(`📡 收到 encrypt_cloud_data 变更事件: ${enabled}`)
+        
+        // 直接更新 settings 的值
+        settings.encrypt_cloud_data = enabled
+      })
+
+      unlistenDekUpdate = await listen('security-dek-update', (event) => {
+        console.log('🔑 [DesktopPet] 收到 DEK 密钥更新通知');
+        const { dek } = event.payload;
+        if (dek) {
+          securityStore.setDek(dek); // 更新桌宠窗口的 Store
+          console.log('✅ [DesktopPet] 密钥已同步至桌宠内存');
+          
+          // 收到密钥后，立即触发一次同步检查
+          if (syncTimer) {
+             clearTimeout(syncTimer);
+             executeSyncLoop();
+          }
+        }
+      })
+
     } catch (error) {
       console.error('设置全局监听器失败:', error)
     }
@@ -478,10 +545,25 @@ export function useDesktopPet() {
     console.log('[DesktopPet] mounted')
     try {
       await currentWindow.setSize(new LogicalSize(150, 95))
-      await currentWindow.setPosition(new LogicalPosition(1550, 800))
+
+      // 获取实际缩放比例
       const actualScaleFactor = await currentWindow.scaleFactor()
       console.log('系统缩放比例:', actualScaleFactor)
       scaleFactor.value = actualScaleFactor
+
+      // 获取屏幕分辨率
+      const [width, height] = await invoke('get_screen_resolution')
+      console.log(`屏幕分辨率: ${width}x${height}`)
+      const windowSize = {
+        width: width / actualScaleFactor,
+        height: height / actualScaleFactor,
+      }
+      console.log(`屏幕分辨率: `, windowSize)
+      localStorage.setItem('windowSize', JSON.stringify(windowSize))
+
+      // 初始位置放在右下角
+      await currentWindow.setPosition(new LogicalPosition(windowSize.width - 150, windowSize.height - 165))
+      
       
       const position = await currentWindow.outerPosition()
       currentPosition.value = {
@@ -492,20 +574,37 @@ export function useDesktopPet() {
       
       // 初始化动画系统
       animationManager.setState(AnimationState.IDLE, true)
-      setupAnimationCallbacks()    
-      
-      // 设置全局事件监听
-      await setupGlobalListeners()
-
-      // 组件挂载时启动同步定时器
-      startSyncTimer()
+      setupAnimationCallbacks()   
 
       updateMainWindowPosition(currentPosition.value)
 
       // 初始化 Live2D
       await initLive2D()
+
+      if (securityStore.initFromBackend) {
+          console.log('🔐 [DesktopPet] 正在尝试从后端/缓存加载密钥...');
+          await securityStore.initFromBackend();
+      }
+
+      // 3. 先设置监听器！
+      // 这样 unlistenDekUpdate 才会生效，准备接收主窗口的回复
+      await setupGlobalListeners()
+
+      // 4. 然后再发出请求
+      // 如果 Store 里没密钥，且已登录，向主窗口求救
+      if (settings.encrypt_cloud_data && !securityStore.hasDek() && localStorage.getItem('token')) {
+          console.log('❓ [DesktopPet] 缺少密钥，请求主窗口同步...');
+          // 现在发请求，因为上面 setupGlobalListeners 已经准备好接收回复了，所以没问题
+          await emit('request-dek-sync'); 
+      }
+
+      // 组件挂载时启动同步定时器
+      startSyncTimer()
       
       await updateScreenWorkArea()
+
+      
+
     } catch (error) {
       console.error('设置窗口大小失败:', error)
     }
@@ -528,6 +627,8 @@ export function useDesktopPet() {
     unlistenMouseButton()
     unlistenMouseMove()
     unlistenAiEnabledChanged()
+    unlistenEncryptEnabledChanged()
+    if (unlistenDekUpdate) unlistenDekUpdate();
 
     removeClipboardRelay()
   })
