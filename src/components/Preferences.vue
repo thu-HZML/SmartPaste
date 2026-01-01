@@ -524,7 +524,7 @@
                   @change="updateSetting('sync_frequency', $event.target.value)" 
                   class="select-input"
                 >
-                  <option value="realtime">实时同步</option>
+                  <option value="realtime">每30秒</option>
                   <option value="5min">每5分钟</option>
                   <option value="15min">每15分钟</option>
                   <option value="1hour">每小时</option>

@@ -3,7 +3,7 @@ import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { emit } from '@tauri-apps/api/event'
+import { listen,emit } from '@tauri-apps/api/event'
 import { apiService,ensureAbsoluteAvatarUrl } from '../services/api'
 import { useSettingsStore } from '../stores/settings'
 import { useSecurityStore } from '../stores/security'
@@ -47,24 +47,29 @@ export const executeCloudPush = async (dek = null) => {
     if (!configRes.success) throw new Error(`配置同步失败: ${configRes.message}`);
 
     // 2. 同步数据库
+
+    const userString = localStorage.getItem('user');
+      const userData = JSON.parse(userString);
+      const userId = userData.user.id;
+      const clearResult = await apiService.clearSqliteDatabase(userId);
+      if (!clearResult.success) {
+        throw new Error(`清空云端数据库失败: ${clearResult.message}`);
+      }
+    console.log('云端数据库已清空，开始上传数据...', 'info');
+
     let dbBlob;
     
     if (dek) {
       // === E2EE 模式 ===
       console.log("正在准备加密数据库...");
       
-      // 【修正1】改回驼峰命名 'dekHex'，符合 Tauri 默认规范
       const response = await invoke('prepare_encrypted_db_upload', { dekHex: dek });
       
       let encryptedBase64;
 
-      // 【修正2】保留智能判断：检查返回值是路径还是内容
-      // 如果返回值很长（超过500字符）或者包含 SQLite 头，说明它直接返回了内容
       if (response.length > 500 || response.startsWith("U1FMaXRl")) {
           console.log("✅ 检测到后端直接返回了数据库内容");
           
-          // 安全检查：如果是明文 SQLite 头 (U1FMaXRl...)，说明加密可能未生效
-          // 但考虑到这只是防止报错，我们先允许通过，但在控制台警告
           if (response.startsWith("U1FMaXRl")) {
              console.warn("⚠️ 警告：上传的数据似乎包含明文 SQLite 文件头，请确认 Rust 端加密是否正确。");
           }
@@ -102,7 +107,6 @@ export const executeCloudPush = async (dek = null) => {
            // === E2EE 模式 ===
            const tempEncPath = fileInfo.file_path + ".enc";
            
-           // 【修正3】这里也改回驼峰命名 inputPath, outputPath, dekHex
            await invoke('encrypt_file', { 
                inputPath: fileInfo.file_path, 
                outputPath: tempEncPath, 
@@ -112,7 +116,7 @@ export const executeCloudPush = async (dek = null) => {
            // 读取加密后的内容
            contentBase64 = await invoke('read_file_base64', { filePath: tempEncPath });
            
-           // 清理临时文件 (建议开启，防止垃圾文件堆积)
+           // 清理临时文件
            await invoke('delete_temp_encrypted_file', { path: tempEncPath });
         } else {
            // === 普通模式 ===
@@ -130,6 +134,10 @@ export const executeCloudPush = async (dek = null) => {
       }
     }
 
+    const now = Date.now();
+    localStorage.setItem('lastSyncTime', now);
+    console.log('📡 广播云端同步成功事件...');
+    await emit('cloud-sync-success', { time: now });
     return true;
   } catch (error) {
     console.error('后台同步执行出错:', error);
@@ -223,6 +231,7 @@ export function usePreferences() {
   const lastSyncTime = ref(null)
   const lastSyncStatus = ref('')
   const isSyncing = ref(false)
+  let unlistenSync = null;
 
   // 用户信息
   const userInfo = reactive({
@@ -495,17 +504,19 @@ export function usePreferences() {
         loadUsername()
         await emit('user-info-updated');
 
-        // === 新增: 尝试恢复 E2EE 密钥 ===
+        // === 尝试恢复 E2EE 密钥 ===
         // 使用用户刚输入的密码尝试恢复
         try {
            await recoverE2EE(loginData.password);
            // 如果恢复成功，且设置中未开启加密（可能是新设备），自动开启
            if (securityStore.hasDek() && !settings.encrypt_cloud_data) {
              settings.encrypt_cloud_data = true;
+             console.log('📡 广播密钥给桌宠窗口...');
+              await emit('security-dek-update', { dek: securityStore.dek });
            }
         } catch (e) {
            console.warn("E2EE 自动恢复失败 (可能未启用或网络问题):", e);
-           // 注意：如果云端有密钥但解密失败（密码改过？），这里需要处理
+           // 注意：如果云端有密钥但解密失败
         }
 
         // 关闭登录对话框
@@ -589,7 +600,7 @@ export function usePreferences() {
     openLoginDialog()
   }
 
-  // 修改logout方法
+  // 登出
   const logout = async () => {
     const message = '确定要退出登录吗？';
     const confirmed = await window.confirm(message);
@@ -659,86 +670,6 @@ export function usePreferences() {
       showToast.value = false
     }, 2000)
   }
-
-
-  // 通用设置相关函数
-// 启动时自动运行
-// 检查自启状态
-/*
-const checkAutostartStatus = async () => {
-  try {
-    const isEnabled = await invoke('is_autostart_enabled')
-    settings.autoStart = isEnabled
-    console.log('当前自启状态:', isEnabled)
-  } catch (error) {
-    console.error('检查自启状态失败:', error)
-    showMessage('检查自启状态失败')
-  }
-}
-
-// 切换自启状态 - 唯一的函数
-const toggleAutoStart = async () => {
-  loading.value = true
-  try {
-    await invoke('set_autostart', { enable: settings.autoStart })
-    const message = settings.autoStart ? '已开启开机自启' : '已关闭开机自启'
-    console.log(message)
-    showMessage(message)
-  } catch (error) {
-    console.error('设置自启失败:', error)
-    showMessage(`设置失败: ${error}`)
-    // 出错时恢复原状态
-    settings.autoStart = !settings.autoStart
-  } finally {
-    loading.value = false
-  }
-}
-// 显示系统托盘图标
-const toggleTrayIcon = async () => {
-  try {
-    await invoke('set_tray_icon_visibility', { visible: settings.showTrayIcon })
-    showMessage(settings.showTrayIcon ? '已显示托盘图标' : '已隐藏托盘图标')
-  } catch (error) {
-    console.error('设置托盘图标失败:', error)
-    settings.showTrayIcon = !settings.showTrayIcon
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-//启动时最小化到托盘
-const toggleMinimizeToTray = async () => {
-  try {
-    await invoke('set_minimize_to_tray', { enabled: settings.showTrayIcon })
-    showMessage(settings.showTrayIcon ? '已启用启动时最小化到托盘' : '已禁用启动时最小化到托盘')
-  } catch (error) {
-    console.error('设置最小化到托盘失败:', error)
-    settings.showTrayIcon = !settings.showTrayIcon
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 自动保存剪贴板历史
-const toggleAutoSave = async () => {
-  try {
-    await invoke('set_auto_save', { enabled: settings.autoSave })
-    showMessage(settings.autoSave ? '已启用自动保存' : '已禁用自动保存')
-  } catch (error) {
-    console.error('设置自动保存失败:', error)
-    settings.autoSave = !settings.autoSave
-    showMessage(`设置失败: ${error}`)
-  }
-}
-
-// 历史记录保留时间
-const updateRetentionDays = async () => {
-  try {
-    await invoke('set_retention_days', { days: parseInt(settings.retentionDays) })
-    showMessage(`历史记录保留时间已设置为 ${settings.retentionDays} 天`)
-  } catch (error) {
-    console.error('设置保留时间失败:', error)
-    showMessage(`设置失败: ${error}`)
-  }
-}*/
 
   // 快捷键相关方法
   const startRecording = (shortcutType) => {
@@ -864,11 +795,11 @@ const updateRetentionDays = async () => {
 
       await updateSetting(shortcutType, newShortcutStr)
       successMsg.value = `${shortcutDisplayNames[shortcutType]} 快捷键设置成功！`
-      console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
+      //console.log(`✅ ${shortcutDisplayNames[shortcutType]} 快捷键已更新为: ${newShortcutStr}`)
 
     } catch (err) {
       errorMsg.value = `设置失败: ${err}`
-      console.error('❌ 设置快捷键失败:', err)
+      //console.error('❌ 设置快捷键失败:', err)
       
       if (err.includes('Failed to unregister hotkey') || err.includes('GlobalHotkey') || err.includes('可能已被占用')) {
         errorMsg.value = '快捷键设置失败：可能与其他程序冲突，请尝试其他组合键'
@@ -892,6 +823,13 @@ const updateRetentionDays = async () => {
 
   // 设置相关方法
   const updateSetting = async (key, value) => {
+     // 如果更新的是 encrypt_cloud_data，发送事件到主窗口
+    if (key === 'encrypt_cloud_data') {
+      await emit('encrypt-cloud-data-changed', { 
+        enabled: value 
+      })
+      console.log(`📡 发送 encrypt_cloud_data 变更事件: ${value}`)
+    }
     // 如果是开启加密，需要特殊处理
     if (key === 'encrypt_cloud_data' && value === true) {
       // 1. 检查是否登录
@@ -916,33 +854,55 @@ const updateRetentionDays = async () => {
       }
 
       // 3. 内存无密钥，需要走 Setup 流程
-      // 这里有一个 UI 交互问题：我们需要密码。
-      // 简单方案：弹出一个 prompt (浏览器原生)，或者你需要实现一个密码输入模态框
       const password = window.prompt("为了启用端到端加密，请验证您的登录密码：");
       if (!password) {
-        settings[key] = false; // 用户取消
+        settings[key] = true; 
+        setTimeout(() => {
+          settings[key] = false;
+        }, 0);
         return;
       }
 
-      // 尝试恢复（万一云端已有），如果云端没有则生成
-      try {
-        const recovered = await recoverE2EE(password);
-        if (recovered) {
-           // 恢复成功，更新设置
-           settings[key] = true;
-           await invoke('set_config_item', { key, value: true });
-           showMessage('密钥恢复成功，加密已启用', 'success');
-        } else {
-           // 云端无密钥，执行首次生成流程
-           await setupE2EE(password);
-        }
-      } catch (e) {
-         showMessage(`操作失败: ${e.message}`, 'error');
-         settings[key] = false;
+      const userString = localStorage.getItem('user');
+      let userName = '';
+      if (userString) {
+        const user = JSON.parse(userString);
+        userName = user.user.username;
       }
-      return; // 结束，不执行默认逻辑
+      const response = await apiService.login({
+          username: userName,
+          password: password
+        })
+
+      if (response.success) {
+          showMessage("密码验证成功，正在恢复密钥...", "info");
+          try {
+            const success = await recoverE2EE(password); 
+            if (success) {
+                settings[key] = true;
+                await invoke('set_config_item', { key, value: true });
+                showMessage('密钥恢复成功，加密已启用', 'success');
+            } else {
+                await setupE2EE(password);
+                await emit('security-dek-update', { dek: securityStore.dek });
+            }
+        } catch(e) {
+            showMessage(e.message, "error");
+            settings[key] = false;
+        }
+      }else{
+        showMessage("密码验证失败，无法启用加密", "error");
+        settings[key] = true; 
+        setTimeout(() => {
+          settings[key] = false;
+        }, 0);
+        return;
+      }
+
+      
+      return; 
     }
-    
+
     const oldValue = settings[key]
     
     try {
@@ -957,6 +917,7 @@ const updateRetentionDays = async () => {
         })
         console.log(`📡 发送 ai_enabled 变更事件: ${value}`)
       }
+
     } catch (error) {
       console.error(`设置 ${key} 失败:`, error)
       settings[key] = oldValue
@@ -1037,7 +998,6 @@ const updateRetentionDays = async () => {
 
   const createBackup = async () => {
     try {
-      // const backupPath = await invoke('create_backup')
       showMessage(`备份已创建: ${backupPath}`)
     } catch (error) {
       console.error('创建备份失败:', error)
@@ -1120,7 +1080,7 @@ const updateRetentionDays = async () => {
   }
 
   /**
-   * 流程 3.1: 初始化 E2EE (生成并上传密钥)
+   * 初始化 E2EE (生成并上传密钥)
    * 当用户开启加密开关时调用
    */
   const setupE2EE = async (password) => {
@@ -1169,7 +1129,7 @@ const updateRetentionDays = async () => {
   }
 
   /**
-   * 流程 3.2: 恢复 E2EE (从云端获取并解密密钥)
+   * 恢复 E2EE (从云端获取并解密密钥)
    * 登录成功后，或检测到需要密钥时调用
    */
   const recoverE2EE = async (password) => {
@@ -1201,7 +1161,6 @@ const updateRetentionDays = async () => {
         // 恢复成功后，确保本地开关与云端状态一致
         if (!settings.encrypt_cloud_data) {
            settings.encrypt_cloud_data = true;
-           // 可以在这里静默更新一下本地配置，避免下次重复提示
            invoke('set_config_item', { key: 'encrypt_cloud_data', value: true }).catch(()=>{});
         }
         
@@ -1213,7 +1172,6 @@ const updateRetentionDays = async () => {
       }
     } catch (e) {
       console.error("密钥恢复异常:", e);
-      // 如果是自动恢复（登录时），尽量不要抛出打断流程的 Error，除非是密码错误明确需要提示
       // 这里返回 false 表示恢复失败
       return false;
     }
@@ -1280,8 +1238,6 @@ const updateRetentionDays = async () => {
         Object.keys(changePasswordErrors).forEach(key => {
           changePasswordErrors[key] = ''
         })
-        
-        // 建议：可以添加页面跳转或刷新逻辑
 
       } else {
         // API 返回错误
@@ -1451,10 +1407,30 @@ const updateRetentionDays = async () => {
       return;
     }
 
+    if (!settings.encrypt_cloud_data) {
+
+      showMessage('为保障隐私安全，必须开启“端到端加密”才能同步数据！', 'error');
+      
+      // 可以在这里加一个原生弹窗，确保用户看到
+      // window.alert('安全警告：请先在“安全与隐私”中开启端到端加密！');
+      
+      // 自动跳转到安全设置页，引导用户开启
+      activeNav.value = 'cloud'; 
+      return;
+    }
+
     isSyncing.value = true;
     
     try {
-      showMessage('正在推送数据至云端...', 'info');
+      const userString = localStorage.getItem('user');
+      const userData = JSON.parse(userString);
+      const userId = userData.user.id;
+      const clearResult = await apiService.clearSqliteDatabase(userId);
+      if (!clearResult.success) {
+        throw new Error(`清空云端数据库失败: ${clearResult.message}`);
+      }
+      showMessage('云端数据库已清空，开始上传数据...', 'info');
+
       // 传入 DEK (如果有且开启了加密)
       const dek = (settings.encrypt_cloud_data && securityStore.dek) ? securityStore.dek : null;
       
@@ -1464,7 +1440,7 @@ const updateRetentionDays = async () => {
          throw new Error("加密密钥丢失，请重新登录或验证密码以恢复同步能力");
       }
 
-      await executeCloudPush(dek); // 传入 dek
+      await executeCloudPush(dek); 
 
       // 成功处理
       showMessage('云端数据推送成功！', 'success');
@@ -1484,18 +1460,37 @@ const updateRetentionDays = async () => {
   const restoreKeysManually = async () => {
     const password = window.prompt("请输入登录密码以恢复加密密钥：");
     if (!password) return;
-    
-    try {
-        // 复用之前定义的 recoverE2EE 逻辑
-        const success = await recoverE2EE(password); 
-        if (success) {
-            showMessage("密钥恢复成功", "success");
-        } else {
-            showMessage("未找到云端密钥配置", "error");
-        }
-    } catch(e) {
-        showMessage(e.message, "error");
+
+    const userString = localStorage.getItem('user');
+    let userName = '';
+    if (userString) {
+      const user = JSON.parse(userString);
+      userName = user.user.username;
     }
+    const response = await apiService.login({
+        username: userName,
+        password: password
+      })
+
+    if (response.success) {
+        showMessage("密码验证成功，正在恢复密钥...", "info");
+        try {
+          const success = await recoverE2EE(password); 
+          if (success) {
+              showMessage("密钥恢复成功", "success");
+          } else {
+              showMessage("未找到云端密钥配置,正在初始化...", "error");
+              await setupE2EE(password);
+          }
+      } catch(e) {        
+        showMessage(e.message, "error");
+
+      } 
+    }else{
+      showMessage("密码验证失败", "error");
+    }
+
+    
   }
 
   const handleCloudPull = async (isSilent = false) => {
@@ -1550,11 +1545,11 @@ const updateRetentionDays = async () => {
             // 判断是否需要作为加密临时文件下载
             // 如果开启了加密且有密钥，我们将文件下载为 .enc 后缀，之后再解密
             let downloadPath = relativePath;
-            if (settings.encrypt_cloud_data && securityStore.dek) {
+            if (securityStore.dek) {
                 downloadPath = relativePath + ".enc";
             }
 
-            // 【核心修改】调用 Rust 命令下载文件，避开 CORS
+            // 调用 Rust 命令下载文件，避开 CORS
             await invoke('download_cloud_file', { 
                 url: fileUrl, 
                 authToken: token, 
@@ -1562,7 +1557,7 @@ const updateRetentionDays = async () => {
             });
 
             // 如果是加密模式，下载完成后进行解密
-            if (settings.encrypt_cloud_data && securityStore.dek) {
+            if (securityStore.dek) {
                 // === E2EE 解密流程 ===
                 const isWin = storageRoot.includes('\\');
                 const sep = isWin ? '\\' : '/';
@@ -1610,6 +1605,25 @@ const updateRetentionDays = async () => {
       if (!isSilent) showMessage(`同步失败: ${error.message || error}`, 'error');
     } finally {
       isSyncing.value = false;
+    }
+  };
+
+  // 在组件中调用
+  const handleClearDatabase = async (userId) => {
+    const response = await clearSqliteDatabase(userId);
+
+    if (response.success) {
+      const { deleted } = response.data;
+      console.log(`已清空:
+        - 剪贴板文件: ${deleted.clipboard_files} 个
+        - 数据记录: ${deleted.data} 条
+        - 文件夹: ${deleted.folders} 个
+        - 文件夹项: ${deleted.folder_items} 条
+        - 扩展数据: ${deleted.extended_data} 条
+      `);
+      alert('数据库清空成功');
+    } else {
+      alert(`清空失败: ${response.message}`);
     }
   };
 
@@ -1727,8 +1741,29 @@ const updateRetentionDays = async () => {
       console.log("检测到 SessionStorage 存有密钥，已自动恢复加密环境");
     }
 
+    unlistenSync = await listen('cloud-sync-success', (event) => {
+      console.log('✅ 收到同步更新事件:', event.payload.time);
+      if (event.payload.time) {
+        lastSyncTime.value = event.payload.time;
+        // 确保本地存储也同步更新（双重保险）
+        localStorage.setItem('lastSyncTime', event.payload.time);
+      }
+    });
+    await listen('request-dek-sync', async () => {
+        console.log('📡 [Preferences] 收到密钥同步请求');
+        if (securityStore.hasDek()) {
+            console.log('✅ 主窗口拥有密钥，正在广播...');
+            await emit('security-dek-update', { dek: securityStore.dek });
+        } else {
+            console.warn('❌ 无法同步：主窗口当前也没有密钥 (请先登录或验证)');
+        }
+    });
+
     onUnmounted(() => {
       if (unlisten) unlisten();
+      if (unlistenSync) {
+      unlistenSync();
+    }
     });
 
     // 设置窗口关闭监听器
