@@ -8,6 +8,7 @@ mod clipboard;
 mod config;
 mod db;
 mod ocr;
+mod qrcode;
 mod utils;
 
 // 注册性能测试模块 (仅在测试模式下编译)
@@ -122,6 +123,7 @@ fn main() {
             config::sync_and_apply_config,
             config::force_set_storage_path_to_config_dir,
             config::get_config_directory_path,
+            qrcode::recognize_qrcode,
             utils::read_file_base64,
             utils::get_local_files_to_upload,
             utils::read_db_file_base64,
