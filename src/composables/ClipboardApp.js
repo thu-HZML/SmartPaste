@@ -12,7 +12,7 @@ export function useClipboardApp() {
   const router = useRouter()
   const route = useRoute()
   const currentWindow = getCurrentWindow();
-  const settings = useSettingsStore().settings        
+  const settings = useSettingsStore().settings
 
   // 响应式数据
   const searchQuery = ref('')
@@ -26,6 +26,7 @@ export function useClipboardApp() {
   const showFolderModal = ref(false)
   const showFoldersModal = ref(false)
   const showOcrModal = ref(false)
+  const showQrcodeModal = ref(false)
   const showDeleteModal = ref(false)
   const showDeleteSingleModal = ref(false)
   const showRenameModal = ref(false)
@@ -35,6 +36,7 @@ export function useClipboardApp() {
   const notingItem = ref(null)
   const renameItem = ref(null)
   const ocrText = ref('')
+  const qrcodeText = ref('')
   const folderNotingText = ref('')
   const renameText = ref('')
 
@@ -90,14 +92,14 @@ export function useClipboardApp() {
   })
 
   // 监听时间变化
-  
-  watch([startTime, endTime], async() => {
+
+  watch([startTime, endTime], async () => {
     if (startTime.value && endTime.value) {
       await handleSearch()
     }
   })
 
-  watch([searchQuery, activeCategory], async() => {
+  watch([searchQuery, activeCategory], async () => {
     await handleSearch()
   })
 
@@ -105,7 +107,7 @@ export function useClipboardApp() {
   const handleSearch = async () => {
     // 清除之前的定时器
     clearTimeout(searchTimeout)
-    
+
     // 设置新的定时器（100ms 防抖）
     searchTimeout = setTimeout(async () => {
       await performSearch()
@@ -122,7 +124,7 @@ export function useClipboardApp() {
       if (currentCategory === 'all') {
         currentCategory = null
       }
-      else if (currentCategory === 'favorite'){
+      else if (currentCategory === 'favorite') {
         await getAllFolders()
         const result = await invoke('get_favorite_data_count')
         folders.value[0].num_items = result
@@ -135,19 +137,19 @@ export function useClipboardApp() {
       if (startTime.value && endTime.value) {
         const startTimestamp = new Date(startTime.value).getTime()
         const endTimestamp = new Date(endTime.value).getTime()
-        result = await invoke('comprehensive_search', { 
+        result = await invoke('comprehensive_search', {
           query: searchQuery.value,
           itemType: currentCategory,
           startTimestamp: startTimestamp,
           endTimestamp: endTimestamp
         })
       } else {
-        result = await invoke('comprehensive_search', { 
+        result = await invoke('comprehensive_search', {
           query: searchQuery.value,
           itemType: currentCategory
         })
       }
-      
+
       filteredHistory.value = JSON.parse(result)
 
       // 为数组添加前端额外字段
@@ -212,7 +214,7 @@ export function useClipboardApp() {
       })
       if (autoSort) {
         await moveItemToTopAndSelect(item.id)
-      }     
+      }
     } catch (error) {
       console.error('复制失败:', error)
       showMessage(`复制失败: ${error}`)
@@ -227,13 +229,13 @@ export function useClipboardApp() {
       if (index !== -1) {
         // 从原位置移除项目
         const [item] = filteredHistory.value.splice(index, 1)
-        
+
         // 更新项目的时间戳为当前时间（使其在排序时最新）
         item.timestamp = new Date().getTime()
-        
+
         // 将项目添加到数组开头（顶部显示）
         filteredHistory.value.unshift(item)
-        
+
         // 在数据库中置顶该项目
         await invoke('top_data_by_id', {
           id: itemId
@@ -263,7 +265,7 @@ export function useClipboardApp() {
       executeDoubleClick(item)
       return;
     }
-    
+
     // 设置新的定时器
     clickTimeout = setTimeout(async () => {
       // 定时器触发，说明是单击
@@ -273,12 +275,12 @@ export function useClipboardApp() {
       clickTimeout = null;
 
       if (item.is_favorite) {
-        await invoke('add_item_to_folder', { 
+        await invoke('add_item_to_folder', {
           folderId: folders.value[0].id,
           itemId: item.id
         })
       } else {
-        await invoke('remove_item_from_folder', { 
+        await invoke('remove_item_from_folder', {
           folderId: folders.value[0].id,
           itemId: item.id
         })
@@ -288,42 +290,42 @@ export function useClipboardApp() {
 
   // 双击弹出收藏夹选择
   const executeDoubleClick = async (item) => {
-      showMessage('执行了双击操作')
-      showFoldersModal.value = true
-      currentItem.value = item
-      // 清除定时器
-      clickTimeout = null;
-      const result = await invoke('get_favorite_data_count')
-      folders.value[0].num_items = result
+    showMessage('执行了双击操作')
+    showFoldersModal.value = true
+    currentItem.value = item
+    // 清除定时器
+    clickTimeout = null;
+    const result = await invoke('get_favorite_data_count')
+    folders.value[0].num_items = result
 
-      // 选中所有已有该记录的收藏夹
-      try {
-        const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
-        const foldersJson = JSON.parse(foldersString)
+    // 选中所有已有该记录的收藏夹
+    try {
+      const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
+      const foldersJson = JSON.parse(foldersString)
 
-        // 保存初始选中状态
-        initialSelectedFolders.value = foldersJson.map(f => f.id)
+      // 保存初始选中状态
+      initialSelectedFolders.value = foldersJson.map(f => f.id)
 
-        folders.value = folders.value.map(folder => {
-          // 检查当前文件夹是否在foldersJson中（即包含该项目）
-          const isContained = foldersJson.some(f => f.id === folder.id)
+      folders.value = folders.value.map(folder => {
+        // 检查当前文件夹是否在foldersJson中（即包含该项目）
+        const isContained = foldersJson.some(f => f.id === folder.id)
 
-          return {
-            ...folder,
-            isSelected: isContained
-          }
-        })
-        
-        // 如果项目已被收藏但不在任何收藏夹中，确保全部收藏夹被选中
-        if (item.is_favorite) {
-          const defaultFolder = folders.value.find(folder => folder.name === '全部')
-          if (defaultFolder && !defaultFolder.isSelected) {
-            defaultFolder.isSelected = true
-          }
+        return {
+          ...folder,
+          isSelected: isContained
         }
-      } catch(err) {
-        console.error('获取收藏夹失败:', err)
+      })
+
+      // 如果项目已被收藏但不在任何收藏夹中，确保全部收藏夹被选中
+      if (item.is_favorite) {
+        const defaultFolder = folders.value.find(folder => folder.name === '全部')
+        if (defaultFolder && !defaultFolder.isSelected) {
+          defaultFolder.isSelected = true
+        }
       }
+    } catch (err) {
+      console.error('获取收藏夹失败:', err)
+    }
   }
 
   // 弹出"确认删除"提示框
@@ -338,7 +340,7 @@ export function useClipboardApp() {
       if (currentCategory === 'all') {
         currentCategory = null
       }
-      else if (currentCategory === 'favorite'){
+      else if (currentCategory === 'favorite') {
         return
       }
       else if (currentCategory === 'folder') {
@@ -352,7 +354,7 @@ export function useClipboardApp() {
 
       showMessage('已清除记录')
       handleSearch()
-    } catch(err) {
+    } catch (err) {
       console.error('清除历史记录失败:', err)
     }
     cancelDeleteAll()
@@ -370,7 +372,7 @@ export function useClipboardApp() {
       showDeleteSingleModal.value = true
     } else {
       removeItem()
-    }    
+    }
   }
 
   // "确认删除"提示框消失
@@ -390,9 +392,9 @@ export function useClipboardApp() {
     if (editingText.value.trim() && editingItem) {
       editingItem.value.content = editingText.value.trim()
       editingItem.value.timestamp = new Date().getTime()
-      await invoke('update_data_content_by_id', { 
+      await invoke('update_data_content_by_id', {
         id: editingItem.value.id,
-        newContent: editingText.value.trim() 
+        newContent: editingText.value.trim()
       })
       showMessage('内容已更新')
     }
@@ -420,9 +422,9 @@ export function useClipboardApp() {
       if (!notingText.value || notingText.value.trim() === '') {
         showMessage('内容不能为空')
       } else {
-        await invoke('add_notes_by_id', { 
-          id: notingItem.value.id, 
-          notes: notingText.value.trim() 
+        await invoke('add_notes_by_id', {
+          id: notingItem.value.id,
+          notes: notingText.value.trim()
         })
       }
       showMessage('备注已更新')
@@ -451,9 +453,9 @@ export function useClipboardApp() {
       if (!renameText.value || renameText.value.trim() === '') {
         showMessage('内容不能为空')
       } else {
-        await invoke('rename_folder', { 
-          folderId: renameItem.value.id, 
-          newName: renameText.value.trim() 
+        await invoke('rename_folder', {
+          folderId: renameItem.value.id,
+          newName: renameText.value.trim()
         })
       }
       showMessage('收藏夹名称已更新')
@@ -499,6 +501,47 @@ export function useClipboardApp() {
     ocrText.value = ''
   }
 
+  // 显示二维码识别内容
+  const showQRCode = async (item) => {
+    try {
+      if (!settings.storage_path) {
+        showMessage('未设置路径')
+        return
+      }
+      if (!item || item.item_type !== 'image') {
+        showMessage('仅支持对图片进行二维码识别')
+        return
+      }
+
+      const filePath = normalizedPath.value + item.content
+      const decodedText = await invoke('recognize_qrcode', { filePath })
+      qrcodeText.value = decodedText
+      showQrcodeModal.value = true
+    } catch (err) {
+      console.error('二维码识别失败:', err)
+      showMessage('二维码识别失败: ' + err)
+    }
+  }
+
+  // 复制二维码识别结果
+  const copyQRCode = async () => {
+    if (!qrcodeText.value || qrcodeText.value.trim() === '') {
+      showMessage('内容不能为空')
+    } else {
+      await invoke('insert_received_text_data', { text: qrcodeText.value })
+      await invoke('write_to_clipboard', { text: qrcodeText.value })
+      showMessage('已复制二维码内容')
+      handleSearch()
+    }
+    cancelQRCode()
+  }
+
+  // 关闭二维码弹窗
+  const cancelQRCode = () => {
+    showQrcodeModal.value = false
+    qrcodeText.value = ''
+  }
+
   // 删除历史记录
   const removeItem = async () => {
     const item = currentItem.value
@@ -508,21 +551,21 @@ export function useClipboardApp() {
         // 获取包含该记录的所有收藏夹
         const foldersString = await invoke('get_folders_by_item_id', { itemId: item.id })
         const foldersContainingItem = JSON.parse(foldersString)
-        
+
         // 从每个收藏夹中移除该记录
-        const removePromises = foldersContainingItem.map(folder => 
+        const removePromises = foldersContainingItem.map(folder =>
           invoke('remove_item_from_folder', {
             folderId: folder.id,
             itemId: item.id
           })
         )
-        
+
         await Promise.all(removePromises)
       }
-      
+
       // 删除历史记录本身
       await invoke('delete_data_by_id', { id: item.id })
-      
+
       // 从前端列表中移除
       const index = filteredHistory.value.findIndex(i => i.id === item.id)
       if (index !== -1) {
@@ -539,36 +582,36 @@ export function useClipboardApp() {
   // 格式化时间
   const formatTime = (timestamp) => {
     if (!timestamp) return '未知时间'
-    
+
     const date = new Date(parseInt(timestamp))
     const now = new Date()
     const diff = now - date
-    
+
     if (diff < 60000) return '刚刚'
     if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-    
+
     return date.toLocaleDateString()
   }
 
   // 格式化文件大小
   const formatFileSize = (bytes) => {
     if (bytes === 0 || !bytes) return '0 B'
-    
+
     const units = ['B', 'KB', 'MB', 'GB', 'TB']
     const base = 1024
-    
+
     // 处理边界情况
     if (bytes < base) {
       return `${bytes} B`
     }
-    
+
     const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(base)), units.length - 1)
     const size = (bytes / Math.pow(base, exponent)).toFixed(1)
-    
+
     // 移除 .0 后缀
     const cleanSize = size.endsWith('.0') ? size.slice(0, -2) : size
-    
+
     return `${cleanSize} ${units[exponent]}`
   }
 
@@ -597,7 +640,7 @@ export function useClipboardApp() {
         try {
           await invoke('create_new_folder', { name: '全部' })
           console.log('全部收藏夹创建成功')
-          
+
           // 重新获取收藏夹列表
           const updatedJsonString = await invoke('get_all_folders')
           folders.value = JSON.parse(updatedJsonString)
@@ -622,7 +665,7 @@ export function useClipboardApp() {
 
     // 提取文件名
     const fileName = path.split(/[\\/]/).pop() || '未知文件'
-    
+
     // 使用正则表达式移除时间戳前缀（数字+连字符）
     return fileName.replace(/^\d+-/, '') || '未知文件'
   }
@@ -711,7 +754,7 @@ export function useClipboardApp() {
       // 非全部收藏夹
       // 切换当前项的选中状态
       item.isSelected = !item.isSelected
-      
+
       // 如果选中了任何非全部收藏夹，确保全部收藏夹也被选中
       if (item.isSelected) {
         const defaultFolder = folders.value.find(folder => folder.name === '全部')
@@ -725,21 +768,21 @@ export function useClipboardApp() {
   // 把历史记录添加到收藏夹中
   const addToFolder = async () => {
     try {
-      const selectedFolders = folders.value.filter(item => 
+      const selectedFolders = folders.value.filter(item =>
         item.isSelected
       )
-      const previouslySelectedFolders = folders.value.filter(item => 
+      const previouslySelectedFolders = folders.value.filter(item =>
         initialSelectedFolders.value.includes(item.id) && !item.isSelected
       )
-      
+
       // 并行处理所有选中的文件夹
-      const addPromises = selectedFolders.map(item => 
-        invoke('add_item_to_folder', { 
+      const addPromises = selectedFolders.map(item =>
+        invoke('add_item_to_folder', {
           folderId: item.id,
           itemId: currentItem.value.id
         })
-      )   
-      
+      )
+
       // 从之前选中但现在未选中的收藏夹中移除
       const removePromises = previouslySelectedFolders.map(item =>
         invoke('remove_item_from_folder', {
@@ -786,7 +829,7 @@ export function useClipboardApp() {
       // 刷新历史记录
       handleSearch()
     })
-    
+
     return unlisten
   }
 
@@ -796,12 +839,12 @@ export function useClipboardApp() {
     if (event.target.tagName === 'INPUT' || event.target.closest('input')) {
       return
     }
-    
+
     // 防止在按钮上触发拖动
     if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
       return
     }
-    
+
     // 防止在图标上触发拖动
     if (event.target.tagName === 'svg' || event.target.tagName === 'path' || event.target.closest('svg')) {
       return
@@ -811,7 +854,7 @@ export function useClipboardApp() {
     if (event.target.tagName === 'SELECT' || event.target.closest('select')) {
       return
     }
-    
+
     // 防止在模态框上触发拖动
     if (event.target.closest('.modal')) {
       return
@@ -821,7 +864,7 @@ export function useClipboardApp() {
     if (event.target.closest('.folder-item')) {
       return
     }
-    
+
     // 新增：防止在收藏夹内容区域上触发拖动
     if (event.target.closest('.folder-content')) {
       return
@@ -846,7 +889,7 @@ export function useClipboardApp() {
   }
 
   // 窗口失焦时自动关闭窗口
-  const setupWindowListeners = async () => { 
+  const setupWindowListeners = async () => {
     // 如果已经存在监听器，先移除
     if (unlistenFocusChanged.value) {
       unlistenFocusChanged.value()
@@ -855,7 +898,7 @@ export function useClipboardApp() {
 
     // 监听窗口失去焦点事件
     unlistenFocusChanged.value = await currentWindow.onFocusChanged(async ({ payload: focused }) => {
-      if (!focused) {   
+      if (!focused) {
         if (isDragging || !canDeleteWindow.value) {
           console.log('检测到正在拖动，不关闭窗口')
           return
@@ -895,7 +938,7 @@ export function useClipboardApp() {
     if (event.shiftKey && multiSelectMode.value) {
       // Shift多选逻辑
       const existingIndex = selectedItems.value.findIndex(selected => selected.id === item.id)
-      
+
       if (existingIndex !== -1) {
         // 如果已经选中，则移除
         item.is_selected = false
@@ -906,7 +949,7 @@ export function useClipboardApp() {
         item.is_selected = true
         selectedItems.value.push(item)
       }
-      
+
       // 更新复制按钮显示状态
       showMultiCopyBtn.value = selectedItems.value.length > 0
 
@@ -948,7 +991,7 @@ export function useClipboardApp() {
         if (item.item_type === 'text') {
           copyString += item.content + '\n'
           successCount++
-        }     
+        }
       })
 
       if (copyString.trim() !== '') {
@@ -960,7 +1003,7 @@ export function useClipboardApp() {
           if (item.item_type === 'file' || item.item_type === 'image' || item.item_type === 'folder') {
             filePaths.push(normalizedPath.value + item.content)
             successCount++
-          }     
+          }
         })
 
         if (filePaths.length > 0) {
@@ -974,7 +1017,7 @@ export function useClipboardApp() {
 
       // 复制完成后退出多选模式
       exitMultiSelectMode()
-      
+
     } catch (error) {
       console.error('复制选中项目失败:', error)
       showMessage('复制失败，请重试')
@@ -985,7 +1028,7 @@ export function useClipboardApp() {
   const exitMultiSelectMode = () => {
     multiSelectMode.value = false
     selectedItems.value.forEach(item => {
-      item.is_selected = false    
+      item.is_selected = false
       item.selectionOrder = 0
     })
     selectedItems.value = []
@@ -1004,7 +1047,7 @@ export function useClipboardApp() {
     }
     // 并行获取图标数据（带重试功能）
     const fileItems = array.filter(item => item.item_type === 'file' || item.item_type === 'folder')
-    const promises = fileItems.map(item => 
+    const promises = fileItems.map(item =>
       fetchIconWithRetryRecursive(item.id, 5) // 最多重试5次
         .then(iconString => {
           item.iconData = iconString
@@ -1013,7 +1056,7 @@ export function useClipboardApp() {
           console.error(`Failed to get icon for ${item.id} after retries:`, error)
           item.iconData = null
         })
-    )   
+    )
     await Promise.all(promises)
   }
 
@@ -1021,7 +1064,7 @@ export function useClipboardApp() {
   async function fetchIconWithRetryRecursive(itemId, retriesLeft = 5) {
     try {
       const iconString = await invoke('get_icon_data_by_item_id', { itemId })
-      
+
       // 如果获取到的图标数据不为空，直接返回
       if (iconString && iconString.trim() !== '') {
         return iconString
@@ -1055,7 +1098,7 @@ export function useClipboardApp() {
     const day = String(date.getDate()).padStart(2, '0')
     const hours = String(date.getHours()).padStart(2, '0')
     const minutes = String(date.getMinutes()).padStart(2, '0')
-    
+
     return `${year}-${month}-${day}T${hours}:${minutes}`
   }
 
@@ -1065,14 +1108,14 @@ export function useClipboardApp() {
       const scaleFactor = await currentWindow.scaleFactor()
       const position = await currentWindow.outerPosition()
       const size = await currentWindow.innerSize()
-      
+
       const windowState = {
         x: position.x / scaleFactor,
         y: position.y / scaleFactor,
         width: size.width / scaleFactor,
         height: size.height / scaleFactor,
       }
-      
+
       localStorage.setItem('clipboardWindowState', JSON.stringify(windowState))
       console.log('窗口状态已保存:', windowState)
     } catch (error) {
@@ -1081,13 +1124,13 @@ export function useClipboardApp() {
   }
 
   const openImageWithSystem = async (item) => {
-    try {     
+    try {
       // 构建完整的图片路径
       let imagePath = normalizedPath.value + item.content
       console.log('图片路径为：', imagePath)
       // 使用系统默认程序打开图片
       //imagePath = imagePath.replace(/\\/g, '/').trim()    
-      
+
       await openPath(imagePath)
       showMessage('正在使用系统默认程序打开图片')
     } catch (error) {
@@ -1095,7 +1138,7 @@ export function useClipboardApp() {
       showMessage(`打开图片失败: ${error}`)
     }
   }
-  
+
   let unlistenShortcutEvent;
   // 生命周期
   onMounted(async () => {
@@ -1104,7 +1147,7 @@ export function useClipboardApp() {
 
     // 保存当前参数状态
     const shouldShowFavorites = route.query.category
-    console.log('跳转到的页面：',shouldShowFavorites)
+    console.log('跳转到的页面：', shouldShowFavorites)
 
     // 立即清除所有参数
     if (route.query.category) {
@@ -1116,13 +1159,13 @@ export function useClipboardApp() {
 
     // OCR配置
     await invoke('configure_ocr', {})
-    
+
     // 开启后端监听
     await setupClipboardRelay()
-    
+
     // 设置窗口事件监听器
     await setupWindowListeners()
-    
+
     // 设置窗口聚焦
     currentWindow.setFocus()
 
@@ -1131,12 +1174,12 @@ export function useClipboardApp() {
       activeCategory.value = shouldShowFavorites
       console.log('跳转到收藏界面')
     }
-    
+
     // 设置示例数据
     filteredHistory.value = [
       {
         id: '0123456',
-        item_type: 'text',        
+        item_type: 'text',
         content: '这是一个测试样例',
         is_favorite: true,
         notes: '样例备注',
@@ -1154,26 +1197,26 @@ export function useClipboardApp() {
 
     // 注册全局快捷键清空事件监听器
     unlistenShortcutEvent = await listen('clipboard-history-cleared', (event) => {
-        const { message } = event.payload; // 从事件负载中获取消息
-        
-        console.log('Clipboard history cleared via shortcut event received:', message);
-        
-        // 1. 显示消息 (showMessage)
-        showMessage(message); 
-        
-        // 2. 刷新列表 (handleSearch, handleCategoryChange)
-        // 使用当前搜索框内容和活动分类进行刷新
-        handleSearch();
-        
-        // 3. 关闭可能的删除确认 UI (cancelDeleteAll)
-        cancelDeleteAll(); 
+      const { message } = event.payload; // 从事件负载中获取消息
+
+      console.log('Clipboard history cleared via shortcut event received:', message);
+
+      // 1. 显示消息 (showMessage)
+      showMessage(message);
+
+      // 2. 刷新列表 (handleSearch, handleCategoryChange)
+      // 使用当前搜索框内容和活动分类进行刷新
+      handleSearch();
+
+      // 3. 关闭可能的删除确认 UI (cancelDeleteAll)
+      cancelDeleteAll();
     });
-   
+
   })
 
   onUnmounted(() => {
     if (unlistenShortcutEvent) {
-        unlistenShortcutEvent();
+      unlistenShortcutEvent();
     }
     removeWindowListeners()
   })
@@ -1189,6 +1232,7 @@ export function useClipboardApp() {
     showFolderModal,
     showFoldersModal,
     showOcrModal,
+    showQrcodeModal,
     showDeleteModal,
     showDeleteSingleModal,
     showRenameModal,
@@ -1197,6 +1241,7 @@ export function useClipboardApp() {
     notingText,
     notingItem,
     ocrText,
+    qrcodeText,
     folderNotingText,
     renameText,
     currentFolder,
@@ -1240,6 +1285,9 @@ export function useClipboardApp() {
     showOCR,
     copyOCR,
     cancelOCR,
+    showQRCode,
+    copyQRCode,
+    cancelQRCode,
     removeItem,
     showFolder,
     addFolder,
