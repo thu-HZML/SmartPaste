@@ -24,3 +24,7 @@ pub async fn recognize_qrcode(file_path: String) -> Result<String, String> {
         Err(e) => Err(format!("Failed to decode QR code: {}", e)),
     }
 }
+
+#[cfg(test)]
+#[path = "test_unit/test_qrcode.rs"]
+mod test_qrcode;
