@@ -4,7 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window'
-import { openPath } from '@tauri-apps/plugin-opener'
+import { openPath, openUrl } from '@tauri-apps/plugin-opener'
 import { toggleSetWindow } from '../utils/actions.js'
 import { useSettingsStore } from '../stores/settings'
 
@@ -540,6 +540,37 @@ export function useClipboardApp() {
   const cancelQRCode = () => {
     showQrcodeModal.value = false
     qrcodeText.value = ''
+  }
+
+  const normalizeHttpUrl = (text) => {
+    if (!text) return null
+    const trimmed = String(text).trim()
+    if (!trimmed) return null
+
+    const candidate = trimmed.startsWith('www.') ? `https://${trimmed}` : trimmed
+    try {
+      const url = new URL(candidate)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+      return url.toString()
+    } catch {
+      return null
+    }
+  }
+
+  const isHttpUrl = (text) => !!normalizeHttpUrl(text)
+
+  const openQRCodeLink = async () => {
+    const url = normalizeHttpUrl(qrcodeText.value)
+    if (!url) {
+      showMessage('识别结果不是可打开的网址')
+      return
+    }
+    try {
+      await openUrl(url)
+    } catch (err) {
+      console.error('打开链接失败:', err)
+      showMessage('打开链接失败: ' + err)
+    }
   }
 
   // 删除历史记录
@@ -1288,6 +1319,8 @@ export function useClipboardApp() {
     showQRCode,
     copyQRCode,
     cancelQRCode,
+    isHttpUrl,
+    openQRCodeLink,
     removeItem,
     showFolder,
     addFolder,

@@ -341,6 +341,7 @@
         ></textarea>
         <div class="modal-actions">
           <button @click="cancelQRCode" class="btn btn-secondary">取消</button>
+          <button v-if="isHttpUrl(qrcodeText)" @click="openQRCodeLink" class="btn btn-primary">打开链接</button>
           <button @click="copyQRCode" class="btn btn-primary">复制</button>
         </div>
       </div>
@@ -508,6 +509,8 @@ const {
   showQRCode,
   copyQRCode,
   cancelQRCode,
+  isHttpUrl,
+  openQRCodeLink,
   removeItem,
   showFolder,
   addFolder,
