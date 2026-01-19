@@ -124,6 +124,14 @@
                   <span class="content-OCR">{{ 'OCR' }}</span>
                 </button>
                 <button 
+                  v-if="item.item_type === 'image'"
+                  class="icon-btn-small" 
+                  @click="showQRCode(item)"
+                  title="二维码识别"
+                >
+                  <span class="content-OCR">{{ 'QR' }}</span>
+                </button>
+                <button 
                   class="icon-btn-small" 
                   @click="toggleFavorite(item)"
                   :title="item.is_favorite ? '取消收藏' : '收藏（双击选择收藏夹）'"
@@ -322,6 +330,23 @@
       </div>
     </div>
 
+    <!-- 二维码识别模态框 -->
+    <div v-if="showQrcodeModal" class="modal">
+      <div class="modal-content">
+        <h3>二维码识别结果</h3>
+        <textarea 
+          v-model="qrcodeText" 
+          class="edit-textarea"
+          placeholder="请输入内容..."
+        ></textarea>
+        <div class="modal-actions">
+          <button @click="cancelQRCode" class="btn btn-secondary">取消</button>
+          <button v-if="isHttpUrl(qrcodeText)" @click="openQRCodeLink" class="btn btn-primary">打开链接</button>
+          <button @click="copyQRCode" class="btn btn-primary">复制</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 新建收藏夹模态框 -->
     <div v-if="showFolderModal" class="modal">
       <div class="modal-content">
@@ -428,6 +453,7 @@ const {
   showFolderModal,
   showFoldersModal,
   showOcrModal,
+  showQrcodeModal,
   showDeleteModal,
   showDeleteSingleModal,
   showRenameModal,
@@ -436,6 +462,7 @@ const {
   notingText,
   notingItem,
   ocrText,
+  qrcodeText,
   folderNotingText,
   renameText,
   currentFolder,
@@ -479,6 +506,11 @@ const {
   showOCR,
   copyOCR,
   cancelOCR,
+  showQRCode,
+  copyQRCode,
+  cancelQRCode,
+  isHttpUrl,
+  openQRCodeLink,
   removeItem,
   showFolder,
   addFolder,
