@@ -137,6 +137,7 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref, reactive, computed } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import live2d from '../utils/live2dManager.js'
 
 // 状态
@@ -176,8 +177,8 @@ const loadModel = async () => {
     loading.value = true
     error.value = null
     
-    // 使用绝对路径 - 之前成功过的路径
-    const modelPath = 'C:/Users/heyufei/Desktop/bigHW/SmartPaste/public/resources/live2d'
+    const utilsDirPath = await invoke('get_utils_dir_path')
+    const modelPath = utilsDirPath.replace('//?/', '').replace('/src-tauri/src', '/src-tauri') + '/resources/live2d'
     console.log('使用路径:', modelPath)
     info.value = '正在加载模型...'
     
